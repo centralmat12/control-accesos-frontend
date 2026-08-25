@@ -1,7 +1,9 @@
 import { DEFAULT_VIEW, NAV_ITEMS } from './config/navigation.js'
+import { getCurrentUser, logout } from './api/auth.js'
 import { createLayout } from './components/layout.js'
 import { setSidebarOpen } from './components/sidebar.js'
 import { renderDashboard } from './views/dashboard.js'
+import { renderLogin } from './views/login.js'
 
 const views = {
   dashboard: renderDashboard,
@@ -11,8 +13,16 @@ export function bootstrap(root) {
   let currentView = DEFAULT_VIEW
 
   const mount = () => {
+    const user = getCurrentUser()
+
+    if (!user) {
+      renderLogin(root, { onSuccess: mount })
+      return
+    }
+
     const { root: layout, main } = createLayout({
       currentView,
+      user,
       onNavigate: (viewId) => {
         if (viewId === currentView) {
           setSidebarOpen(false)
@@ -21,6 +31,11 @@ export function bootstrap(root) {
 
         currentView = viewId
         setSidebarOpen(false)
+        mount()
+      },
+      onLogout: async () => {
+        await logout()
+        currentView = DEFAULT_VIEW
         mount()
       },
     })

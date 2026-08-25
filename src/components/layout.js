@@ -1,7 +1,7 @@
 import { createHeader } from './header.js'
 import { createSidebar, setSidebarOpen } from './sidebar.js'
 
-export function createLayout({ currentView, onNavigate }) {
+export function createLayout({ currentView, user, onNavigate, onLogout }) {
   const root = document.createElement('div')
   root.className = 'min-h-screen bg-slate-50 text-slate-900'
 
@@ -21,7 +21,7 @@ export function createLayout({ currentView, onNavigate }) {
   main.id = 'app-main'
   main.className = 'flex-1 p-4 lg:p-8'
 
-  content.append(createHeader({ currentView }), main)
+  content.append(createHeader({ currentView, user, onLogout }), main)
   shell.append(content)
   root.append(createSidebar({ currentView, onNavigate }), overlay, shell)
 
