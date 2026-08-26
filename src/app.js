@@ -3,10 +3,12 @@ import { getCurrentUser, logout } from './api/auth.js'
 import { createLayout } from './components/layout.js'
 import { setSidebarOpen } from './components/sidebar.js'
 import { renderDashboard } from './views/dashboard.js'
+import { renderEmpleados } from './views/empleados.js'
 import { renderLogin } from './views/login.js'
 
 const views = {
   dashboard: renderDashboard,
+  usuarios: renderEmpleados,
 }
 
 export function bootstrap(root) {
