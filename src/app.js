@@ -1,5 +1,5 @@
 import { DEFAULT_VIEW, NAV_ITEMS } from './config/navigation.js'
-import { getCurrentUser, logout } from './api/auth.js'
+import { getCurrentUser, isAuthenticated, logout } from './api/auth.js'
 import { createLayout } from './components/layout.js'
 import { setSidebarOpen } from './components/sidebar.js'
 import { renderDashboard } from './views/dashboard.js'
@@ -19,7 +19,7 @@ export function bootstrap(root) {
   const mount = () => {
     const user = getCurrentUser()
 
-    if (!user) {
+    if (!user || !isAuthenticated()) {
       renderLogin(root, { onSuccess: mount })
       return
     }
@@ -47,6 +47,11 @@ export function bootstrap(root) {
     root.replaceChildren(layout)
     renderView(main, currentView)
   }
+
+  window.addEventListener('ca:unauthorized', () => {
+    currentView = DEFAULT_VIEW
+    mount()
+  })
 
   mount()
 }

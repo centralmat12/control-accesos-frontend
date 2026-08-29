@@ -197,6 +197,11 @@ export async function renderFichadas(container) {
       renderResults()
     } catch (error) {
       loaded = false
+
+      if (error.message === 'Sesión expirada o no autorizada.') {
+        return
+      }
+
       results.replaceChildren(
         createFeedbackState({
           title: 'No se pudo cargar la lista',

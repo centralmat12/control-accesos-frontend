@@ -1,3 +1,4 @@
+import { getToken, logout } from './auth.js'
 import { apiUrl, DEFAULT_EMPRESA_ID } from '../config/api.js'
 
 function pick(item, ...keys) {
@@ -35,15 +36,44 @@ function normalizeEmpleados(payload) {
 }
 
 export async function getEmpleadosByEmpresa(empresaId = DEFAULT_EMPRESA_ID) {
+  const token = getToken()
+
+  if (!token) {
+    throw new Error('No hay sesión activa. Iniciá sesión para consultar empleados.')
+  }
+
+  const empleadosUrl = apiUrl(`/api/empleados/empresa/${empresaId}`)
   let response
 
   try {
-    response = await fetch(apiUrl(`/api/empleados/empresa/${empresaId}`))
-  } catch {
-    throw new Error('No se pudo conectar con la API.')
+    response = await fetch(empleadosUrl, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    })
+  } catch (error) {
+    console.error('Empleados: error de red o CORS', { url: empleadosUrl, error })
+    throw new Error(
+      `No se pudo conectar con la API (${empleadosUrl}). Si el servidor responde, suele ser CORS o que el navegador no llega a esa URL.`,
+    )
+  }
+
+  if (response.status === 401) {
+    logout()
+    window.dispatchEvent(new CustomEvent('ca:unauthorized'))
+    throw new Error('Sesión expirada o no autorizada.')
   }
 
   if (!response.ok) {
+    console.error('Empleados: respuesta HTTP no exitosa', {
+      url: empleadosUrl,
+      status: response.status,
+    })
+
+    if (response.status === 403) {
+      throw new Error('No tenés permiso para ver los empleados.')
+    }
+
     throw new Error(`No se pudieron cargar los empleados (${response.status}).`)
   }
 

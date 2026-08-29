@@ -1,9 +1,5 @@
-import { fichadas } from '../data/mock/fichadas.js'
-
-/**
- * Capa de acceso a datos de Fichadas.
- * Hoy usa datos simulados; más adelante reemplazar el cuerpo por fetch a ASP.NET Core.
- */
+import { getToken, logout } from './auth.js'
+import { apiUrl } from '../config/api.js'
 
 function pick(item, ...keys) {
   for (const key of keys) {
@@ -42,6 +38,47 @@ function normalizeFichadas(payload) {
 }
 
 export async function getFichadas() {
-  // TODO: reemplazar por fetch(apiUrl('/api/fichadas/...'))
-  return normalizeFichadas(structuredClone(fichadas))
+  const token = getToken()
+
+  if (!token) {
+    throw new Error('No hay sesión activa. Iniciá sesión para consultar fichadas.')
+  }
+
+  const fichadasUrl = apiUrl('/api/fichadas?limite=100')
+  let response
+
+  try {
+    response = await fetch(fichadasUrl, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    })
+  } catch (error) {
+    console.error('Fichadas: error de red o CORS', { url: fichadasUrl, error })
+    throw new Error(
+      `No se pudo conectar con la API (${fichadasUrl}). Si el servidor responde, suele ser CORS o que el navegador no llega a esa URL.`,
+    )
+  }
+
+  if (response.status === 401) {
+    logout()
+    window.dispatchEvent(new CustomEvent('ca:unauthorized'))
+    throw new Error('Sesión expirada o no autorizada.')
+  }
+
+  if (!response.ok) {
+    console.error('Fichadas: respuesta HTTP no exitosa', {
+      url: fichadasUrl,
+      status: response.status,
+    })
+
+    if (response.status === 403) {
+      throw new Error('No tenés permiso para ver las fichadas.')
+    }
+
+    throw new Error(`No se pudieron cargar las fichadas (${response.status}).`)
+  }
+
+  const payload = await response.json()
+  return normalizeFichadas(payload)
 }

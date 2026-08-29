@@ -25,7 +25,7 @@ export function renderLogin(container, { onSuccess }) {
               autocomplete="username"
               required
               class="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2.5 text-sm text-white outline-none placeholder:text-slate-500 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/30"
-              placeholder="admin@accesos.local"
+              placeholder="correo@empresa.com"
             />
           </div>
           <div>
@@ -51,10 +51,6 @@ export function renderLogin(container, { onSuccess }) {
         >
           Iniciar sesión
         </button>
-
-        <p class="mt-4 text-center text-xs text-slate-500">
-          Prueba: admin@accesos.local / admin123 (ADMIN)
-        </p>
       </form>
     </div>
   `
