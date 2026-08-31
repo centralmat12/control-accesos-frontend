@@ -10,11 +10,11 @@ function statusBadge(activo) {
   return `<span class="inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ring-1 ring-inset ${classes}">${label}</span>`
 }
 
-function fullName(empleado) {
+export function fullName(empleado) {
   return [empleado.nombre, empleado.apellido].filter(Boolean).join(' ')
 }
 
-export function createEmpleadosTable(empleados) {
+export function createEmpleadosTable(empleados, { onView, onDeactivate } = {}) {
   const section = document.createElement('section')
   section.className =
     'overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm'
@@ -27,10 +27,27 @@ export function createEmpleadosTable(empleados) {
           <td class="whitespace-nowrap px-4 py-3 text-sm text-slate-900">${displayValue(fullName(empleado))}</td>
           <td class="whitespace-nowrap px-4 py-3 text-sm text-slate-600">${displayValue(empleado.dni)}</td>
           <td class="whitespace-nowrap px-4 py-3 text-sm text-slate-600">${displayValue(empleado.departamento)}</td>
-          <td class="whitespace-nowrap px-4 py-3 text-sm text-slate-600">${displayValue(empleado.categoria)}</td>
-          <td class="whitespace-nowrap px-4 py-3 text-sm text-slate-600">${displayValue(empleado.sucursal)}</td>
-          <td class="whitespace-nowrap px-4 py-3 text-sm text-slate-600">${displayValue(empleado.horario)}</td>
           <td class="whitespace-nowrap px-4 py-3">${statusBadge(empleado.activo)}</td>
+          <td class="whitespace-nowrap px-4 py-3 text-right">
+            <div class="flex justify-end gap-2">
+              <button
+                type="button"
+                data-action="view"
+                data-id="${Number(empleado.id)}"
+                class="rounded-lg px-2.5 py-1.5 text-sm font-medium text-blue-700 hover:bg-blue-50"
+              >
+                Ver
+              </button>
+              <button
+                type="button"
+                data-action="deactivate"
+                data-id="${Number(empleado.id)}"
+                class="rounded-lg px-2.5 py-1.5 text-sm font-medium text-red-700 hover:bg-red-50"
+              >
+                Desactivar
+              </button>
+            </div>
+          </td>
         </tr>
       `,
     )
@@ -45,10 +62,8 @@ export function createEmpleadosTable(empleados) {
             <th scope="col" class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Nombre y apellido</th>
             <th scope="col" class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">DNI</th>
             <th scope="col" class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Departamento</th>
-            <th scope="col" class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Categoría</th>
-            <th scope="col" class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Sucursal</th>
-            <th scope="col" class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Horario</th>
             <th scope="col" class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Estado</th>
+            <th scope="col" class="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wide text-slate-500">Acciones</th>
           </tr>
         </thead>
         <tbody class="divide-y divide-slate-100 bg-white">
@@ -57,6 +72,18 @@ export function createEmpleadosTable(empleados) {
       </table>
     </div>
   `
+
+  section.addEventListener('click', (event) => {
+    const button = event.target.closest('[data-action]')
+    if (!button) return
+
+    const id = Number(button.dataset.id)
+    const empleado = empleados.find((item) => Number(item.id) === id)
+    if (!empleado) return
+
+    if (button.dataset.action === 'view') onView?.(empleado)
+    if (button.dataset.action === 'deactivate') onDeactivate?.(empleado)
+  })
 
   return section
 }

@@ -1,23 +1,31 @@
-import { displayValue, formatDate, formatTime } from '../utils/format.js'
+import {
+  displayMetodoLabel,
+  displayTipoLabel,
+  displayValue,
+  esTipoEntrada,
+  esMetodoManual,
+  formatDate,
+  formatTime,
+} from '../utils/format.js'
 
 function tipoBadge(tipo) {
-  const isEntry = tipo === 'Entrada'
+  const isEntry = esTipoEntrada(tipo)
   const classes = isEntry
     ? 'bg-emerald-50 text-emerald-700 ring-emerald-600/10'
     : 'bg-amber-50 text-amber-700 ring-amber-600/10'
-  const label = tipo === 'Entrada' || tipo === 'Salida' ? tipo : displayValue(tipo)
+  const label = displayTipoLabel(tipo)
 
-  return `<span class="inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ring-1 ring-inset ${classes}">${label}</span>`
+  return `<span class="inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ring-1 ring-inset ${classes}">${displayValue(label)}</span>`
 }
 
 function metodoBadge(metodo) {
-  const isManual = metodo === 'Manual'
+  const isManual = esMetodoManual(metodo)
   const classes = isManual
     ? 'bg-slate-100 text-slate-700 ring-slate-500/10'
     : 'bg-indigo-50 text-indigo-700 ring-indigo-600/10'
-  const label = metodo === 'Manual' || metodo === 'Biométrico' ? metodo : displayValue(metodo)
+  const label = displayMetodoLabel(metodo)
 
-  return `<span class="inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ring-1 ring-inset ${classes}">${label}</span>`
+  return `<span class="inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ring-1 ring-inset ${classes}">${displayValue(label)}</span>`
 }
 
 export function createFichadasTable(fichadas) {

@@ -62,7 +62,7 @@ export function iconLogout() {
 export const NAV_ICONS = {
   dashboard: iconDashboard,
   fichadas: iconClock,
-  usuarios: iconUsers,
+  empleados: iconUsers,
   areas: iconMap,
   horarios: iconCalendar,
   dispositivos: iconDevice,

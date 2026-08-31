@@ -20,6 +20,7 @@ function mapFichada(item) {
 
   return {
     id: pick(item, 'id', 'Id'),
+    empleadoId: pick(item, 'empleadoId', 'EmpleadoId'),
     nombre,
     apellido,
     empleado,
@@ -37,6 +38,8 @@ function normalizeFichadas(payload) {
   return []
 }
 
+export const FICHADAS_LIMITE = 500
+
 export async function getFichadas() {
   const token = getToken()
 
@@ -44,7 +47,7 @@ export async function getFichadas() {
     throw new Error('No hay sesión activa. Iniciá sesión para consultar fichadas.')
   }
 
-  const fichadasUrl = apiUrl('/api/fichadas?limite=100')
+  const fichadasUrl = apiUrl(`/api/fichadas?limite=${FICHADAS_LIMITE}`)
   let response
 
   try {
