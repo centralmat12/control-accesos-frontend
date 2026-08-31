@@ -1,15 +1,6 @@
-import { getToken, logout } from './auth.js'
-import { apiUrl } from '../config/api.js'
-
-function pick(item, ...keys) {
-  for (const key of keys) {
-    if (item?.[key] !== undefined && item?.[key] !== null) {
-      return item[key]
-    }
-  }
-
-  return null
-}
+import { pick } from '../utils/pick.js'
+import { getToken } from './auth.js'
+import { apiFetch } from './http.js'
 
 function mapEmpresa(item) {
   return {
@@ -21,29 +12,23 @@ function mapEmpresa(item) {
 }
 
 export async function getEmpresaActual() {
-  const token = getToken()
-  if (!token) return null
-
-  const url = apiUrl('/api/empresas')
-  let response
+  if (!getToken()) return null
 
   try {
-    response = await fetch(url, {
-      headers: { Authorization: `Bearer ${token}` },
+    const { response } = await apiFetch('/api/empresas', {
+      logLabel: false,
     })
-  } catch {
+
+    if (!response.ok) return null
+
+    const payload = await response.json()
+    const list = Array.isArray(payload) ? payload : payload ? [payload] : []
+    return list[0] ? mapEmpresa(list[0]) : null
+  } catch (error) {
+    if (error.message === 'Sesión expirada o no autorizada.') {
+      throw error
+    }
+
     return null
   }
-
-  if (response.status === 401) {
-    logout()
-    window.dispatchEvent(new CustomEvent('ca:unauthorized'))
-    throw new Error('Sesión expirada o no autorizada.')
-  }
-
-  if (!response.ok) return null
-
-  const payload = await response.json()
-  const list = Array.isArray(payload) ? payload : payload ? [payload] : []
-  return list[0] ? mapEmpresa(list[0]) : null
 }
