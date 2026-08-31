@@ -10,7 +10,7 @@ import { renderLogin } from './views/login.js'
 const views = {
   dashboard: renderDashboard,
   fichadas: renderFichadas,
-  usuarios: renderEmpleados,
+  empleados: renderEmpleados,
 }
 
 export function bootstrap(root) {
