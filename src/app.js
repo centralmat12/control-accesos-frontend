@@ -37,8 +37,8 @@ export function bootstrap(root) {
         setSidebarOpen(false)
         mount()
       },
-      onLogout: async () => {
-        await logout()
+      onLogout: () => {
+        logout()
         currentView = DEFAULT_VIEW
         mount()
       },

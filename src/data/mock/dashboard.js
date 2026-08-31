@@ -1,4 +1,4 @@
-/** Datos ficticios del Dashboard. Reemplazar por respuestas reales de la API. */
+// MOCK: reemplazar por llamada a API cuando el endpoint esté disponible.
 
 export const dashboardSummary = {
   empleadosActivos: 48,

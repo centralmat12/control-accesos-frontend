@@ -2,15 +2,15 @@ import { dashboardSummary, ultimasFichadas } from '../data/mock/dashboard.js'
 
 /**
  * Capa de acceso a datos del Dashboard.
- * Hoy usa datos simulados; más adelante reemplazar el cuerpo por fetch a ASP.NET Core.
+ * MOCK: reemplazar por llamada a API cuando el endpoint esté disponible.
  */
 
 export async function getDashboardSummary() {
-  // TODO: GET /api/dashboard/resumen
+  // MOCK: GET /api/dashboard/resumen
   return structuredClone(dashboardSummary)
 }
 
 export async function getUltimasFichadas() {
-  // TODO: GET /api/fichadas?limit=10
+  // MOCK: reemplazar por fichadas recientes de la API
   return structuredClone(ultimasFichadas)
 }

@@ -1,15 +1,5 @@
-import { getToken, logout } from './auth.js'
-import { apiUrl } from '../config/api.js'
-
-function pick(item, ...keys) {
-  for (const key of keys) {
-    if (item?.[key] !== undefined && item?.[key] !== null) {
-      return item[key]
-    }
-  }
-
-  return null
-}
+import { pick } from '../utils/pick.js'
+import { apiFetch } from './http.js'
 
 function mapFichada(item) {
   const nombre = pick(item, 'nombre', 'Nombre')
@@ -41,37 +31,14 @@ function normalizeFichadas(payload) {
 export const FICHADAS_LIMITE = 500
 
 export async function getFichadas() {
-  const token = getToken()
-
-  if (!token) {
-    throw new Error('No hay sesión activa. Iniciá sesión para consultar fichadas.')
-  }
-
-  const fichadasUrl = apiUrl(`/api/fichadas?limite=${FICHADAS_LIMITE}`)
-  let response
-
-  try {
-    response = await fetch(fichadasUrl, {
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
-    })
-  } catch (error) {
-    console.error('Fichadas: error de red o CORS', { url: fichadasUrl, error })
-    throw new Error(
-      `No se pudo conectar con la API (${fichadasUrl}). Si el servidor responde, suele ser CORS o que el navegador no llega a esa URL.`,
-    )
-  }
-
-  if (response.status === 401) {
-    logout()
-    window.dispatchEvent(new CustomEvent('ca:unauthorized'))
-    throw new Error('Sesión expirada o no autorizada.')
-  }
+  const { url, response } = await apiFetch(`/api/fichadas?limite=${FICHADAS_LIMITE}`, {
+    missingAuthMessage: 'No hay sesión activa. Iniciá sesión para consultar fichadas.',
+    logLabel: 'Fichadas',
+  })
 
   if (!response.ok) {
     console.error('Fichadas: respuesta HTTP no exitosa', {
-      url: fichadasUrl,
+      url,
       status: response.status,
     })
 
