@@ -1,12 +1,20 @@
-import { formatDateTime } from '../utils/format.js'
+import {
+  displayMetodoLabel,
+  displayTipoLabel,
+  displayValue,
+  esTipoEntrada,
+  formatDate,
+  formatTime,
+} from '../utils/format.js'
 
-function movementBadge(tipo) {
-  const isEntry = tipo === 'Entrada'
+function tipoBadge(tipo) {
+  const isEntry = esTipoEntrada(tipo)
   const classes = isEntry
     ? 'bg-emerald-50 text-emerald-700 ring-emerald-600/10'
     : 'bg-amber-50 text-amber-700 ring-amber-600/10'
+  const label = displayTipoLabel(tipo)
 
-  return `<span class="inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ring-1 ring-inset ${classes}">${tipo}</span>`
+  return `<span class="inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ring-1 ring-inset ${classes}">${displayValue(label)}</span>`
 }
 
 export function createRecentPunchesTable(fichadas) {
@@ -14,15 +22,27 @@ export function createRecentPunchesTable(fichadas) {
   section.className =
     'overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm'
 
+  if (!fichadas.length) {
+    section.innerHTML = `
+      <div class="border-b border-slate-200 px-5 py-4">
+        <h2 class="text-base font-semibold text-slate-900">Últimas fichadas</h2>
+        <p class="mt-1 text-sm text-slate-500">Movimientos más recientes del día.</p>
+      </div>
+      <p class="px-5 py-10 text-center text-sm text-slate-500">No hay fichadas registradas hoy.</p>
+    `
+    return section
+  }
+
   const rows = fichadas
     .map(
       (item) => `
         <tr class="hover:bg-slate-50">
-          <td class="whitespace-nowrap px-4 py-3 text-sm font-medium text-slate-900">${item.empleado}</td>
-          <td class="whitespace-nowrap px-4 py-3 text-sm text-slate-600">${item.area}</td>
-          <td class="whitespace-nowrap px-4 py-3">${movementBadge(item.tipoMovimiento)}</td>
-          <td class="whitespace-nowrap px-4 py-3 text-sm text-slate-600">${formatDateTime(item.fechaHora)}</td>
-          <td class="whitespace-nowrap px-4 py-3 text-sm text-slate-600">${item.dispositivo}</td>
+          <td class="whitespace-nowrap px-4 py-3 text-sm font-medium text-slate-900">${displayValue(item.empleado)}</td>
+          <td class="whitespace-nowrap px-4 py-3 text-sm text-slate-600">${displayValue(item.legajo)}</td>
+          <td class="whitespace-nowrap px-4 py-3 text-sm text-slate-600">${item.fechaHora ? formatDate(item.fechaHora) : '—'}</td>
+          <td class="whitespace-nowrap px-4 py-3 text-sm text-slate-600">${item.fechaHora ? formatTime(item.fechaHora) : '—'}</td>
+          <td class="whitespace-nowrap px-4 py-3">${tipoBadge(item.tipo)}</td>
+          <td class="whitespace-nowrap px-4 py-3 text-sm text-slate-600">${displayValue(displayMetodoLabel(item.metodo))}</td>
         </tr>
       `,
     )
@@ -31,17 +51,18 @@ export function createRecentPunchesTable(fichadas) {
   section.innerHTML = `
     <div class="border-b border-slate-200 px-5 py-4">
       <h2 class="text-base font-semibold text-slate-900">Últimas fichadas</h2>
-      <p class="mt-1 text-sm text-slate-500">Movimientos recientes registrados en los dispositivos.</p>
+      <p class="mt-1 text-sm text-slate-500">Movimientos más recientes del día.</p>
     </div>
     <div class="overflow-x-auto">
       <table class="min-w-full divide-y divide-slate-200">
         <thead class="bg-slate-50">
           <tr>
             <th scope="col" class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Empleado</th>
-            <th scope="col" class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Área</th>
-            <th scope="col" class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Tipo de movimiento</th>
-            <th scope="col" class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Fecha y hora</th>
-            <th scope="col" class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Dispositivo</th>
+            <th scope="col" class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Legajo</th>
+            <th scope="col" class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Fecha</th>
+            <th scope="col" class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Hora</th>
+            <th scope="col" class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Tipo</th>
+            <th scope="col" class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Método</th>
           </tr>
         </thead>
         <tbody class="divide-y divide-slate-100 bg-white">

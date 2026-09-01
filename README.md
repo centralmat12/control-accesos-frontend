@@ -140,7 +140,7 @@ Con el servidor en marcha, conviene comprobar:
 - que, con sesión iniciada, se abre el Dashboard;
 - que Empleados y Fichadas consultan sus endpoints cuando el backend está disponible.
 
-El **Dashboard** sigue usando datos mock; no es un fallo de la API.
+El **Dashboard** usa `GET /api/empleados` y `GET /api/fichadas` del día (no hay endpoint de resumen). Si una consulta de fichadas llega a 500 registros, los contadores de ese día pueden estar incompletos.
 
 ### 9. Compilar para producción
 
@@ -225,11 +225,10 @@ Referencia corta de los mismos comandos (el contexto está en la guía anterior)
 
 ```
 src/
-├── api/          Llamadas HTTP a la API (auth, empleados, fichadas, empresas)
+├── api/          Llamadas HTTP a la API (auth, empleados, fichadas, empresas, dashboard)
 ├── components/   Piezas de interfaz reutilizables (layout, tablas, formularios, iconos)
 ├── config/       Nombre de la app, menú y URL base de la API
-├── data/mock/    Datos simulados que todavía usa el Dashboard
-├── utils/        Formato de fechas, CSV, jornadas y lectura de campos de la API
+├── utils/        Formato de fechas, período, paginación visual, CSV, jornadas y lectura de campos de la API
 ├── views/        Pantallas: login, dashboard, empleados, fichadas
 ├── app.js        Arranque, sesión y navegación entre vistas
 ├── main.js       Punto de entrada
@@ -270,9 +269,9 @@ DEV_API_PROXY_TARGET=http://161.153.193.159:8080
 | Sesión | JWT en `sessionStorage` (`ca.auth.token`) y usuario en `ca.auth.user` |
 | Peticiones protegidas | Header `Authorization: Bearer <token>` |
 | Empleados (listado, alta, detalle, baja lógica) | Integrado con la API |
-| Fichadas (filtros, jornadas, CSV, impresión) | Integrado con la API |
+| Fichadas (filtros server-side, período, jornadas, CSV, impresión) | Integrado con la API |
 | Empresa (nombre en reportes de fichadas) | `GET /api/empresas` (si falla, la vista sigue y el nombre queda vacío) |
-| Dashboard | Mock (no llama a la API) |
+| Dashboard | Datos reales (`GET /api/empleados` + `GET /api/fichadas` del día). No hay endpoint de dashboard. |
 | Áreas, Horarios, Dispositivos, Agentes | Solo ítems del menú; pantalla placeholder, sin API |
 
 El frontend **no valida la firma** del JWT. Solo decodifica el payload para mostrar nombre, email, rol y `empresa_id`. Un **401** en una petición autenticada cierra la sesión y vuelve al login. La sesión sobrevive a recargar la pestaña; no sobrevive a cerrar el navegador.
@@ -286,16 +285,50 @@ El frontend **no valida la firma** del JWT. Solo decodifica el payload para most
 | `GET` | `/api/empleados/{id}` | Detalle |
 | `POST` | `/api/empleados` | Alta |
 | `DELETE` | `/api/empleados/{id}` | Baja lógica |
-| `GET` | `/api/fichadas?limite=500` | Fichadas recientes (tope 500) |
+| `GET` | `/api/fichadas` | Fichadas con filtros opcionales `empleadoId`, `desde`, `hasta`, `tipo`, `metodo` y `limite` (el frontend envía `limite=500`, tope de la API). `hasta` es exclusivo. |
 | `GET` | `/api/empresas` | Datos de empresa para reportes |
 
-## Funcionalidades MOCK / pendientes
+El frontend **no** llama a `GET /api/huellas/empresa/{id}`, `POST /api/empleados/enrolar`, `POST /api/fichadas/bulk` ni `POST /api/Auth/bootstrap`. No muestra `templateBiometrico` ni `templateHuellaBase64`.
 
-- **Dashboard:** `src/data/mock/dashboard.js` y `src/api/dashboard.js`. Indicado en código con `// MOCK:`. Hay que reemplazar por endpoints reales cuando existan (por ejemplo un resumen y últimas fichadas).
+## Consulta de fichadas
+
+Flujo de la pantalla Fichadas:
+
+```
+Usuario
+    ↓
+Filtros (empleado, período, fechas, tipo, método)
+    ↓
+GET /api/fichadas (filtros server-side, máximo 500)
+    ↓
+Contadores, CSV, PDF y jornadas (todo el resultado de la consulta)
+    ↓
+Paginación visual (30 / 50 / 100) → tabla
+```
+
+- **Período:** Todos, Hoy, últimos 7/15/30/60/90 días o Personalizado. Los presets calculan `desde` y `hasta`. En Personalizado se usan los campos Desde/Hasta.
+- **`hasta` exclusivo:** para incluir el día 2026-09-01 se envía `hasta=2026-09-02T00:00:00`.
+- **Tipo / método:** si vale “Todos”, no se envía el query param. Si hay valor, se envía tal cual a la API (`Entrada`, `Salida`, `Biometrico`, `Manual`).
+- **Empleado:** combobox buscable sobre `GET /api/empleados` (nombre, apellido, nombre+apellido, legajo; ignora mayúsculas, tildes y espacios extra). Al elegir una persona se envía `empleadoId`. “Todos los empleados” quita el parámetro. No hay un buscador textual aparte sobre las fichadas.
+- **Paginación:** solo visual. No es paginación de backend. Movimientos y jornadas paginan por separado. Cambiar filtros, empleado, período o tamaño de página vuelve a la página 1.
+- **CSV / PDF:** exportan el conjunto completo de la consulta, no la página visible.
+- **Límite 500:** si la API devuelve exactamente 500 registros, se muestra un aviso. CSV, PDF y la pantalla no se presentan como histórico completo.
+
+## Dashboard
+
+No existe `GET /api/dashboard`. El resumen se arma en el cliente:
+
+- empleados activos → cantidad de `GET /api/empleados` (la API ya devuelve solo activos);
+- fichadas de hoy, entradas, salidas y últimas fichadas → `GET /api/fichadas` con `desde` = inicio del día y `hasta` = inicio del día siguiente.
+
+La tabla de últimas fichadas usa campos reales: empleado, legajo, fecha, hora, tipo y método. No se muestran área ni dispositivo porque `/api/fichadas` no los devuelve. Si el día llega a 500 registros, los contadores de fichadas pueden estar incompletos.
+
+## Funcionalidades pendientes
+
 - **Menú:** Áreas, Horarios, Dispositivos y Agentes todavía no tienen vista ni llamadas HTTP.
 - **Empleados (backend pendiente):** edición, reactivar/listar inactivos, paginación, indicador de enrolamiento de huella **sin** exponer `templateBiometrico`. El enrolamiento se hace en el agente local, no en este panel.
 
-No hay login mock: la autenticación ya es contra la API.
+No hay login mock ni Dashboard mock: autenticación y dashboard consultan la API.
 
 ## Arquitectura
 
@@ -317,10 +350,9 @@ El frontend nunca se conecta a MySQL ni ejecuta .NET. Solo habla con la API.
 
 Mejoras coherentes con el código actual:
 
-- Reemplazar el Dashboard mock por datos reales
 - Implementar las pantallas que hoy son placeholder (áreas, horarios, dispositivos, agentes)
 - Edición y reactivación de empleados cuando la API lo permita
-- Paginación / histórico completo de fichadas (hoy el tope es 500 registros recientes)
+- Paginación real / histórico completo de fichadas en backend (hoy el tope sigue siendo 500 por consulta)
 - Roles y permisos aplicados también en backend (el frontend solo muestra el claim `role`)
 - Manejo de errores más uniforme en todas las vistas
 
@@ -332,7 +364,9 @@ Mejoras coherentes con el código actual:
 - El JWT en `sessionStorage` es visible en el navegador: la autorización real debe validarse **siempre** en la API
 - Este panel no debe consultar endpoints que expongan plantillas biométricas
 
-## Evolución técnica de esta versión
+## Evolución técnica previa (limpieza)
+
+La sección siguiente documenta una limpieza anterior del repositorio (código muerto, HTTP centralizado, mock de Dashboard que **ya no aplica**). El estado vigente está en [Estado actual](#estado-actual), [Consulta de fichadas](#consulta-de-fichadas) y [Dashboard](#dashboard).
 
 Esta versión del frontend no incorpora funcionalidades nuevas. Se hizo una revisión general del código existente para mejorar la **legibilidad**, la **mantenibilidad**, la **eliminación de código innecesario**, la **reducción de duplicación**, la **claridad de arquitectura** y la **facilidad de comprensión** para quienes continúen el proyecto o lo presenten en una defensa académica.
 
@@ -353,7 +387,7 @@ Esta versión del frontend no incorpora funcionalidades nuevas. Se hizo una revi
 
 - Se eliminaron archivos y recursos confirmados como no utilizados.
 - Se eliminaron los mocks antiguos de login y fichadas.
-- Se mantiene únicamente el mock del Dashboard, porque esa vista todavía lo usa.
+- Se mantiene únicamente el mock del Dashboard, porque esa vista todavía lo usa *(estado de esa limpieza; el mock posterior se eliminó al conectar el Dashboard a la API)*.
 - Se creó `src/api/http.js` para el comportamiento HTTP común (URL, Bearer, 401, errores de red).
 - Cada módulo conserva su comportamiento propio; en particular `empresas.js` sigue devolviendo `null` ante ciertos fallos en lugar de lanzar excepción.
 - Se creó `src/utils/pick.js` para no duplicar el mapeo de campos.

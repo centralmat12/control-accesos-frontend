@@ -1,8 +1,10 @@
-export function openModal({ title, content, onClose, labelledBy = 'app-modal-title' }) {
+export function openModal({ title, content, onClose, labelledBy = 'app-modal-title', stacked = false }) {
   const overlay = document.createElement('div')
-  overlay.className =
-    'fixed inset-0 z-50 flex items-end justify-center bg-slate-950/50 p-4 sm:items-center'
+  overlay.className = stacked
+    ? 'fixed inset-0 z-[60] flex items-end justify-center bg-slate-950/50 p-4 sm:items-center'
+    : 'fixed inset-0 z-50 flex items-end justify-center bg-slate-950/50 p-4 sm:items-center'
   overlay.setAttribute('role', 'presentation')
+  overlay.dataset.caModal = 'true'
 
   const dialog = document.createElement('div')
   dialog.className =
@@ -50,10 +52,13 @@ export function openModal({ title, content, onClose, labelledBy = 'app-modal-tit
       document.removeEventListener('keydown', onKeyDown)
       return
     }
-    if (event.key === 'Escape') {
-      event.preventDefault()
-      close()
-    }
+    if (event.key !== 'Escape') return
+
+    const overlays = [...document.querySelectorAll('[data-ca-modal]')]
+    if (overlays.at(-1) !== overlay) return
+
+    event.preventDefault()
+    close()
   }
 
   closeButton.addEventListener('click', close)

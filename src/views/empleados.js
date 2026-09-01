@@ -1,9 +1,10 @@
-import { createEmpleado, deactivateEmpleado, getEmpleadoById, getEmpleados } from '../api/empleados.js'
+import { createEmpleado, deactivateEmpleado, getEmpleadoById, getEmpleados, patchEmpleado } from '../api/empleados.js'
 import { getCurrentUser } from '../api/auth.js'
+import { getEmpresaActual } from '../api/empresas.js'
 import {
   createDeactivateConfirm,
-  createEmpleadoDetail,
   createEmpleadoForm,
+  createEmpleadoRecord,
 } from '../components/empleado-form.js'
 import { createEmpleadosTable, fullName } from '../components/empleados-table.js'
 import { createFeedbackState, createLoadingState } from '../components/feedback-state.js'
@@ -53,6 +54,22 @@ function catalogsFromEmpleados(empleados) {
     categoria: uniqueCatalogValues(empleados, 'categoria'),
     sucursal: uniqueCatalogValues(empleados, 'sucursal'),
   }
+}
+
+function empresaDisplayName(empresa, empresaId) {
+  if (empresa?.nombreFantasia || empresa?.razonSocial) {
+    return empresa.nombreFantasia || empresa.razonSocial
+  }
+  return empresaId ? `Empresa ${empresaId}` : ''
+}
+
+/**
+ * PATCH parcial → GET /api/empleados/{id} para la versión definitiva.
+ * `patchDto` solo incluye campos que cambiaron (sin id, empresaId, activo ni biometría).
+ */
+async function persistEmpleadoUpdate(empleadoId, patchDto) {
+  await patchEmpleado(empleadoId, patchDto)
+  return getEmpleadoById(empleadoId)
 }
 
 export async function renderEmpleados(container) {
@@ -274,8 +291,24 @@ export async function renderEmpleados(container) {
     activeModalClose = modal.close
 
     try {
-      const detail = await getEmpleadoById(empleado.id)
-      loading.replaceWith(createEmpleadoDetail(detail))
+      const [detail, empresa] = await Promise.all([getEmpleadoById(empleado.id), getEmpresaActual()])
+      loading.replaceWith(
+        createEmpleadoRecord({
+          empleado: detail,
+          empresaLabel: empresaDisplayName(empresa, detail.empresaId),
+          catalogs: catalogsFromEmpleados(empleados),
+          persistUpdate: persistEmpleadoUpdate,
+          onUpdated: (updated) => {
+            empleados = empleados.map((item) => (Number(item.id) === Number(updated.id) ? { ...item, ...updated } : item))
+            syncDepartamentoOptions()
+            renderResults()
+            showBanner({
+              title: 'Empleado actualizado correctamente',
+              message: 'Los datos se refrescaron desde la API.',
+            })
+          },
+        }),
+      )
     } catch (error) {
       if (error.message === 'Sesión expirada o no autorizada.') {
         closeActiveModal()

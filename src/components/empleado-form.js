@@ -1,4 +1,6 @@
 import { displayValue, escapeHtml, formatHorarioDisplay } from '../utils/format.js'
+import { iconPencil } from './icons.js'
+import { openModal } from './modal.js'
 
 const OPTIONAL_MAX = 50
 const NEW_OPTION = '__nuevo__'
@@ -7,6 +9,18 @@ const CATALOG_FIELDS = [
   { name: 'categoria', label: 'Categoría' },
   { name: 'sucursal', label: 'Sucursal' },
 ]
+const EDITABLE_FIELDS = [
+  { key: 'legajo', label: 'Legajo' },
+  { key: 'nombre', label: 'Nombre' },
+  { key: 'apellido', label: 'Apellido' },
+  { key: 'dni', label: 'DNI' },
+  { key: 'cuil', label: 'CUIL' },
+  { key: 'departamento', label: 'Departamento' },
+  { key: 'categoria', label: 'Categoría' },
+  { key: 'sucursal', label: 'Sucursal' },
+  { key: 'horario', label: 'Horario' },
+]
+const HORARIO_STORED = /^([01]\d|2[0-3]):([0-5]\d)\s*(?:-|a)\s*([01]\d|2[0-3]):([0-5]\d)$/i
 
 function optionalValue(value) {
   const trimmed = String(value ?? '').trim()
@@ -189,7 +203,78 @@ function readValues(form, catalogs) {
   }
 }
 
-function fillSelect(select, values) {
+function splitHorario(horario) {
+  const text = String(horario ?? '').trim()
+  const match = text.match(HORARIO_STORED)
+  if (!match) return { desde: '', hasta: '' }
+  return {
+    desde: `${match[1]}:${match[2]}`,
+    hasta: `${match[3]}:${match[4]}`,
+  }
+}
+
+function canonicalHorario(horario) {
+  const { desde, hasta } = splitHorario(horario)
+  return desde && hasta ? `${desde}-${hasta}` : null
+}
+
+function snapshotEditable(empleado) {
+  return {
+    legajo: optionalValue(empleado.legajo),
+    nombre: String(empleado.nombre ?? '').trim(),
+    apellido: String(empleado.apellido ?? '').trim(),
+    dni: String(empleado.dni ?? '').trim(),
+    cuil: String(empleado.cuil ?? '').trim(),
+    departamento: optionalValue(empleado.departamento),
+    categoria: optionalValue(empleado.categoria),
+    sucursal: optionalValue(empleado.sucursal),
+    horario: canonicalHorario(empleado.horario),
+  }
+}
+
+function diffEmpleadoFields(original, draft) {
+  const before = snapshotEditable(original)
+  const after = snapshotEditable(draft)
+
+  return EDITABLE_FIELDS.flatMap(({ key, label }) => {
+    const previous = before[key]
+    const next = after[key]
+    if (previous === next) return []
+
+    const display =
+      key === 'horario'
+        ? (value) => (value ? formatHorarioDisplay(value) : '')
+        : (value) => value
+
+    return [
+      {
+        key,
+        label,
+        before: display(previous),
+        after: display(next),
+      },
+    ]
+  })
+}
+
+/**
+ * Body parcial para PATCH: solo claves que cambiaron.
+ * Opcionales vacíos se envían como "" (el backend ignora null en catálogos/horario).
+ */
+export function buildEmpleadoPatchDto(original, draft) {
+  const before = snapshotEditable(original)
+  const after = snapshotEditable(draft)
+  const dto = {}
+
+  for (const { key } of EDITABLE_FIELDS) {
+    if (before[key] === after[key]) continue
+    dto[key] = after[key] == null ? '' : after[key]
+  }
+
+  return dto
+}
+
+function fillSelect(select, values, current = '') {
   select.replaceChildren()
 
   const addOption = (value, label) => {
@@ -200,8 +285,39 @@ function fillSelect(select, values) {
   }
 
   addOption('', 'Seleccionar...')
-  values.forEach((value) => addOption(value, value))
+
+  const options = [...values]
+  const currentValue = optionalValue(current)
+  if (currentValue && !options.some((item) => item.toLowerCase() === currentValue.toLowerCase())) {
+    options.unshift(currentValue)
+  }
+
+  options.forEach((value) => addOption(value, value))
   addOption(NEW_OPTION, 'Agregar nuevo...')
+
+  if (currentValue) {
+    const match = [...select.options].find(
+      (option) => option.value && option.value !== NEW_OPTION && option.value.toLowerCase() === currentValue.toLowerCase(),
+    )
+    select.value = match ? match.value : ''
+  }
+}
+
+function fillEmpleadoForm(form, values) {
+  const setInput = (name, value) => {
+    const input = form.querySelector(`[name="${name}"]`)
+    if (input) input.value = value ?? ''
+  }
+
+  setInput('legajo', values.legajo ?? '')
+  setInput('nombre', values.nombre ?? '')
+  setInput('apellido', values.apellido ?? '')
+  setInput('dni', values.dni ?? '')
+  setInput('cuil', values.cuil ?? '')
+
+  const { desde, hasta } = splitHorario(values.horario)
+  setInput('horarioDesde', desde)
+  setInput('horarioHasta', hasta)
 }
 
 function bindCatalogField(form, name) {
@@ -224,7 +340,15 @@ function bindCatalogField(form, name) {
   syncNuevo()
 }
 
-export function createEmpleadoForm({ empresaId, catalogs = {}, onCancel, onSubmit }) {
+export function createEmpleadoForm({
+  empresaId,
+  catalogs = {},
+  initialValues = null,
+  submitLabel = 'Guardar',
+  requireEmpresa = true,
+  onCancel,
+  onSubmit,
+}) {
   const catalogOptions = {
     departamento: catalogs.departamento ?? [],
     categoria: catalogs.categoria ?? [],
@@ -286,7 +410,7 @@ export function createEmpleadoForm({ empresaId, catalogs = {}, onCancel, onSubmi
           id="empleado-form-submit"
           class="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-60"
         >
-          Guardar
+          ${escapeHtml(submitLabel)}
         </button>
       </div>
     </form>
@@ -298,9 +422,11 @@ export function createEmpleadoForm({ empresaId, catalogs = {}, onCancel, onSubmi
   const cancelButton = wrapper.querySelector('#empleado-form-cancel')
 
   CATALOG_FIELDS.forEach(({ name }) => {
-    fillSelect(form.querySelector(`[name="${name}Choice"]`), catalogOptions[name])
+    fillSelect(form.querySelector(`[name="${name}Choice"]`), catalogOptions[name], initialValues?.[name])
     bindCatalogField(form, name)
   })
+
+  if (initialValues) fillEmpleadoForm(form, initialValues)
 
   function showFormError(message) {
     if (!message) {
@@ -331,7 +457,7 @@ export function createEmpleadoForm({ empresaId, catalogs = {}, onCancel, onSubmi
     clearFieldErrors(form)
     showFormError('')
 
-    if (!Number.isFinite(empresaId) || empresaId <= 0) {
+    if (requireEmpresa && (!Number.isFinite(empresaId) || empresaId <= 0)) {
       showFormError('No hay una empresa asociada a la sesión. No se puede dar de alta el empleado.')
       return
     }
@@ -364,10 +490,13 @@ export function createEmpleadoForm({ empresaId, catalogs = {}, onCancel, onSubmi
         ...dtoFields,
       })
     } catch (error) {
-      showFormError(error.message || 'No se pudo crear el empleado.')
-      submitButton.disabled = false
-      submitButton.textContent = 'Guardar'
-      cancelButton.disabled = false
+      showFormError(error.message || 'No se pudo guardar el empleado.')
+    } finally {
+      if (submitButton.isConnected) {
+        submitButton.disabled = false
+        submitButton.textContent = submitLabel
+        cancelButton.disabled = false
+      }
     }
   })
 
@@ -376,10 +505,12 @@ export function createEmpleadoForm({ empresaId, catalogs = {}, onCancel, onSubmi
   return wrapper
 }
 
-export function createEmpleadoDetail(empleado) {
+export function createEmpleadoDetail(empleado, { empresaLabel = '' } = {}) {
   const wrapper = document.createElement('div')
   const horario = formatHorarioDisplay(empleado.horario)
   const rows = [
+    ['ID', empleado.id],
+    ['Empresa', empresaLabel || empleado.empresaId],
     ['Legajo', empleado.legajo],
     ['Nombre', empleado.nombre],
     ['Apellido', empleado.apellido],
@@ -405,9 +536,149 @@ export function createEmpleadoDetail(empleado) {
         )
         .join('')}
     </dl>
+    <p class="mt-4 text-xs text-slate-500">La información biométrica no se gestiona en este panel. El enrolamiento de huella se realiza desde el agente local.</p>
   `
 
   return wrapper
+}
+
+function createReadonlyMeta(empleado, empresaLabel) {
+  const meta = document.createElement('div')
+  meta.className = 'mb-4 grid gap-3 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 sm:grid-cols-3'
+  const items = [
+    ['ID', empleado.id],
+    ['Empresa', empresaLabel || empleado.empresaId],
+    ['Estado', empleado.activo ? 'Activo' : 'Inactivo'],
+  ]
+
+  meta.innerHTML = items
+    .map(
+      ([label, value]) => `
+        <div>
+          <p class="text-xs font-medium uppercase tracking-wide text-slate-500">${escapeHtml(label)}</p>
+          <p class="mt-1 text-sm text-slate-900">${displayValue(value)}</p>
+        </div>
+      `,
+    )
+    .join('')
+
+  return meta
+}
+
+function promptEmpleadoChangesConfirm(changes) {
+  return new Promise((resolve) => {
+    let settled = false
+
+    const content = document.createElement('div')
+    content.innerHTML = `
+      <div class="space-y-3">
+        ${changes
+          .map(
+            (change) => `
+              <div class="rounded-lg border border-slate-200 px-3 py-2">
+                <p class="text-xs font-medium uppercase tracking-wide text-slate-500">${escapeHtml(change.label)}</p>
+                <p class="mt-1 text-sm text-slate-600"><span class="font-medium text-slate-500">Antes:</span> ${displayValue(change.before)}</p>
+                <p class="text-sm text-slate-900"><span class="font-medium text-slate-500">Después:</span> ${displayValue(change.after)}</p>
+              </div>
+            `,
+          )
+          .join('')}
+      </div>
+      <div class="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+        <button type="button" data-action="cancel" class="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100">
+          Cancelar
+        </button>
+        <button type="button" data-action="confirm" class="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-500">
+          Confirmar cambios
+        </button>
+      </div>
+    `
+
+    const finish = (value) => {
+      if (settled) return
+      settled = true
+      modal.close()
+      resolve(value)
+    }
+
+    const modal = openModal({
+      title: 'Confirmar modificaciones',
+      content,
+      labelledBy: 'empleado-changes-title',
+      stacked: true,
+      onClose: () => {
+        if (!settled) resolve(false)
+      },
+    })
+
+    content.querySelector('[data-action="cancel"]')?.addEventListener('click', () => finish(false))
+    content.querySelector('[data-action="confirm"]')?.addEventListener('click', () => finish(true))
+  })
+}
+
+export function createEmpleadoRecord({ empleado, empresaLabel = '', catalogs = {}, persistUpdate, onUpdated }) {
+  const root = document.createElement('div')
+  let current = empleado
+
+  function showView() {
+    const view = document.createElement('div')
+    view.append(createEmpleadoDetail(current, { empresaLabel }))
+
+    const actions = document.createElement('div')
+    actions.className = 'mt-5 flex justify-end border-t border-slate-100 pt-4'
+    actions.innerHTML = `
+      <button
+        type="button"
+        id="empleado-edit"
+        class="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100"
+      >
+        ${iconPencil()}
+        Editar datos
+      </button>
+    `
+    actions.querySelector('#empleado-edit')?.addEventListener('click', showEdit)
+    view.append(actions)
+    root.replaceChildren(view)
+  }
+
+  function showEdit() {
+    const view = document.createElement('div')
+    view.append(createReadonlyMeta(current, empresaLabel))
+
+    const notice = document.createElement('p')
+    notice.className = 'mb-4 rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-sm text-blue-800'
+    notice.textContent = 'Estás editando los datos del empleado. ID, empresa, estado e información biométrica no se modifican aquí.'
+    view.append(notice)
+
+    const form = createEmpleadoForm({
+      empresaId: Number(current.empresaId),
+      catalogs,
+      initialValues: current,
+      submitLabel: 'Guardar cambios',
+      requireEmpresa: false,
+      onCancel: showView,
+      onSubmit: async (draft) => {
+        const changes = diffEmpleadoFields(current, draft)
+        if (changes.length === 0) {
+          throw new Error('No hay cambios pendientes.')
+        }
+
+        const confirmed = await promptEmpleadoChangesConfirm(changes)
+        if (!confirmed) return
+
+        const updated = await persistUpdate(current.id, buildEmpleadoPatchDto(current, draft))
+        if (updated) current = updated
+        onUpdated?.(current)
+        showView()
+      },
+    })
+
+    view.append(form)
+    root.replaceChildren(view)
+  }
+
+  showView()
+  return root
 }
 
 export function createDeactivateConfirm({ empleado, onCancel, onConfirm }) {

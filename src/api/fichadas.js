@@ -28,10 +28,24 @@ function normalizeFichadas(payload) {
   return []
 }
 
+function buildQuery(filters = {}) {
+  const params = new URLSearchParams()
+  params.set('limite', String(filters.limite ?? FICHADAS_LIMITE))
+
+  if (filters.empleadoId) params.set('empleadoId', String(filters.empleadoId))
+  if (filters.desde) params.set('desde', filters.desde)
+  if (filters.hasta) params.set('hasta', filters.hasta)
+  if (filters.tipo) params.set('tipo', filters.tipo)
+  if (filters.metodo) params.set('metodo', filters.metodo)
+
+  return params.toString()
+}
+
 export const FICHADAS_LIMITE = 500
 
-export async function getFichadas() {
-  const { url, response } = await apiFetch(`/api/fichadas?limite=${FICHADAS_LIMITE}`, {
+export async function getFichadas(filters = {}) {
+  const query = buildQuery(filters)
+  const { url, response } = await apiFetch(`/api/fichadas?${query}`, {
     missingAuthMessage: 'No hay sesión activa. Iniciá sesión para consultar fichadas.',
     logLabel: 'Fichadas',
   })
