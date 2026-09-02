@@ -72,7 +72,7 @@ async function persistEmpleadoUpdate(empleadoId, patchDto) {
   return getEmpleadoById(empleadoId)
 }
 
-export async function renderEmpleados(container) {
+export async function renderEmpleados(container, { initialQuery } = {}) {
   const empresaId = sessionEmpresaId()
   const view = document.createElement('div')
   view.className = 'space-y-6'
@@ -364,6 +364,8 @@ export async function renderEmpleados(container) {
       }),
     )
   }
+
+  if (initialQuery) searchInput.value = initialQuery
 
   newButton.addEventListener('click', openCreateForm)
   searchInput.addEventListener('input', renderResults)

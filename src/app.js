@@ -15,6 +15,7 @@ const views = {
 
 export function bootstrap(root) {
   let currentView = DEFAULT_VIEW
+  let pendingViewOptions = {}
 
   const mount = () => {
     const user = getCurrentUser()
@@ -24,39 +25,46 @@ export function bootstrap(root) {
       return
     }
 
+    const navigate = (viewId, options = {}) => {
+      if (viewId === currentView && Object.keys(options).length === 0) {
+        setSidebarOpen(false)
+        return
+      }
+
+      currentView = viewId
+      pendingViewOptions = options
+      setSidebarOpen(false)
+      mount()
+    }
+
     const { root: layout, main } = createLayout({
       currentView,
       user,
-      onNavigate: (viewId) => {
-        if (viewId === currentView) {
-          setSidebarOpen(false)
-          return
-        }
-
-        currentView = viewId
-        setSidebarOpen(false)
-        mount()
-      },
+      onNavigate: navigate,
       onLogout: () => {
         logout()
         currentView = DEFAULT_VIEW
+        pendingViewOptions = {}
         mount()
       },
     })
 
     root.replaceChildren(layout)
-    renderView(main, currentView)
+    const extras = { onNavigate: navigate, ...pendingViewOptions }
+    pendingViewOptions = {}
+    void renderView(main, currentView, extras)
   }
 
   window.addEventListener('ca:unauthorized', () => {
     currentView = DEFAULT_VIEW
+    pendingViewOptions = {}
     mount()
   })
 
   mount()
 }
 
-async function renderView(main, viewId) {
+async function renderView(main, viewId, extras = {}) {
   const render = views[viewId]
 
   if (!render) {
@@ -73,5 +81,5 @@ async function renderView(main, viewId) {
   main.innerHTML = `
     <div class="flex items-center justify-center py-16 text-sm text-slate-500">Cargando...</div>
   `
-  await render(main)
+  await render(main, extras)
 }

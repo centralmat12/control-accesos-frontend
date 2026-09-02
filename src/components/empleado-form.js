@@ -505,12 +505,10 @@ export function createEmpleadoForm({
   return wrapper
 }
 
-export function createEmpleadoDetail(empleado, { empresaLabel = '' } = {}) {
+export function createEmpleadoDetail(empleado) {
   const wrapper = document.createElement('div')
   const horario = formatHorarioDisplay(empleado.horario)
   const rows = [
-    ['ID', empleado.id],
-    ['Empresa', empresaLabel || empleado.empresaId],
     ['Legajo', empleado.legajo],
     ['Nombre', empleado.nombre],
     ['Apellido', empleado.apellido],
@@ -542,14 +540,10 @@ export function createEmpleadoDetail(empleado, { empresaLabel = '' } = {}) {
   return wrapper
 }
 
-function createReadonlyMeta(empleado, empresaLabel) {
+function createReadonlyMeta(empleado) {
   const meta = document.createElement('div')
-  meta.className = 'mb-4 grid gap-3 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 sm:grid-cols-3'
-  const items = [
-    ['ID', empleado.id],
-    ['Empresa', empresaLabel || empleado.empresaId],
-    ['Estado', empleado.activo ? 'Activo' : 'Inactivo'],
-  ]
+  meta.className = 'mb-4 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3'
+  const items = [['Estado', empleado.activo ? 'Activo' : 'Inactivo']]
 
   meta.innerHTML = items
     .map(
@@ -617,12 +611,13 @@ function promptEmpleadoChangesConfirm(changes) {
 }
 
 export function createEmpleadoRecord({ empleado, empresaLabel = '', catalogs = {}, persistUpdate, onUpdated }) {
+  void empresaLabel
   const root = document.createElement('div')
   let current = empleado
 
   function showView() {
     const view = document.createElement('div')
-    view.append(createEmpleadoDetail(current, { empresaLabel }))
+    view.append(createEmpleadoDetail(current))
 
     const actions = document.createElement('div')
     actions.className = 'mt-5 flex justify-end border-t border-slate-100 pt-4'
@@ -643,11 +638,11 @@ export function createEmpleadoRecord({ empleado, empresaLabel = '', catalogs = {
 
   function showEdit() {
     const view = document.createElement('div')
-    view.append(createReadonlyMeta(current, empresaLabel))
+    view.append(createReadonlyMeta(current))
 
     const notice = document.createElement('p')
     notice.className = 'mb-4 rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-sm text-blue-800'
-    notice.textContent = 'Estás editando los datos del empleado. ID, empresa, estado e información biométrica no se modifican aquí.'
+    notice.textContent = 'Estás editando los datos del empleado. El estado y la información biométrica no se modifican aquí.'
     view.append(notice)
 
     const form = createEmpleadoForm({

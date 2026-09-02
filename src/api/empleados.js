@@ -7,8 +7,9 @@
  * Pendiente de backend:
  * - Reactivar empleado / listar inactivos (GET hoy solo devuelve Activo = true)
  * - Paginación en el listado
- * - Campo booleano `tieneHuella` en el empleado, o un endpoint de estado
- *   de enrolamiento que NO devuelva templateBiometrico
+ * - Campo booleano `tieneHuella` (o equivalente) en el empleado, o un endpoint de estado
+ *   de enrolamiento que NO devuelva templateBiometrico. El Dashboard no infiere huella
+ *   ni muestra contador 0 hasta que exista ese dato.
  *
  * No usar GET /api/huellas/empresa/{id} (expone plantillas).
  * No usar POST /api/empleados/enrolar (solo el agente local).

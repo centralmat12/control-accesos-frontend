@@ -323,10 +323,20 @@ No existe `GET /api/dashboard`. El resumen se arma en el cliente:
 
 La tabla de últimas fichadas usa campos reales: empleado, legajo, fecha, hora, tipo y método. No se muestran área ni dispositivo porque `/api/fichadas` no los devuelve. Si el día llega a 500 registros, los contadores de fichadas pueden estar incompletos.
 
+**Alertas y pendientes** se calcula en el cliente sobre el mismo `GET /api/empleados`:
+
+- inconsistencias: nombre, apellido, DNI o CUIL vacío;
+- pendientes operativos (no son error de API): horario, departamento o sucursal vacío.
+
+No hay alerta de huella ni bloque de estado de agente/lector: la API no publica `tieneHuella` ni heartbeat de hardware. No se infiere con fichadas.
+
+En Ver / Editar empleado no se muestran ID ni empresa; siguen usándose internamente (PATCH, empresa de sesión). El estado permanece visible.
+
 ## Funcionalidades pendientes
 
 - **Menú:** Áreas, Horarios, Dispositivos y Agentes todavía no tienen vista ni llamadas HTTP.
-- **Empleados (backend pendiente):** edición, reactivar/listar inactivos, paginación, indicador de enrolamiento de huella **sin** exponer `templateBiometrico`. El enrolamiento se hace en el agente local, no en este panel.
+- **Empleados (backend pendiente):** reactivar/listar inactivos, paginación, indicador de enrolamiento `tieneHuella` (boolean o equivalente) **sin** exponer `templateBiometrico`. El enrolamiento se hace en el agente local, no en este panel.
+- **Estado del sistema (futuro):** requiere identificador de agente, `ultimaConexion`, estado del agente y estado independiente del lector. No inferir por fichadas recientes.
 
 No hay login mock ni Dashboard mock: autenticación y dashboard consultan la API.
 

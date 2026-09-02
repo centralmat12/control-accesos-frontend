@@ -1,11 +1,12 @@
 import { getDashboardData } from '../api/dashboard.js'
 import { FICHADAS_LIMITE } from '../api/fichadas.js'
+import { createDashboardAlerts } from '../components/dashboard-alerts.js'
 import { createFeedbackState, createLoadingState } from '../components/feedback-state.js'
 import { createRecentPunchesTable } from '../components/recent-punches-table.js'
 import { createStatCard } from '../components/stat-card.js'
 import { iconClock, iconLogin, iconLogout, iconUsers } from '../components/icons.js'
 
-export async function renderDashboard(container) {
+export async function renderDashboard(container, { onNavigate } = {}) {
   const view = document.createElement('div')
   view.className = 'space-y-8'
   container.replaceChildren(view)
@@ -57,7 +58,12 @@ export async function renderDashboard(container) {
         content.append(note)
       }
 
-      content.append(createRecentPunchesTable(data.ultimasFichadas))
+      content.append(
+        createDashboardAlerts(data.alertas, {
+          onOpenEmpleados: (initialQuery) => onNavigate?.('empleados', initialQuery ? { initialQuery } : {}),
+        }),
+        createRecentPunchesTable(data.ultimasFichadas),
+      )
       view.replaceChildren(content)
     } catch (error) {
       if (error.message === 'Sesión expirada o no autorizada.') {

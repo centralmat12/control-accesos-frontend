@@ -2,6 +2,7 @@ import { getEmpleados } from './empleados.js'
 import { FICHADAS_LIMITE, getFichadas } from './fichadas.js'
 import { esTipoEntrada, esTipoSalida, todayDateKey } from '../utils/format.js'
 import { exclusiveHastaIso, startOfDayIso } from '../utils/period.js'
+import { buildEmpleadoAlertas } from '../utils/empleado-alerts.js'
 
 const ULTIMAS_VISIBLES = 8
 
@@ -22,5 +23,6 @@ export async function getDashboardData() {
     salidas: fichadasHoy.filter((item) => esTipoSalida(item.tipo)).length,
     ultimasFichadas: fichadasHoy.slice(0, ULTIMAS_VISIBLES),
     alcanzoLimite: fichadasHoy.length >= FICHADAS_LIMITE,
+    alertas: buildEmpleadoAlertas(empleados),
   }
 }
