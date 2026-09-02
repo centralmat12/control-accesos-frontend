@@ -14,15 +14,43 @@ export function fullName(empleado) {
   return [empleado.nombre, empleado.apellido].filter(Boolean).join(' ')
 }
 
-export function createEmpleadosTable(empleados, { onView, onDeactivate } = {}) {
+function sortIndicator(active, direction) {
+  if (!active) return '<span class="text-slate-300" aria-hidden="true">↕</span>'
+  return `<span class="text-slate-700" aria-hidden="true">${direction === 'desc' ? '↓' : '↑'}</span>`
+}
+
+function sortHeader(key, label, sortKey, sortDir) {
+  const active = sortKey === key
+  const ariaSort = active ? (sortDir === 'desc' ? 'descending' : 'ascending') : 'none'
+
+  return `
+    <th scope="col" aria-sort="${ariaSort}" class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+      <button
+        type="button"
+        data-sort="${key}"
+        class="inline-flex items-center gap-1 rounded-md hover:text-slate-800"
+      >
+        ${label}
+        ${sortIndicator(active, sortDir)}
+      </button>
+    </th>
+  `
+}
+
+export function createEmpleadosTable(
+  empleados,
+  { onView, onDeactivate, onSort, sortKey = 'nombre', sortDir = 'asc', highlightId } = {},
+) {
   const section = document.createElement('section')
-  section.className =
-    'overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm'
+  section.className = 'overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm'
 
   const rows = empleados
-    .map(
-      (empleado) => `
-        <tr class="hover:bg-slate-50">
+    .map((empleado) => {
+      const highlighted = highlightId != null && Number(empleado.id) === Number(highlightId)
+      const rowClass = highlighted ? 'bg-blue-50 hover:bg-blue-50' : 'hover:bg-slate-50'
+
+      return `
+        <tr class="${rowClass}">
           <td class="whitespace-nowrap px-4 py-3 text-sm font-medium text-slate-900">${displayValue(empleado.legajo)}</td>
           <td class="whitespace-nowrap px-4 py-3 text-sm text-slate-900">${displayValue(fullName(empleado))}</td>
           <td class="whitespace-nowrap px-4 py-3 text-sm text-slate-600">${displayValue(empleado.dni)}</td>
@@ -49,8 +77,8 @@ export function createEmpleadosTable(empleados, { onView, onDeactivate } = {}) {
             </div>
           </td>
         </tr>
-      `,
-    )
+      `
+    })
     .join('')
 
   section.innerHTML = `
@@ -58,10 +86,10 @@ export function createEmpleadosTable(empleados, { onView, onDeactivate } = {}) {
       <table class="min-w-full divide-y divide-slate-200">
         <thead class="bg-slate-50">
           <tr>
-            <th scope="col" class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Legajo</th>
-            <th scope="col" class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Nombre y apellido</th>
-            <th scope="col" class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">DNI</th>
-            <th scope="col" class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Departamento</th>
+            ${sortHeader('legajo', 'Legajo', sortKey, sortDir)}
+            ${sortHeader('nombre', 'Nombre y apellido', sortKey, sortDir)}
+            ${sortHeader('dni', 'DNI', sortKey, sortDir)}
+            ${sortHeader('departamento', 'Departamento', sortKey, sortDir)}
             <th scope="col" class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Estado</th>
             <th scope="col" class="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wide text-slate-500">Acciones</th>
           </tr>
@@ -74,6 +102,12 @@ export function createEmpleadosTable(empleados, { onView, onDeactivate } = {}) {
   `
 
   section.addEventListener('click', (event) => {
+    const sortButton = event.target.closest('[data-sort]')
+    if (sortButton) {
+      onSort?.(sortButton.dataset.sort)
+      return
+    }
+
     const button = event.target.closest('[data-action]')
     if (!button) return
 

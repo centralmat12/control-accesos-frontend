@@ -13,11 +13,11 @@ export function createDashboardAlerts(alertas, { onOpenEmpleados } = {}) {
   heading.className = 'mb-4'
   heading.innerHTML = `
     <h2 class="text-base font-semibold text-slate-900">Alertas y pendientes</h2>
-    <p class="mt-1 text-sm text-slate-500">Inconsistencias de datos obligatorios y datos operativos recomendados, según el listado de empleados activos.</p>
+    <p class="mt-1 text-sm text-slate-500">Datos obligatorios incompletos y pendientes operativos (horario, departamento o sucursal vacío), según GET /api/empleados. Desplegá una alerta y hacé clic en un empleado para abrirlo en Empleados.</p>
   `
   section.append(heading)
 
-  if (!alertas.items.length) {
+  if (!alertas?.items?.length) {
     const empty = document.createElement('p')
     empty.className = 'text-sm text-slate-600'
     empty.textContent = 'No hay pendientes operativos.'
@@ -43,16 +43,16 @@ export function createDashboardAlerts(alertas, { onOpenEmpleados } = {}) {
     toggle.setAttribute('aria-expanded', 'false')
     toggle.innerHTML = `
       <span class="mt-0.5 w-4 shrink-0 text-center" aria-hidden="true">${isError ? '❗' : '⚠'}</span>
-      <span>${escapeHtml(item.text)}</span>
+      <span class="min-w-0 flex-1">${escapeHtml(item.text)}</span>
+      <span class="shrink-0 text-xs font-normal ${isError ? 'text-red-700' : 'text-amber-800'}">${item.employees.length}</span>
     `
 
     const details = document.createElement('div')
     details.className = 'mt-2 hidden border-t border-black/10 pt-2'
     details.innerHTML = `
-      <ul class="space-y-1">
+      <ul class="max-h-56 space-y-1 overflow-y-auto">
         ${item.employees
           .map((empleado, index) => {
-            const hint = empleadoSearchHint(empleado)
             return `
               <li>
                 <button

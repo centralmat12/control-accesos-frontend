@@ -12,14 +12,14 @@ export function createLayout({ currentView, user, onNavigate, onLogout }) {
   overlay.addEventListener('click', () => setSidebarOpen(false))
 
   const shell = document.createElement('div')
-  shell.className = 'lg:pl-72'
+  shell.className = 'min-w-0 lg:pl-72'
 
   const content = document.createElement('div')
-  content.className = 'flex min-h-screen flex-col'
+  content.className = 'flex min-h-screen min-w-0 flex-col'
 
   const main = document.createElement('main')
   main.id = 'app-main'
-  main.className = 'flex-1 p-4 lg:p-8'
+  main.className = 'min-w-0 flex-1 p-4 lg:p-8'
 
   content.append(createHeader({ currentView, user, onLogout }), main)
   shell.append(content)

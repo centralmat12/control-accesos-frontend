@@ -8,44 +8,20 @@ import {
 } from '../components/empleado-form.js'
 import { createEmpleadosTable, fullName } from '../components/empleados-table.js'
 import { createFeedbackState, createLoadingState } from '../components/feedback-state.js'
+import { createPagination } from '../components/pagination.js'
 import { openModal } from '../components/modal.js'
+import { filterEmpleados, sortEmpleados } from '../utils/empleado-list.js'
+import { summarizeEmpleadoDatos } from '../utils/empleado-alerts.js'
 import { uniqueCatalogValues } from '../utils/format.js'
+import { DEFAULT_PAGE_SIZE, PAGE_SIZE_OPTIONS, paginateItems } from '../utils/paginate.js'
+
+const CONTROL_CLASS =
+  'w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none placeholder:text-slate-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20'
 
 function sessionEmpresaId() {
   const raw = getCurrentUser()?.empresaId
   const empresaId = Number(raw)
   return Number.isFinite(empresaId) && empresaId > 0 ? empresaId : null
-}
-
-function matchesSearch(empleado, query) {
-  if (!query) return true
-
-  const haystack = [
-    empleado.nombre,
-    empleado.apellido,
-    `${empleado.nombre ?? ''} ${empleado.apellido ?? ''}`,
-    empleado.dni,
-    empleado.legajo,
-  ]
-    .join(' ')
-    .toLowerCase()
-
-  return haystack.includes(query)
-}
-
-function matchesDepartamento(empleado, departamento) {
-  if (departamento === 'todos') return true
-  if (departamento === '__sin__') return !String(empleado.departamento ?? '').trim()
-  return String(empleado.departamento ?? '').trim() === departamento
-}
-
-function filterEmpleados(empleados, { query, departamento }) {
-  const normalizedQuery = query.trim().toLowerCase()
-
-  return empleados.filter(
-    (empleado) =>
-      matchesSearch(empleado, normalizedQuery) && matchesDepartamento(empleado, departamento),
-  )
 }
 
 function catalogsFromEmpleados(empleados) {
@@ -61,6 +37,23 @@ function empresaDisplayName(empresa, empresaId) {
     return empresa.nombreFantasia || empresa.razonSocial
   }
   return empresaId ? `Empresa ${empresaId}` : ''
+}
+
+function fillCatalogSelect(select, values, allLabel, current) {
+  select.replaceChildren()
+
+  const addOption = (value, label) => {
+    const option = document.createElement('option')
+    option.value = value
+    option.textContent = label
+    select.append(option)
+  }
+
+  addOption('todos', allLabel)
+  values.forEach((value) => addOption(value, value))
+
+  const stillValid = [...select.options].some((option) => option.value === current)
+  select.value = stillValid ? current : 'todos'
 }
 
 /**
@@ -94,39 +87,73 @@ export async function renderEmpleados(container, { initialQuery } = {}) {
       </button>
     </section>
     <div id="empleados-banner"></div>
+    <div id="empleados-summary" class="grid gap-3 sm:grid-cols-3"></div>
     <section class="rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
-      <div class="flex flex-col gap-4 lg:flex-row lg:items-end">
-        <div class="min-w-0 flex-1">
+      <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4 xl:items-end">
+        <div class="min-w-0 sm:col-span-2">
           <label for="empleados-search" class="mb-1.5 block text-sm font-medium text-slate-700">Buscar</label>
           <input
             id="empleados-search"
             type="search"
             placeholder="Nombre, apellido, DNI o legajo"
-            class="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none placeholder:text-slate-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+            class="${CONTROL_CLASS}"
           />
         </div>
-        <div class="w-full lg:w-64">
+        <div class="min-w-0">
           <label for="empleados-departamento" class="mb-1.5 block text-sm font-medium text-slate-700">Departamento</label>
-          <select
-            id="empleados-departamento"
-            class="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
-          >
+          <select id="empleados-departamento" class="${CONTROL_CLASS}">
             <option value="todos">Todos</option>
+          </select>
+        </div>
+        <div class="min-w-0">
+          <label for="empleados-sucursal" class="mb-1.5 block text-sm font-medium text-slate-700">Sucursal</label>
+          <select id="empleados-sucursal" class="${CONTROL_CLASS}">
+            <option value="todos">Todas</option>
+          </select>
+        </div>
+        <div class="min-w-0 sm:col-span-2 xl:col-span-1">
+          <label for="empleados-estado" class="mb-1.5 block text-sm font-medium text-slate-700">Estado de datos</label>
+          <select id="empleados-estado" class="${CONTROL_CLASS}">
+            <option value="todos">Todos</option>
+            <option value="completo">Completo</option>
+            <option value="pendientes">Con pendientes</option>
           </select>
         </div>
       </div>
     </section>
+    <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-end sm:gap-4">
+      <label for="empleados-page-size" class="flex items-center gap-2 text-sm text-slate-600">
+        <span>Mostrar</span>
+        <select id="empleados-page-size" class="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-sm text-slate-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20">
+          ${PAGE_SIZE_OPTIONS.map((size) => `<option value="${size}" ${size === DEFAULT_PAGE_SIZE ? 'selected' : ''}>${size}</option>`).join('')}
+        </select>
+      </label>
+      <p id="empleados-count" class="text-sm text-slate-500"></p>
+    </div>
     <div id="empleados-results"></div>
+    <div id="empleados-pagination"></div>
   `
 
   const banner = view.querySelector('#empleados-banner')
+  const summary = view.querySelector('#empleados-summary')
   const results = view.querySelector('#empleados-results')
+  const paginationContainer = view.querySelector('#empleados-pagination')
+  const countLabel = view.querySelector('#empleados-count')
   const searchInput = view.querySelector('#empleados-search')
   const departamentoSelect = view.querySelector('#empleados-departamento')
+  const sucursalSelect = view.querySelector('#empleados-sucursal')
+  const estadoSelect = view.querySelector('#empleados-estado')
+  const pageSizeSelect = view.querySelector('#empleados-page-size')
   const newButton = view.querySelector('#empleados-new')
 
   let empleados = []
   let loaded = false
+  let loadError = false
+  let currentPage = 1
+  let pageSize = DEFAULT_PAGE_SIZE
+  let sortKey = 'nombre'
+  let sortDir = 'asc'
+  let highlightId = null
   let activeModalClose = null
 
   function closeActiveModal() {
@@ -152,35 +179,57 @@ export async function renderEmpleados(container, { initialQuery } = {}) {
     return {
       query: searchInput.value,
       departamento: departamentoSelect.value,
+      sucursal: sucursalSelect.value,
+      estado: estadoSelect.value,
     }
   }
 
-  function syncDepartamentoOptions() {
-    const current = departamentoSelect.value
-    const options = uniqueCatalogValues(empleados, 'departamento')
-    const hasSinDepartamento = empleados.some((item) => !String(item.departamento ?? '').trim())
+  function resetPage() {
+    currentPage = 1
+  }
 
-    departamentoSelect.replaceChildren()
-
-    const addOption = (value, label) => {
-      const option = document.createElement('option')
-      option.value = value
-      option.textContent = label
-      departamentoSelect.append(option)
+  function renderSummary() {
+    if (!loaded || loadError) {
+      summary.replaceChildren()
+      return
     }
 
-    addOption('todos', 'Todos')
-    options.forEach((value) => addOption(value, value))
-    if (hasSinDepartamento) addOption('__sin__', 'Sin departamento')
+    const stats = summarizeEmpleadoDatos(empleados)
+    summary.innerHTML = `
+      <article class="rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
+        <p class="text-sm font-medium text-slate-500">Empleados activos</p>
+        <p class="mt-1 text-2xl font-semibold tracking-tight text-slate-900">${stats.activos}</p>
+      </article>
+      <article class="rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
+        <p class="text-sm font-medium text-slate-500">Completos</p>
+        <p class="mt-1 text-2xl font-semibold tracking-tight text-slate-900">${stats.completos}</p>
+      </article>
+      <article class="rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
+        <p class="text-sm font-medium text-slate-500">Con pendientes</p>
+        <p class="mt-1 text-2xl font-semibold tracking-tight text-slate-900">${stats.conPendientes}</p>
+      </article>
+    `
+  }
 
-    const stillValid = [...departamentoSelect.options].some((option) => option.value === current)
-    departamentoSelect.value = stillValid ? current : 'todos'
+  function syncFilterOptions() {
+    fillCatalogSelect(departamentoSelect, uniqueCatalogValues(empleados, 'departamento'), 'Todos', departamentoSelect.value)
+    fillCatalogSelect(sucursalSelect, uniqueCatalogValues(empleados, 'sucursal'), 'Todas', sucursalSelect.value)
+  }
+
+  function visibleEmpleados() {
+    const filtered = filterEmpleados(empleados, getFilters())
+    return sortEmpleados(filtered, sortKey, sortDir)
   }
 
   function renderResults() {
+    paginationContainer.replaceChildren()
+    countLabel.textContent = ''
+
     if (!loaded) return
 
-    const filtered = filterEmpleados(empleados, getFilters())
+    const sorted = visibleEmpleados()
+    const paged = paginateItems(sorted, currentPage, pageSize)
+    currentPage = paged.page
 
     if (empleados.length === 0) {
       results.replaceChildren(
@@ -192,36 +241,74 @@ export async function renderEmpleados(container, { initialQuery } = {}) {
       return
     }
 
-    if (filtered.length === 0) {
+    if (sorted.length === 0) {
       results.replaceChildren(
         createFeedbackState({
           title: 'Sin resultados',
-          message: 'No hay empleados que coincidan con la búsqueda o el departamento seleccionado.',
+          message: 'No hay empleados que coincidan con la búsqueda o los filtros seleccionados.',
         }),
       )
       return
     }
 
+    countLabel.textContent = `Mostrando ${paged.from}–${paged.to} de ${paged.total} empleados`
     results.replaceChildren(
-      createEmpleadosTable(filtered, {
+      createEmpleadosTable(paged.items, {
+        sortKey,
+        sortDir,
+        highlightId,
+        onSort: (key) => {
+          if (sortKey === key) {
+            sortDir = sortDir === 'asc' ? 'desc' : 'asc'
+          } else {
+            sortKey = key
+            sortDir = 'asc'
+          }
+          resetPage()
+          renderResults()
+        },
         onView: openDetail,
         onDeactivate: openDeactivate,
       }),
     )
+
+    if (paged.pageCount > 1) {
+      paginationContainer.replaceChildren(
+        createPagination({
+          page: paged.page,
+          pageCount: paged.pageCount,
+          onPageChange: (nextPage) => {
+            currentPage = nextPage
+            renderResults()
+          },
+        }),
+      )
+    }
   }
 
   async function loadEmpleados({ keepBanner = false } = {}) {
     loaded = false
+    loadError = false
+    summary.replaceChildren()
+    paginationContainer.replaceChildren()
+    countLabel.textContent = ''
     if (!keepBanner) clearBanner()
-    results.replaceChildren(createLoadingState())
+    results.replaceChildren(createLoadingState('Cargando empleados...'))
 
     try {
       empleados = await getEmpleados()
       loaded = true
-      syncDepartamentoOptions()
+      loadError = false
+      syncFilterOptions()
+      renderSummary()
       renderResults()
     } catch (error) {
       loaded = false
+      loadError = true
+      empleados = []
+      summary.replaceChildren()
+      paginationContainer.replaceChildren()
+      countLabel.textContent = ''
 
       if (error.message === 'Sesión expirada o no autorizada.') {
         return
@@ -300,7 +387,8 @@ export async function renderEmpleados(container, { initialQuery } = {}) {
           persistUpdate: persistEmpleadoUpdate,
           onUpdated: (updated) => {
             empleados = empleados.map((item) => (Number(item.id) === Number(updated.id) ? { ...item, ...updated } : item))
-            syncDepartamentoOptions()
+            syncFilterOptions()
+            renderSummary()
             renderResults()
             showBanner({
               title: 'Empleado actualizado correctamente',
@@ -333,7 +421,8 @@ export async function renderEmpleados(container, { initialQuery } = {}) {
         await deactivateEmpleado(empleado.id)
         empleados = empleados.filter((item) => Number(item.id) !== Number(empleado.id))
         closeActiveModal()
-        syncDepartamentoOptions()
+        syncFilterOptions()
+        renderSummary()
         renderResults()
         showBanner({
           title: 'Empleado desactivado',
@@ -365,12 +454,37 @@ export async function renderEmpleados(container, { initialQuery } = {}) {
     )
   }
 
-  if (initialQuery) searchInput.value = initialQuery
+  if (initialQuery) {
+    searchInput.value = initialQuery
+    departamentoSelect.value = 'todos'
+    sucursalSelect.value = 'todos'
+    estadoSelect.value = 'todos'
+    resetPage()
+  }
+
+  function onFilterChange() {
+    highlightId = null
+    resetPage()
+    renderResults()
+  }
 
   newButton.addEventListener('click', openCreateForm)
-  searchInput.addEventListener('input', renderResults)
-  departamentoSelect.addEventListener('change', renderResults)
+  searchInput.addEventListener('input', onFilterChange)
+  departamentoSelect.addEventListener('change', onFilterChange)
+  sucursalSelect.addEventListener('change', onFilterChange)
+  estadoSelect.addEventListener('change', onFilterChange)
+  pageSizeSelect.addEventListener('change', () => {
+    pageSize = Number(pageSizeSelect.value) || DEFAULT_PAGE_SIZE
+    resetPage()
+    renderResults()
+  })
 
   container.replaceChildren(view)
   await loadEmpleados({ keepBanner: !empresaId })
+
+  if (initialQuery && loaded) {
+    const hinted = visibleEmpleados()[0]
+    highlightId = hinted?.id ?? null
+    if (highlightId) renderResults()
+  }
 }

@@ -6,6 +6,29 @@ function requiredIncomplete(empleado) {
   return ['nombre', 'apellido', 'dni', 'cuil'].some((key) => isBlank(empleado[key]))
 }
 
+function operationalIncomplete(empleado) {
+  return isBlank(empleado.horario) || isBlank(empleado.departamento) || isBlank(empleado.sucursal)
+}
+
+/**
+ * Misma definición de “pendiente” que las alertas del Dashboard.
+ * No incluye categoría ni legajo. No usa huella.
+ */
+export function empleadoTienePendientes(empleado) {
+  return requiredIncomplete(empleado) || operationalIncomplete(empleado)
+}
+
+export function summarizeEmpleadoDatos(empleados) {
+  const activos = Array.isArray(empleados) ? empleados : []
+  const conPendientes = activos.filter(empleadoTienePendientes).length
+
+  return {
+    activos: activos.length,
+    conPendientes,
+    completos: activos.length - conPendientes,
+  }
+}
+
 export function empleadoAlertLabel(empleado) {
   const name = [empleado.nombre, empleado.apellido].map((part) => String(part ?? '').trim()).filter(Boolean).join(' ')
   if (name) return name
