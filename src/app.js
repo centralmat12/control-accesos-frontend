@@ -13,6 +13,13 @@ const views = {
   empleados: renderEmpleados,
 }
 
+let activeViewCleanup = null
+
+function clearActiveView() {
+  activeViewCleanup?.()
+  activeViewCleanup = null
+}
+
 export function bootstrap(root) {
   let currentView = DEFAULT_VIEW
   let pendingViewOptions = {}
@@ -21,6 +28,7 @@ export function bootstrap(root) {
     const user = getCurrentUser()
 
     if (!user || !isAuthenticated()) {
+      clearActiveView()
       renderLogin(root, { onSuccess: mount })
       return
     }
@@ -42,6 +50,7 @@ export function bootstrap(root) {
       user,
       onNavigate: navigate,
       onLogout: () => {
+        clearActiveView()
         logout()
         currentView = DEFAULT_VIEW
         pendingViewOptions = {}
@@ -56,6 +65,7 @@ export function bootstrap(root) {
   }
 
   window.addEventListener('ca:unauthorized', () => {
+    clearActiveView()
     currentView = DEFAULT_VIEW
     pendingViewOptions = {}
     mount()
@@ -65,6 +75,7 @@ export function bootstrap(root) {
 }
 
 async function renderView(main, viewId, extras = {}) {
+  clearActiveView()
   const render = views[viewId]
 
   if (!render) {
@@ -81,5 +92,6 @@ async function renderView(main, viewId, extras = {}) {
   main.innerHTML = `
     <div class="flex items-center justify-center py-16 text-sm text-slate-500">Cargando...</div>
   `
-  await render(main, extras)
+  const cleanup = await render(main, extras)
+  if (typeof cleanup === 'function') activeViewCleanup = cleanup
 }

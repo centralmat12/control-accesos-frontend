@@ -268,11 +268,11 @@ DEV_API_PROXY_TARGET=http://161.153.193.159:8080
 | Login | Integrado con la API real (`POST /api/Auth/Login`) |
 | Sesión | JWT en `sessionStorage` (`ca.auth.token`) y usuario en `ca.auth.user` |
 | Peticiones protegidas | Header `Authorization: Bearer <token>` |
-| Empleados (listado, alta, detalle, baja lógica) | Integrado con la API |
+| Empleados (listado, alta, detalle, baja lógica) | Integrado con la API. Paginación, filtros y ordenamiento en el cliente |
 | Fichadas (filtros server-side, período, jornadas, CSV, impresión) | Integrado con la API |
 | Empresa (nombre en reportes de fichadas) | `GET /api/empresas` (si falla, la vista sigue y el nombre queda vacío) |
-| Dashboard | Datos reales (`GET /api/empleados` + `GET /api/fichadas` del día). No hay endpoint de dashboard. |
-| Áreas, Horarios, Dispositivos, Agentes | Solo ítems del menú; pantalla placeholder, sin API |
+| Dashboard | Datos reales (`GET /api/empleados` + `GET /api/fichadas` del día). Refresco manual y automático (60 s). No hay endpoint de dashboard. |
+| Áreas, Horarios, Dispositivos, Agentes | Placeholders: el código de vista genérica se conserva, pero **no aparecen** en el menú principal |
 
 El frontend **no valida la firma** del JWT. Solo decodifica el payload para mostrar nombre, email, rol y `empresa_id`. Un **401** en una petición autenticada cierra la sesión y vuelve al login. La sesión sobrevive a recargar la pestaña; no sobrevive a cerrar el navegador.
 
@@ -328,15 +328,44 @@ La tabla de últimas fichadas usa campos reales: empleado, legajo, fecha, hora, 
 - inconsistencias: nombre, apellido, DNI o CUIL vacío;
 - pendientes operativos (no son error de API): horario, departamento o sucursal vacío.
 
+Se puede desplegar cada alerta y hacer clic en un empleado: se abre Empleados con esa búsqueda, filtros en “Todos” y página 1.
+
+**Actualizar** vuelve a consultar empleados y fichadas del día. **Última actualización: HH:mm:ss** es solo la hora en que este panel consultó la API, no la conexión del agente ni del lector. Mientras la vista Dashboard está abierta hay un refresco automático cada 60 s (se detiene al salir, al cerrar sesión o si la pestaña está oculta).
+
+Un error de API no se muestra como “0 empleados” ni “No hay pendientes”: la primera carga muestra error + Reintentar; un refresco fallido conserva los últimos datos válidos y avisa el error.
+
 No hay alerta de huella ni bloque de estado de agente/lector: la API no publica `tieneHuella` ni heartbeat de hardware. No se infiere con fichadas.
+
+## Empleados
+
+Flujo del listado (todo en el cliente, sobre `GET /api/empleados`):
+
+```
+empleados activos
+    ↓
+búsqueda / departamento / sucursal / estado de datos
+    ↓
+ordenamiento
+    ↓
+paginación visual (30 / 50 / 100, predeterminado 30)
+    ↓
+tabla
+```
+
+- **Resumen:** empleados activos, completos y con pendientes, calculados sobre todo el listado (no sobre la página visible). Completo / pendiente usa las mismas reglas que las alertas del Dashboard (no categoría ni legajo).
+- **Filtros de departamento y sucursal:** valores únicos del listado, ordenados alfabéticamente. No están hardcodeados.
+- **Estado de datos:** Todos, Completo, Con pendientes.
+- **Orden:** Legajo, Nombre y apellido, DNI, Departamento (ascendente / descendente).
+- Cambiar búsqueda, filtros, orden o cantidad por página vuelve a la página 1.
+- La paginación reutiliza `src/utils/paginate.js` y `src/components/pagination.js`.
 
 En Ver / Editar empleado no se muestran ID ni empresa; siguen usándose internamente (PATCH, empresa de sesión). El estado permanece visible.
 
 ## Funcionalidades pendientes
 
-- **Menú:** Áreas, Horarios, Dispositivos y Agentes todavía no tienen vista ni llamadas HTTP.
-- **Empleados (backend pendiente):** reactivar/listar inactivos, paginación, indicador de enrolamiento `tieneHuella` (boolean o equivalente) **sin** exponer `templateBiometrico`. El enrolamiento se hace en el agente local, no en este panel.
-- **Estado del sistema (futuro):** requiere identificador de agente, `ultimaConexion`, estado del agente y estado independiente del lector. No inferir por fichadas recientes.
+- **Menú (evolución futura):** Áreas, Horarios, Dispositivos y Agentes siguen siendo placeholders sin API. Están ocultos de la navegación principal; el código no se eliminó.
+- **Empleados (backend pendiente):** reactivar/listar inactivos, paginación de servidor, indicador de enrolamiento `tieneHuella` (boolean) **sin** exponer `templateBiometrico`. El enrolamiento se hace en el agente local, no en este panel.
+- **Estado del sistema (futuro, requiere API + agente):** identificador de agente, heartbeat, `ultimaConexion`, estado independiente del lector, serial/modelo, última sincronización del agente. No inferir por fichadas recientes. No implementar en frontend hasta que exista contrato seguro.
 
 No hay login mock ni Dashboard mock: autenticación y dashboard consultan la API.
 
