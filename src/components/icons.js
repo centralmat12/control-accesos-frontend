@@ -59,6 +59,12 @@ export function iconLogout() {
   </svg>`
 }
 
+export function iconPencil() {
+  return `<svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+    <path stroke-linecap="round" stroke-linejoin="round" d="M16.862 3.487a1.875 1.875 0 1 1 2.651 2.652L7.5 18.15 3 19.5l1.35-4.5 12.512-11.513z" />
+  </svg>`
+}
+
 export const NAV_ICONS = {
   dashboard: iconDashboard,
   fichadas: iconClock,

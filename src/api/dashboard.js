@@ -1,16 +1,28 @@
-import { dashboardSummary, ultimasFichadas } from '../data/mock/dashboard.js'
+import { getEmpleados } from './empleados.js'
+import { FICHADAS_LIMITE, getFichadas } from './fichadas.js'
+import { esTipoEntrada, esTipoSalida, todayDateKey } from '../utils/format.js'
+import { exclusiveHastaIso, startOfDayIso } from '../utils/period.js'
+import { buildEmpleadoAlertas } from '../utils/empleado-alerts.js'
 
-/**
- * Capa de acceso a datos del Dashboard.
- * MOCK: reemplazar por llamada a API cuando el endpoint esté disponible.
- */
+const ULTIMAS_VISIBLES = 8
 
-export async function getDashboardSummary() {
-  // MOCK: GET /api/dashboard/resumen
-  return structuredClone(dashboardSummary)
-}
+export async function getDashboardData() {
+  const today = todayDateKey()
+  const [empleados, fichadasHoy] = await Promise.all([
+    getEmpleados(),
+    getFichadas({
+      desde: startOfDayIso(today),
+      hasta: exclusiveHastaIso(today),
+    }),
+  ])
 
-export async function getUltimasFichadas() {
-  // MOCK: reemplazar por fichadas recientes de la API
-  return structuredClone(ultimasFichadas)
+  return {
+    empleadosActivos: empleados.length,
+    fichadasHoy: fichadasHoy.length,
+    entradas: fichadasHoy.filter((item) => esTipoEntrada(item.tipo)).length,
+    salidas: fichadasHoy.filter((item) => esTipoSalida(item.tipo)).length,
+    ultimasFichadas: fichadasHoy.slice(0, ULTIMAS_VISIBLES),
+    alcanzoLimite: fichadasHoy.length >= FICHADAS_LIMITE,
+    alertas: buildEmpleadoAlertas(empleados),
+  }
 }

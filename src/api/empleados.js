@@ -1,12 +1,15 @@
 /**
  * Empleados — API real.
  *
- * Pendiente de backend (no implementar en este frontend hasta que existan):
- * - PUT/PATCH /api/empleados/{id} (edición)
+ * Actualización: PATCH /api/empleados/{id} con EmpleadoPatchDto (campos opcionales).
+ * No enviar id, empresaId, activo ni datos biométricos.
+ *
+ * Pendiente de backend:
  * - Reactivar empleado / listar inactivos (GET hoy solo devuelve Activo = true)
  * - Paginación en el listado
- * - Campo booleano `tieneHuella` en el empleado, o un endpoint de estado
- *   de enrolamiento que NO devuelva templateBiometrico
+ * - Campo booleano `tieneHuella` (o equivalente) en el empleado, o un endpoint de estado
+ *   de enrolamiento que NO devuelva templateBiometrico. El Dashboard no infiere huella
+ *   ni muestra contador 0 hasta que exista ese dato.
  *
  * No usar GET /api/huellas/empresa/{id} (expone plantillas).
  * No usar POST /api/empleados/enrolar (solo el agente local).
@@ -106,6 +109,42 @@ export async function createEmpleado(dto) {
   if (!response.ok) {
     console.error('Empleados: alta HTTP no exitosa', { url, status: response.status })
     throw new Error(await readErrorMessage(response, `No se pudo crear el empleado (${response.status}).`))
+  }
+
+  return mapEmpleado(await response.json())
+}
+
+export async function patchEmpleado(id, dto) {
+  if (!dto || Object.keys(dto).length === 0) {
+    throw new Error('No hay cambios pendientes.')
+  }
+
+  const { url, response } = await request(`/api/empleados/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify(dto),
+  })
+
+  if (response.status === 404) {
+    throw new Error(await readErrorMessage(response, 'Empleado no encontrado o inactivo.'))
+  }
+
+  if (response.status === 403) {
+    throw new Error('No tenés permiso para editar este empleado.')
+  }
+
+  if (response.status === 405) {
+    throw new Error(
+      'La API desplegada todavía no acepta PATCH de empleados. Hay que publicar la versión que incluye la actualización.',
+    )
+  }
+
+  if (response.status === 400) {
+    throw new Error(await readErrorMessage(response, 'Los datos del empleado no son válidos.'))
+  }
+
+  if (!response.ok) {
+    console.error('Empleados: edición HTTP no exitosa', { url, status: response.status })
+    throw new Error(await readErrorMessage(response, `No se pudo actualizar el empleado (${response.status}).`))
   }
 
   return mapEmpleado(await response.json())
