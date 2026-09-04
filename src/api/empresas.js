@@ -1,29 +1,81 @@
 import { pick } from '../utils/pick.js'
-import { getToken } from './auth.js'
+import { getCurrentUser, getToken } from './auth.js'
+import { getEmpresaContexto } from './empresa-context.js'
 import { apiFetch } from './http.js'
+import { isSuperadmin } from '../config/roles.js'
 
-function mapEmpresa(item) {
+function pickText(item, ...keys) {
+  for (const key of keys) {
+    const value = pick(item, key)
+    if (value === undefined || value === null) continue
+    const text = String(value).trim()
+    if (text) return text
+  }
+
+  return ''
+}
+
+export function mapEmpresa(item) {
+  const nombre = pickText(item, 'nombre', 'Nombre', 'nombreFantasia', 'NombreFantasia', 'razonSocial', 'RazonSocial')
+  const direccion = pickText(item, 'direccion', 'Direccion', 'razonSocial', 'RazonSocial')
+  const nombreFantasia = pickText(item, 'nombreFantasia', 'NombreFantasia') || nombre
+  const razonSocial = pickText(item, 'razonSocial', 'RazonSocial') || direccion
+
   return {
     id: pick(item, 'id', 'Id'),
-    nombreFantasia: pick(item, 'nombreFantasia', 'NombreFantasia'),
-    razonSocial: pick(item, 'razonSocial', 'RazonSocial'),
-    cuit: pick(item, 'cuit', 'CUIT', 'Cuit'),
+    nombre,
+    cuit: pickText(item, 'cuit', 'CUIT', 'Cuit'),
+    direccion,
+    nombreFantasia,
+    razonSocial,
   }
 }
 
+export function empresaDisplayName(empresa, empresaId) {
+  if (empresa?.nombre || empresa?.nombreFantasia || empresa?.razonSocial) {
+    return empresa.nombre || empresa.nombreFantasia || empresa.razonSocial
+  }
+
+  return empresaId ? `Empresa ${empresaId}` : ''
+}
+
+function normalizeEmpresas(payload) {
+  if (Array.isArray(payload)) return payload.map(mapEmpresa)
+  if (payload && typeof payload === 'object') return [mapEmpresa(payload)]
+  return []
+}
+
+export async function getEmpresas() {
+  const { url, response } = await apiFetch('/api/empresas', {
+    skipEmpresaContext: true,
+    missingAuthMessage: 'No hay sesión activa. Iniciá sesión para consultar empresas.',
+    logLabel: 'Empresas',
+  })
+
+  if (response.status === 403) {
+    throw new Error('No tenés permiso para ver las empresas.')
+  }
+
+  if (!response.ok) {
+    console.error('Empresas: respuesta HTTP no exitosa', { url, status: response.status })
+    throw new Error(`No se pudieron cargar las empresas (${response.status}).`)
+  }
+
+  return normalizeEmpresas(await response.json()).filter((empresa) => Number(empresa.id) > 0)
+}
+
 export async function getEmpresaActual() {
+  const user = getCurrentUser()
+
+  if (isSuperadmin(user)) {
+    return getEmpresaContexto()
+  }
+
   if (!getToken()) return null
 
   try {
-    const { response } = await apiFetch('/api/empresas', {
-      logLabel: false,
-    })
-
-    if (!response.ok) return null
-
-    const payload = await response.json()
-    const list = Array.isArray(payload) ? payload : payload ? [payload] : []
-    return list[0] ? mapEmpresa(list[0]) : null
+    const empresas = await getEmpresas()
+    return empresas[0] ?? null
   } catch (error) {
     if (error.message === 'Sesión expirada o no autorizada.') {
       throw error

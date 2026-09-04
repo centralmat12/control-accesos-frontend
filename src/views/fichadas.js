@@ -1,9 +1,11 @@
 import { getEmpleados } from '../api/empleados.js'
-import { getEmpresaActual } from '../api/empresas.js'
+import { getCurrentUser } from '../api/auth.js'
+import { canLoadTenantData } from '../api/empresa-context.js'
+import { empresaDisplayName, getEmpresaActual } from '../api/empresas.js'
 import { FICHADAS_LIMITE, getFichadas } from '../api/fichadas.js'
 import { createEmpleadoCombobox } from '../components/empleado-combobox.js'
 import { createFichadasTable } from '../components/fichadas-table.js'
-import { createFeedbackState, createLoadingState } from '../components/feedback-state.js'
+import { createFeedbackState, createLoadingState, createSelectEmpresaState } from '../components/feedback-state.js'
 import { printReport } from '../components/fichadas-print.js'
 import { createJornadasTable } from '../components/jornadas-table.js'
 import { createPagination } from '../components/pagination.js'
@@ -45,8 +47,7 @@ function describeFilters(filters, empleadoLabel) {
 }
 
 function empresaLabel(empresa) {
-  if (!empresa) return ''
-  return empresa.nombreFantasia || empresa.razonSocial || ''
+  return empresaDisplayName(empresa, empresa?.id)
 }
 
 function createSummaryCards(summary) {
@@ -84,6 +85,20 @@ function createSummaryCards(summary) {
 }
 
 export async function renderFichadas(container) {
+  if (!canLoadTenantData(getCurrentUser())) {
+    const view = document.createElement('div')
+    view.className = 'space-y-6'
+    view.innerHTML = `
+      <section>
+        <h2 class="text-xl font-semibold tracking-tight text-slate-900">Fichadas</h2>
+        <p class="mt-1 text-sm text-slate-500">Consultá los registros de asistencia de los empleados.</p>
+      </section>
+    `
+    view.append(createSelectEmpresaState())
+    container.replaceChildren(view)
+    return
+  }
+
   const view = document.createElement('div')
   view.className = 'space-y-6'
 

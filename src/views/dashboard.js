@@ -1,7 +1,9 @@
+import { getCurrentUser } from '../api/auth.js'
+import { canLoadTenantData } from '../api/empresa-context.js'
 import { getDashboardData } from '../api/dashboard.js'
 import { FICHADAS_LIMITE } from '../api/fichadas.js'
 import { createDashboardAlerts } from '../components/dashboard-alerts.js'
-import { createFeedbackState, createLoadingState } from '../components/feedback-state.js'
+import { createFeedbackState, createLoadingState, createSelectEmpresaState } from '../components/feedback-state.js'
 import { createRecentPunchesTable } from '../components/recent-punches-table.js'
 import { createStatCard } from '../components/stat-card.js'
 import { iconClock, iconLogin, iconLogout, iconUsers } from '../components/icons.js'
@@ -131,6 +133,17 @@ export function renderDashboard(container, { onNavigate } = {}) {
 
   async function load() {
     if (cancelled || inFlight) return
+
+    if (!canLoadTenantData(getCurrentUser())) {
+      hasSuccessfulData = false
+      refreshButton.disabled = true
+      setRefreshing(false)
+      banner.replaceChildren()
+      content.replaceChildren(createSelectEmpresaState())
+      return
+    }
+
+    refreshButton.disabled = false
 
     inFlight = true
     const seq = ++loadSeq

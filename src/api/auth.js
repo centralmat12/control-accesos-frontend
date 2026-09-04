@@ -1,4 +1,6 @@
 import { apiUrl } from '../config/api.js'
+import { isSuperadmin } from '../config/roles.js'
+import { clearEmpresaContexto } from './empresa-context.js'
 
 const SESSION_KEY = 'ca.auth.user'
 const TOKEN_KEY = 'ca.auth.token'
@@ -98,7 +100,7 @@ function userFromToken(token, fallbackEmail) {
   const user = {
     nombre,
     email,
-    rol,
+    rol: rol || 'Usuario',
   }
 
   if (Number.isFinite(empresaId) && empresaId > 0) {
@@ -161,10 +163,14 @@ export async function login({ email, password }) {
   writeToken(token)
 
   const user = userFromToken(token, normalizedEmail)
+  if (!isSuperadmin(user)) {
+    clearEmpresaContexto({ silent: true })
+  }
   writeSession(user)
   return user
 }
 
 export function logout() {
+  clearEmpresaContexto({ silent: true })
   clearSession()
 }

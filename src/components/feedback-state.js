@@ -29,6 +29,15 @@ export function createFeedbackState({ title, message, tone = 'neutral', actionLa
   return wrapper
 }
 
+export function createSelectEmpresaState(
+  message = 'Seleccioná una empresa para consultar la información.',
+) {
+  return createFeedbackState({
+    title: 'Seleccioná una empresa',
+    message,
+  })
+}
+
 export function createLoadingState(message = 'Cargando empleados...') {
   const wrapper = document.createElement('div')
   wrapper.className =

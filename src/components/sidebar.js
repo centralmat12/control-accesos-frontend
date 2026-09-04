@@ -1,7 +1,8 @@
-import { APP_NAME, PRIMARY_NAV_ITEMS } from '../config/navigation.js'
+import { APP_NAME, getNavItemsForUser } from '../config/navigation.js'
 import { NAV_ICONS } from './icons.js'
 
-export function createSidebar({ currentView, onNavigate }) {
+export function createSidebar({ currentView, user, onNavigate }) {
+  const navItems = getNavItemsForUser(user)
   const aside = document.createElement('aside')
   aside.id = 'app-sidebar'
   aside.className =
@@ -13,7 +14,7 @@ export function createSidebar({ currentView, onNavigate }) {
       <span class="text-sm font-semibold tracking-tight text-white">${APP_NAME}</span>
     </div>
     <nav class="flex-1 space-y-1 overflow-y-auto p-4" aria-label="Navegación principal">
-      ${PRIMARY_NAV_ITEMS.map((item) => {
+      ${navItems.map((item) => {
         const active = item.id === currentView
         const classes = active
           ? 'bg-blue-600 text-white shadow-sm'

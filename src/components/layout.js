@@ -23,7 +23,7 @@ export function createLayout({ currentView, user, onNavigate, onLogout }) {
 
   content.append(createHeader({ currentView, user, onLogout }), main)
   shell.append(content)
-  root.append(createSidebar({ currentView, onNavigate }), overlay, shell)
+  root.append(createSidebar({ currentView, user, onNavigate }), overlay, shell)
 
   return { root, main }
 }
