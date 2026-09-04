@@ -1,4 +1,4 @@
-import { getEmpresaActual, getEmpresas, empresaDisplayName } from '../api/empresas.js'
+import { getEmpresas, empresaDisplayName } from '../api/empresas.js'
 import {
   getEmpresaContexto,
   setEmpresaContexto,
@@ -22,7 +22,7 @@ function initials(nombre) {
 
 function sortEmpresas(empresas) {
   return [...empresas].sort((a, b) =>
-    empresaDisplayName(a, a.id).localeCompare(empresaDisplayName(b, b.id), 'es', {
+    empresaDisplayName(a).localeCompare(empresaDisplayName(b), 'es', {
       sensitivity: 'base',
     }),
   )
@@ -52,10 +52,10 @@ export function createHeader({ currentView, user, onLogout }) {
       </div>
     </div>
     <div class="flex min-w-0 items-center gap-3">
-      <div id="header-empresa" class="min-w-0"></div>
-      <div class="hidden text-right sm:block">
-        <p class="text-sm font-medium text-slate-800">${escapeHtml(user.nombre)}</p>
-        <p class="text-xs text-slate-500">${escapeHtml(user.rol)}</p>
+      ${superadmin ? '<div id="header-empresa" class="min-w-0"></div>' : ''}
+      <div class="hidden min-w-0 text-right sm:block">
+        <p class="truncate text-sm font-medium text-slate-800">${escapeHtml(user.nombre)}</p>
+        <p class="truncate text-xs text-slate-500">${escapeHtml(user.rol)}</p>
       </div>
       <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-slate-900 text-xs font-semibold text-white">${escapeHtml(initials(user.nombre))}</span>
       <button
@@ -69,8 +69,6 @@ export function createHeader({ currentView, user, onLogout }) {
     </div>
   `
 
-  const empresaSlot = header.querySelector('#header-empresa')
-
   header.querySelector('#sidebar-toggle')?.addEventListener('click', () => {
     setSidebarOpen(true)
   })
@@ -80,27 +78,10 @@ export function createHeader({ currentView, user, onLogout }) {
   })
 
   if (superadmin) {
-    void renderSuperadminSelector(empresaSlot)
-  } else {
-    void renderEmpresaLabel(empresaSlot, user)
+    void renderSuperadminSelector(header.querySelector('#header-empresa'))
   }
 
   return header
-}
-
-async function renderEmpresaLabel(slot, user) {
-  const label = document.createElement('p')
-  label.className = 'hidden max-w-[14rem] truncate text-right text-xs text-slate-500 sm:block'
-  label.textContent = user.empresaId ? `Empresa ${user.empresaId}` : ''
-  slot.replaceChildren(label)
-
-  try {
-    const empresa = await getEmpresaActual()
-    const name = empresaDisplayName(empresa, empresa?.id ?? user.empresaId)
-    if (name) label.textContent = name
-  } catch (error) {
-    if (error.message === 'Sesión expirada o no autorizada.') return
-  }
 }
 
 async function renderSuperadminSelector(slot) {
@@ -112,18 +93,21 @@ async function renderSuperadminSelector(slot) {
   select.innerHTML = `<option value="">Seleccioná una empresa</option>`
   slot.replaceChildren(select)
 
+  let empresas = []
   const contexto = getEmpresaContexto()
-  if (contexto?.id) {
-    select.append(new Option(empresaDisplayName(contexto, contexto.id), String(contexto.id), true, true))
+  const contextoNombre = empresaDisplayName(contexto)
+  if (contexto?.id && contextoNombre) {
+    select.append(new Option(contextoNombre, String(contexto.id), true, true))
   }
 
   try {
-    const empresas = sortEmpresas(await getEmpresas())
+    empresas = sortEmpresas(await getEmpresas())
     const selectedId = String(getEmpresaContexto()?.id ?? '')
     select.replaceChildren(new Option('Seleccioná una empresa', ''))
     empresas.forEach((empresa) => {
-      const option = new Option(empresaDisplayName(empresa, empresa.id), String(empresa.id))
-      select.append(option)
+      const label = empresaDisplayName(empresa)
+      if (!label) return
+      select.append(new Option(label, String(empresa.id)))
     })
     select.value = empresas.some((empresa) => String(empresa.id) === selectedId) ? selectedId : ''
     if (selectedId && select.value !== selectedId) {
@@ -141,10 +125,9 @@ async function renderSuperadminSelector(slot) {
       return
     }
 
+    const selected = empresas.find((empresa) => Number(empresa.id) === id)
     const option = select.selectedOptions[0]
-    setEmpresaContexto({
-      id,
-      nombre: option?.textContent ?? `Empresa ${id}`,
-    })
+    const nombre = empresaDisplayName(selected) || (option?.textContent || '').trim()
+    setEmpresaContexto(selected ?? { id, nombre })
   })
 }

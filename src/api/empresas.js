@@ -31,12 +31,30 @@ export function mapEmpresa(item) {
   }
 }
 
-export function empresaDisplayName(empresa, empresaId) {
-  if (empresa?.nombre || empresa?.nombreFantasia || empresa?.razonSocial) {
-    return empresa.nombre || empresa.nombreFantasia || empresa.razonSocial
-  }
+export function empresaDisplayName(empresa) {
+  return String(empresa?.nombre || empresa?.nombreFantasia || empresa?.razonSocial || '').trim()
+}
 
-  return empresaId ? `Empresa ${empresaId}` : ''
+let displayNameCache = { key: '', nombre: '' }
+
+function displayNameCacheKey(user = getCurrentUser()) {
+  if (!user) return ''
+  return `${user.email ?? ''}|${user.rol ?? ''}|${user.empresaId ?? ''}`
+}
+
+export function getCachedEmpresaNombre(user) {
+  const key = displayNameCacheKey(user)
+  if (!key || displayNameCache.key !== key) return ''
+  return displayNameCache.nombre
+}
+
+function rememberEmpresaNombre(empresa, user) {
+  const nombre = empresaDisplayName(empresa)
+  const key = displayNameCacheKey(user)
+  if (nombre && key) {
+    displayNameCache = { key, nombre }
+  }
+  return nombre
 }
 
 function normalizeEmpresas(payload) {
@@ -75,7 +93,9 @@ export async function getEmpresaActual() {
 
   try {
     const empresas = await getEmpresas()
-    return empresas[0] ?? null
+    const actual = empresas[0] ?? null
+    if (actual) rememberEmpresaNombre(actual, user)
+    return actual
   } catch (error) {
     if (error.message === 'Sesión expirada o no autorizada.') {
       throw error
