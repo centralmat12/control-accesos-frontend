@@ -1,5 +1,190 @@
 @import "tailwindcss";
 
+@custom-variant dark (&:where(.dark, .dark *));
+
+@layer base {
+  html {
+    background-color: var(--color-slate-50);
+  }
+
+    html.dark {
+        background-color: color-mix( in srgb, var(--color-slate-900) 80%, var(--color-blue-900) 20% );
+    }
+
+    html.dark body {
+            background-color: color-mix( in srgb, var(--color-slate-900) 80%, var(--color-blue-900) 20% );
+    }
+
+    .dark .bg-slate-50 {
+        background-color: color-mix( in srgb, var(--color-slate-900) 80%, var(--color-blue-900) 20% );
+    }
+
+    .dark .bg-white {
+        background-color: color-mix( in srgb, var(--color-slate-800) 88%, var(--color-blue-900) 12% );
+    }
+
+  input,
+  select,
+  textarea,
+  button {
+    color-scheme: inherit;
+  }
+
+  [aria-invalid="true"] {
+    border-color: var(--color-red-400);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-red-500) 18%, transparent);
+  }
+
+  html.dark [aria-invalid="true"] {
+    border-color: var(--color-red-550);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-red-40) 22%, transparent);
+  }
+}
+
+/*
+ * Adaptación central de la paleta neutra usada por las vistas existentes.
+ * Los colores semánticos conservan su significado y bajan intensidad en dark.
+ */
+@layer utilities {
+  .dark .bg-white {
+    background-color: var(--color-slate-800);
+  }
+
+  .dark .bg-slate-50 {
+    background-color: var(--color-slate-900);
+  }
+
+  .dark .bg-slate-100 {
+    background-color: var(--color-slate-700);
+  }
+
+  .dark .text-slate-900 {
+    color: var(--color-slate-100);
+  }
+
+  .dark .text-slate-800 {
+    color: var(--color-slate-200);
+  }
+
+  .dark .text-slate-700,
+  .dark .text-slate-600 {
+    color: var(--color-slate-300);
+  }
+
+  .dark .text-slate-500 {
+    color: var(--color-slate-400);
+  }
+
+  .dark .border-slate-100 {
+    border-color: var(--color-slate-800);
+  }
+
+  .dark .border-slate-200 {
+    border-color: var(--color-slate-700);
+  }
+
+  .dark .border-slate-300 {
+    border-color: var(--color-slate-600);
+  }
+
+  .dark .divide-slate-100 > :not(:last-child) {
+    border-color: var(--color-slate-800);
+  }
+
+  .dark .divide-slate-200 > :not(:last-child) {
+    border-color: var(--color-slate-700);
+  }
+
+  .dark .placeholder\:text-slate-400::placeholder {
+    color: var(--color-slate-500);
+  }
+
+  .dark .hover\:bg-slate-50:hover,
+  .dark .hover\:bg-slate-100:hover {
+    background-color: var(--color-slate-800);
+  }
+
+  .dark .hover\:text-slate-800:hover,
+  .dark .hover\:text-slate-900:hover {
+    color: var(--color-slate-100);
+  }
+
+  .dark .bg-blue-50 {
+    background-color: color-mix(in srgb, var(--color-blue-950) 65%, transparent);
+  }
+
+  .dark .bg-indigo-50 {
+    background-color: color-mix(in srgb, var(--color-indigo-950) 65%, transparent);
+  }
+
+  .dark .bg-emerald-50 {
+    background-color: color-mix(in srgb, var(--color-emerald-950) 65%, transparent);
+  }
+
+  .dark .bg-amber-50 {
+    background-color: color-mix(in srgb, var(--color-amber-950) 65%, transparent);
+  }
+
+  .dark .bg-red-50 {
+    background-color: color-mix(in srgb, var(--color-red-950) 65%, transparent);
+  }
+
+  .dark .border-blue-100,
+  .dark .border-blue-200 {
+    border-color: var(--color-blue-900);
+  }
+
+  .dark .border-emerald-200 {
+    border-color: var(--color-emerald-800);
+  }
+
+  .dark .border-amber-200 {
+    border-color: var(--color-amber-800);
+  }
+
+  .dark .border-red-200,
+  .dark .border-red-300 {
+    border-color: var(--color-red-800);
+  }
+
+  .dark .text-blue-800,
+  .dark .text-blue-700 {
+    color: var(--color-blue-300);
+  }
+
+  .dark .text-indigo-700 {
+    color: var(--color-indigo-300);
+  }
+
+  .dark .text-emerald-900,
+  .dark .text-emerald-800,
+  .dark .text-emerald-700 {
+    color: var(--color-emerald-300);
+  }
+
+  .dark .text-amber-950,
+  .dark .text-amber-900,
+  .dark .text-amber-800,
+  .dark .text-amber-700 {
+    color: var(--color-amber-300);
+  }
+
+  .dark .text-red-900,
+  .dark .text-red-800,
+  .dark .text-red-700,
+  .dark .text-red-600 {
+    color: var(--color-red-300);
+  }
+
+  .dark .hover\:bg-blue-50:hover {
+    background-color: color-mix(in srgb, var(--color-blue-950) 65%, transparent);
+  }
+
+  .dark .hover\:bg-red-50:hover {
+    background-color: color-mix(in srgb, var(--color-red-950) 65%, transparent);
+  }
+}
+
 body {
   margin: 0;
 }

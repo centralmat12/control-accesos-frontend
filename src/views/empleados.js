@@ -9,9 +9,11 @@ import {
   createEmpleadoRecord,
 } from '../components/empleado-form.js'
 import { createEmpleadosTable, fullName } from '../components/empleados-table.js'
-import { createFeedbackState, createLoadingState, createSelectEmpresaState } from '../components/feedback-state.js'
+import { createFeedbackState, createSelectEmpresaState } from '../components/feedback-state.js'
 import { createPagination } from '../components/pagination.js'
 import { openModal } from '../components/modal.js'
+import { createDetailSkeleton, createTableSkeleton } from '../components/skeleton.js'
+import { showToast } from '../components/toast.js'
 import { filterEmpleados, sortEmpleados } from '../utils/empleado-list.js'
 import { summarizeEmpleadoDatos } from '../utils/empleado-alerts.js'
 import { uniqueCatalogValues } from '../utils/format.js'
@@ -304,7 +306,9 @@ export async function renderEmpleados(container, { initialQuery } = {}) {
     paginationContainer.replaceChildren()
     countLabel.textContent = ''
     if (!keepBanner) clearBanner()
-    results.replaceChildren(createLoadingState('Cargando empleados...'))
+    results.replaceChildren(
+      createTableSkeleton({ rows: 8, columns: 6, label: 'Cargando empleados' }),
+    )
 
     try {
       empleados = await getEmpleados()
@@ -355,11 +359,8 @@ export async function renderEmpleados(container, { initialQuery } = {}) {
       onSubmit: async (dto) => {
         await createEmpleado(dto)
         closeActiveModal()
-        showBanner({
-          title: 'Empleado creado',
-          message: 'El alta se registró correctamente. El enrolamiento de huella se hace desde el agente local.',
-        })
-        await loadEmpleados({ keepBanner: true })
+        showToast({ message: 'Empleado creado correctamente.', tone: 'success' })
+        await loadEmpleados()
       },
     })
 
@@ -375,9 +376,7 @@ export async function renderEmpleados(container, { initialQuery } = {}) {
   }
 
   async function openDetail(empleado) {
-    const loading = document.createElement('p')
-    loading.className = 'text-sm text-slate-500'
-    loading.textContent = 'Cargando empleado...'
+    const loading = createDetailSkeleton()
 
     const modal = openModal({
       title: fullName(empleado) || 'Empleado',
@@ -402,10 +401,7 @@ export async function renderEmpleados(container, { initialQuery } = {}) {
             syncFilterOptions()
             renderSummary()
             renderResults()
-            showBanner({
-              title: 'Empleado actualizado correctamente',
-              message: 'Los datos se refrescaron desde la API.',
-            })
+            showToast({ message: 'Cambios guardados.', tone: 'success' })
           },
         }),
       )
@@ -436,10 +432,7 @@ export async function renderEmpleados(container, { initialQuery } = {}) {
         syncFilterOptions()
         renderSummary()
         renderResults()
-        showBanner({
-          title: 'Empleado desactivado',
-          message: `${fullName(empleado) || 'El empleado'} ya no figura en el listado de activos.`,
-        })
+        showToast({ message: 'Empleado desactivado.', tone: 'success' })
       },
     })
 

@@ -1,5 +1,6 @@
 import { createHeader } from './header.js'
 import { createSidebar, setSidebarOpen } from './sidebar.js'
+import { getSidebarCollapsed } from '../config/sidebar.js'
 
 export function createLayout({ currentView, user, onNavigate, onLogout }) {
   const root = document.createElement('div')
@@ -12,7 +13,10 @@ export function createLayout({ currentView, user, onNavigate, onLogout }) {
   overlay.addEventListener('click', () => setSidebarOpen(false))
 
   const shell = document.createElement('div')
-  shell.className = 'min-w-0 lg:pl-72'
+  shell.id = 'app-shell'
+  shell.className = `min-w-0 transition-[padding] duration-200 ${
+    getSidebarCollapsed() ? 'lg:pl-20' : 'lg:pl-72'
+  }`
 
   const content = document.createElement('div')
   content.className = 'flex min-h-screen min-w-0 flex-col'

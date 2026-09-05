@@ -6,12 +6,28 @@ export function createFeedbackState({ title, message, tone = 'neutral', actionLa
     error: 'border-red-200 bg-red-50 text-red-900',
     success: 'border-emerald-200 bg-emerald-50 text-emerald-900',
   }
+  const icons = {
+    neutral: {
+      symbol: '—',
+      classes: 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-300',
+    },
+    error: {
+      symbol: '!',
+      classes: 'bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300',
+    },
+    success: {
+      symbol: '✓',
+      classes: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300',
+    },
+  }
+  const icon = icons[tone] ?? icons.neutral
 
   const wrapper = document.createElement('div')
-  wrapper.className = `rounded-xl border px-6 py-10 text-center shadow-sm ${tones[tone] ?? tones.neutral}`
+  wrapper.className = `rounded-xl border px-6 py-8 text-center shadow-sm ${tones[tone] ?? tones.neutral}`
 
   wrapper.innerHTML = `
-    <h2 class="text-base font-semibold">${escapeHtml(title)}</h2>
+    <span class="mx-auto flex h-9 w-9 items-center justify-center rounded-full text-sm font-semibold ${icon.classes}" aria-hidden="true">${icon.symbol}</span>
+    <h2 class="mt-3 text-base font-semibold">${escapeHtml(title)}</h2>
     <p class="mt-2 text-sm ${tone === 'error' ? 'text-red-700' : tone === 'success' ? 'text-emerald-800' : 'text-slate-500'}">${escapeHtml(message)}</p>
     ${
       actionLabel

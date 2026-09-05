@@ -5,10 +5,11 @@ import { empresaDisplayName, getEmpresaActual } from '../api/empresas.js'
 import { FICHADAS_LIMITE, getFichadas } from '../api/fichadas.js'
 import { createEmpleadoCombobox } from '../components/empleado-combobox.js'
 import { createFichadasTable } from '../components/fichadas-table.js'
-import { createFeedbackState, createLoadingState, createSelectEmpresaState } from '../components/feedback-state.js'
+import { createFeedbackState, createSelectEmpresaState } from '../components/feedback-state.js'
 import { printReport } from '../components/fichadas-print.js'
 import { createJornadasTable } from '../components/jornadas-table.js'
 import { createPagination } from '../components/pagination.js'
+import { createTableSkeleton } from '../components/skeleton.js'
 import { createStatCard } from '../components/stat-card.js'
 import { iconCalendar, iconClock, iconLogin, iconLogout } from '../components/icons.js'
 import { buildCsv, downloadCsv } from '../utils/csv.js'
@@ -398,7 +399,9 @@ export async function renderFichadas(container) {
     countLabel.textContent = ''
     paginationContainer.replaceChildren()
     setExportEnabled(false)
-    results.replaceChildren(createLoadingState('Cargando fichadas...'))
+    results.replaceChildren(
+      createTableSkeleton({ rows: 8, columns: 6, label: 'Cargando fichadas' }),
+    )
 
     try {
       const [fichadasResult, empleadosResult, empresaResult] = await Promise.allSettled([

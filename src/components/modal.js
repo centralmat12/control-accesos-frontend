@@ -25,7 +25,7 @@ export function openModal({ title, content, onClose, labelledBy = 'app-modal-tit
   const closeButton = document.createElement('button')
   closeButton.type = 'button'
   closeButton.className =
-    'rounded-lg px-2 py-1 text-lg leading-none text-slate-500 hover:bg-slate-100 hover:text-slate-800'
+    'rounded-lg px-2 py-1 text-lg leading-none text-slate-500 hover:bg-slate-100 hover:text-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500'
   closeButton.setAttribute('aria-label', 'Cerrar')
   closeButton.textContent = '×'
 
@@ -38,12 +38,14 @@ export function openModal({ title, content, onClose, labelledBy = 'app-modal-tit
   overlay.append(dialog)
 
   let closed = false
+  const previousFocus = document.activeElement
 
   const close = () => {
     if (closed) return
     closed = true
     document.removeEventListener('keydown', onKeyDown)
     overlay.remove()
+    if (previousFocus instanceof HTMLElement && previousFocus.isConnected) previousFocus.focus()
     onClose?.()
   }
 
@@ -69,6 +71,11 @@ export function openModal({ title, content, onClose, labelledBy = 'app-modal-tit
 
   const host = document.getElementById('app') ?? document.body
   host.append(overlay)
+  queueMicrotask(() => {
+    const preferredFocus = dialog.querySelector('[data-autofocus]')
+    if (preferredFocus) preferredFocus.focus()
+    else if (!dialog.contains(document.activeElement)) closeButton.focus()
+  })
 
   return { overlay, dialog, close }
 }

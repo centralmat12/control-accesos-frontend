@@ -17,6 +17,13 @@
 import { pick } from '../utils/pick.js'
 import { apiFetch, readErrorMessage } from './http.js'
 
+function pickOptionalBoolean(item, ...keys) {
+  for (const key of keys) {
+    if (item?.[key] === true || item?.[key] === false) return item[key]
+  }
+  return undefined
+}
+
 function mapEmpleado(item) {
   return {
     id: pick(item, 'id', 'Id'),
@@ -30,6 +37,7 @@ function mapEmpleado(item) {
     categoria: pick(item, 'categoria', 'Categoria'),
     sucursal: pick(item, 'sucursal', 'Sucursal'),
     horario: pick(item, 'horario', 'Horario'),
+    tieneHuella: pickOptionalBoolean(item, 'tieneHuella', 'TieneHuella'),
     activo: Boolean(pick(item, 'activo', 'Activo')),
   }
 }

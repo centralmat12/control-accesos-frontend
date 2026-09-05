@@ -1,21 +1,27 @@
+import { EMPLEADO_DATA_FIELDS, normalizeFieldValue } from './empleado-data.js'
+
 function isBlank(value) {
   return !String(value ?? '').trim()
 }
 
-function requiredIncomplete(empleado) {
-  return ['nombre', 'apellido', 'dni', 'cuil'].some((key) => isBlank(empleado[key]))
-}
+export function empleadoFaltantes(empleado) {
+  const missing = EMPLEADO_DATA_FIELDS
+    .filter(({ key }) => isBlank(empleado?.[key]))
+    .map(({ key, label }) => ({ key, label }))
 
-function operationalIncomplete(empleado) {
-  return isBlank(empleado.horario) || isBlank(empleado.departamento) || isBlank(empleado.sucursal)
+  if (empleado?.tieneHuella === false) {
+    missing.push({ key: 'tieneHuella', label: 'Huella enrolada' })
+  }
+
+  return missing
 }
 
 /**
  * Misma definición de “pendiente” que las alertas del Dashboard.
- * No incluye categoría ni legajo. No usa huella.
+ * La huella solo se considera cuando la API devuelve false explícitamente.
  */
 export function empleadoTienePendientes(empleado) {
-  return requiredIncomplete(empleado) || operationalIncomplete(empleado)
+  return empleadoFaltantes(empleado).length > 0
 }
 
 export function summarizeEmpleadoDatos(empleados) {
@@ -30,7 +36,10 @@ export function summarizeEmpleadoDatos(empleados) {
 }
 
 export function empleadoAlertLabel(empleado) {
-  const name = [empleado.nombre, empleado.apellido].map((part) => String(part ?? '').trim()).filter(Boolean).join(' ')
+  const name = [empleado.nombre, empleado.apellido]
+    .map((part, index) => normalizeFieldValue(index === 0 ? 'nombre' : 'apellido', part))
+    .filter(Boolean)
+    .join(' ')
   if (name) return name
 
   const dni = String(empleado.dni ?? '').trim()
@@ -52,58 +61,21 @@ export function empleadoSearchHint(empleado) {
   return String(empleado.cuil ?? '').trim()
 }
 
-function countPhrase(count) {
-  return count === 1 ? '1 empleado' : `${count} empleados`
-}
-
 /**
  * Alertas a partir de GET /api/empleados (solo activos).
- * No usa huella ni fichadas.
+ * No consulta endpoints biométricos.
  */
 export function buildEmpleadoAlertas(empleados) {
   const activos = Array.isArray(empleados) ? empleados : []
-
-  const operational = [
-    {
-      id: 'horario',
-      employees: activos.filter((item) => isBlank(item.horario)),
-      message: (count) => `${countPhrase(count)} sin horario asignado`,
-    },
-    {
-      id: 'departamento',
-      employees: activos.filter((item) => isBlank(item.departamento)),
-      message: (count) => `${countPhrase(count)} sin departamento`,
-    },
-    {
-      id: 'sucursal',
-      employees: activos.filter((item) => isBlank(item.sucursal)),
-      message: (count) => `${countPhrase(count)} sin sucursal`,
-    },
-  ]
-    .filter((item) => item.employees.length > 0)
-    .map((item) => ({
-      id: item.id,
-      kind: 'operational',
-      text: item.message(item.employees.length),
-      employees: item.employees,
-    }))
-
-  const incomplete = activos.filter(requiredIncomplete)
-  const inconsistencies =
-    incomplete.length > 0
-      ? [
-          {
-            id: 'obligatorios',
-            kind: 'inconsistency',
-            text: `${countPhrase(incomplete.length)} con datos obligatorios incompletos`,
-            employees: incomplete,
-          },
-        ]
+  const items = activos.flatMap((empleado, index) => {
+    const missing = empleadoFaltantes(empleado)
+    return missing.length > 0
+      ? [{ id: empleado.id ?? index, empleado, missing }]
       : []
+  })
 
   return {
-    operational,
-    inconsistencies,
-    items: [...operational, ...inconsistencies],
+    count: items.length,
+    items,
   }
 }

@@ -3,6 +3,7 @@ import { getCurrentUser, isAuthenticated, logout } from './api/auth.js'
 import { EMPRESA_CONTEXTO_EVENT } from './api/empresa-context.js'
 import { createLayout } from './components/layout.js'
 import { setSidebarOpen } from './components/sidebar.js'
+import { createViewSkeleton } from './components/skeleton.js'
 import { renderDashboard } from './views/dashboard.js'
 import { renderEmpleados } from './views/empleados.js'
 import { renderFichadas } from './views/fichadas.js'
@@ -102,9 +103,7 @@ async function renderView(main, viewId, extras = {}) {
     return
   }
 
-  main.innerHTML = `
-    <div class="flex items-center justify-center py-16 text-sm text-slate-500">Cargando...</div>
-  `
+  main.replaceChildren(createViewSkeleton())
   const cleanup = await render(main, extras)
   if (typeof cleanup === 'function') activeViewCleanup = cleanup
 }

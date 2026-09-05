@@ -1,6 +1,15 @@
 import { displayValue, escapeHtml, formatHorarioDisplay } from '../utils/format.js'
+import {
+  CUIL_LENGTH,
+  DNI_MAX_LENGTH,
+  normalizeFieldValue,
+  normalizeEmpleadoValues,
+  validateEmpleadoValues,
+} from '../utils/empleado-data.js'
 import { iconPencil } from './icons.js'
+import { employeeStatusBadge } from './badge.js'
 import { openModal } from './modal.js'
+import { showToast } from './toast.js'
 
 const OPTIONAL_MAX = 50
 const NEW_OPTION = '__nuevo__'
@@ -31,7 +40,18 @@ function inputClass() {
   return 'w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none placeholder:text-slate-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20'
 }
 
-function fieldTemplate({ id, name, label, required = false, maxLength, autocomplete = 'off' }) {
+function fieldTemplate({
+  id,
+  name,
+  label,
+  required = false,
+  maxLength,
+  autocomplete = 'off',
+  inputMode,
+  help,
+}) {
+  const describedBy = [help ? `${id}-help` : '', `${id}-error`].filter(Boolean).join(' ')
+
   return `
     <div>
       <label for="${id}" class="mb-1.5 block text-sm font-medium text-slate-700">${label}</label>
@@ -41,10 +61,13 @@ function fieldTemplate({ id, name, label, required = false, maxLength, autocompl
         type="text"
         maxlength="${maxLength}"
         autocomplete="${autocomplete}"
+        ${inputMode ? `inputmode="${inputMode}"` : ''}
+        aria-describedby="${describedBy}"
         ${required ? 'required' : ''}
         class="${inputClass()}"
       />
-      <p id="${id}-error" class="mt-1 hidden text-sm text-red-600"></p>
+      ${help ? `<p id="${id}-help" class="mt-1 text-xs text-slate-500">${help}</p>` : ''}
+      <p id="${id}-error" class="mt-1 hidden text-sm text-red-600" aria-live="polite"></p>
     </div>
   `
 }
@@ -76,13 +99,19 @@ function setControlError(errorEl, controls, message) {
       errorEl.textContent = message
       errorEl.classList.remove('hidden')
     }
-    targets.forEach((control) => control.classList.add('border-red-300'))
+    targets.forEach((control) => {
+      control.classList.add('border-red-300')
+      control.setAttribute('aria-invalid', 'true')
+    })
   } else {
     if (errorEl) {
       errorEl.textContent = ''
       errorEl.classList.add('hidden')
     }
-    targets.forEach((control) => control.classList.remove('border-red-300'))
+    targets.forEach((control) => {
+      control.classList.remove('border-red-300')
+      control.removeAttribute('aria-invalid')
+    })
   }
 }
 
@@ -141,42 +170,6 @@ function readHorario(form) {
   return { desde, hasta }
 }
 
-function validate(values) {
-  const errors = {}
-
-  if (!values.nombre) errors.nombre = 'Ingresá el nombre.'
-  else if (values.nombre.length > 50) errors.nombre = 'El nombre no puede superar 50 caracteres.'
-
-  if (!values.apellido) errors.apellido = 'Ingresá el apellido.'
-  else if (values.apellido.length > 50) errors.apellido = 'El apellido no puede superar 50 caracteres.'
-
-  if (!values.dni) errors.dni = 'Ingresá el DNI.'
-  else if (values.dni.length > 15) errors.dni = 'El DNI no puede superar 15 caracteres.'
-
-  if (!values.cuil) errors.cuil = 'Ingresá el CUIL.'
-  else if (values.cuil.length > 15) errors.cuil = 'El CUIL no puede superar 15 caracteres.'
-
-  if (values.legajo && values.legajo.length > 20) {
-    errors.legajo = 'El legajo no puede superar 20 caracteres.'
-  }
-  if (values.departamento && values.departamento.length > OPTIONAL_MAX) {
-    errors.departamento = 'El departamento no puede superar 50 caracteres.'
-  }
-  if (values.categoria && values.categoria.length > OPTIONAL_MAX) {
-    errors.categoria = 'La categoría no puede superar 50 caracteres.'
-  }
-  if (values.sucursal && values.sucursal.length > OPTIONAL_MAX) {
-    errors.sucursal = 'La sucursal no puede superar 50 caracteres.'
-  }
-  if (values.horarioError) {
-    errors.horario = values.horarioError
-  } else if (values.horario && values.horario.length > OPTIONAL_MAX) {
-    errors.horario = 'El horario no puede superar 50 caracteres.'
-  }
-
-  return errors
-}
-
 function readValues(form, catalogs) {
   const data = new FormData(form)
   const { desde, hasta } = readHorario(form)
@@ -189,7 +182,7 @@ function readValues(form, catalogs) {
     horario = `${desde}-${hasta}`
   }
 
-  return {
+  return normalizeEmpleadoValues({
     legajo: optionalValue(data.get('legajo')),
     nombre: String(data.get('nombre') ?? '').trim(),
     apellido: String(data.get('apellido') ?? '').trim(),
@@ -200,7 +193,7 @@ function readValues(form, catalogs) {
     sucursal: readCatalogField(form, 'sucursal', catalogs.sucursal),
     horario,
     horarioError,
-  }
+  })
 }
 
 function splitHorario(horario) {
@@ -218,23 +211,29 @@ function canonicalHorario(horario) {
   return desde && hasta ? `${desde}-${hasta}` : null
 }
 
-function snapshotEditable(empleado) {
+function snapshotEditable(empleado, { normalize = false } = {}) {
+  const source = normalize ? normalizeEmpleadoValues(empleado) : empleado
+  const rawOptional = (value) => {
+    const current = String(value ?? '')
+    return current || null
+  }
+
   return {
-    legajo: optionalValue(empleado.legajo),
-    nombre: String(empleado.nombre ?? '').trim(),
-    apellido: String(empleado.apellido ?? '').trim(),
-    dni: String(empleado.dni ?? '').trim(),
-    cuil: String(empleado.cuil ?? '').trim(),
-    departamento: optionalValue(empleado.departamento),
-    categoria: optionalValue(empleado.categoria),
-    sucursal: optionalValue(empleado.sucursal),
-    horario: canonicalHorario(empleado.horario),
+    legajo: rawOptional(source.legajo),
+    nombre: String(source.nombre ?? ''),
+    apellido: String(source.apellido ?? ''),
+    dni: String(source.dni ?? ''),
+    cuil: String(source.cuil ?? ''),
+    departamento: rawOptional(source.departamento),
+    categoria: rawOptional(source.categoria),
+    sucursal: rawOptional(source.sucursal),
+    horario: canonicalHorario(source.horario),
   }
 }
 
 function diffEmpleadoFields(original, draft) {
   const before = snapshotEditable(original)
-  const after = snapshotEditable(draft)
+  const after = snapshotEditable(draft, { normalize: true })
 
   return EDITABLE_FIELDS.flatMap(({ key, label }) => {
     const previous = before[key]
@@ -263,7 +262,7 @@ function diffEmpleadoFields(original, draft) {
  */
 export function buildEmpleadoPatchDto(original, draft) {
   const before = snapshotEditable(original)
-  const after = snapshotEditable(draft)
+  const after = snapshotEditable(draft, { normalize: true })
   const dto = {}
 
   for (const { key } of EDITABLE_FIELDS) {
@@ -304,16 +303,17 @@ function fillSelect(select, values, current = '') {
 }
 
 function fillEmpleadoForm(form, values) {
+  const normalized = normalizeEmpleadoValues(values)
   const setInput = (name, value) => {
     const input = form.querySelector(`[name="${name}"]`)
     if (input) input.value = value ?? ''
   }
 
-  setInput('legajo', values.legajo ?? '')
-  setInput('nombre', values.nombre ?? '')
-  setInput('apellido', values.apellido ?? '')
-  setInput('dni', values.dni ?? '')
-  setInput('cuil', values.cuil ?? '')
+  setInput('legajo', normalized.legajo ?? '')
+  setInput('nombre', normalized.nombre ?? '')
+  setInput('apellido', normalized.apellido ?? '')
+  setInput('dni', normalized.dni ?? '')
+  setInput('cuil', normalized.cuil ?? '')
 
   const { desde, hasta } = splitHorario(values.horario)
   setInput('horarioDesde', desde)
@@ -340,6 +340,21 @@ function bindCatalogField(form, name) {
   syncNuevo()
 }
 
+function fieldNameForControl(control) {
+  const name = control?.name ?? ''
+  if (name === 'horarioDesde' || name === 'horarioHasta') return 'horario'
+  if (name.endsWith('Choice')) return name.replace(/Choice$/, '')
+  if (name.endsWith('Nuevo')) return name.replace(/Nuevo$/, '')
+  return name
+}
+
+function sanitizeDigits(input, maxDigits) {
+  const sanitized = input.value.replace(/\D/g, '').slice(0, maxDigits)
+  const rejectedCharacters = sanitized !== input.value
+  if (rejectedCharacters) input.value = sanitized
+  return rejectedCharacters
+}
+
 export function createEmpleadoForm({
   empresaId,
   catalogs = {},
@@ -361,11 +376,33 @@ export function createEmpleadoForm({
     <form id="empleado-form" class="space-y-4" lang="es-AR" novalidate>
       <p id="empleado-form-error" class="hidden rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800" role="alert"></p>
       <div class="grid gap-4 sm:grid-cols-2">
-        ${fieldTemplate({ id: 'empleado-legajo', name: 'legajo', label: 'Legajo', maxLength: 20 })}
-        ${fieldTemplate({ id: 'empleado-dni', name: 'dni', label: 'DNI', required: true, maxLength: 15 })}
+        ${fieldTemplate({
+          id: 'empleado-legajo',
+          name: 'legajo',
+          label: 'Legajo',
+          maxLength: 20,
+          help: 'Admite letras y números; el guion solo puede utilizarse entre bloques.',
+        })}
+        ${fieldTemplate({
+          id: 'empleado-dni',
+          name: 'dni',
+          label: 'DNI (sin puntos ni guiones)',
+          required: true,
+          maxLength: DNI_MAX_LENGTH,
+          inputMode: 'numeric',
+          help: 'Solo números.',
+        })}
         ${fieldTemplate({ id: 'empleado-nombre', name: 'nombre', label: 'Nombre', required: true, maxLength: 50, autocomplete: 'given-name' })}
         ${fieldTemplate({ id: 'empleado-apellido', name: 'apellido', label: 'Apellido', required: true, maxLength: 50, autocomplete: 'family-name' })}
-        ${fieldTemplate({ id: 'empleado-cuil', name: 'cuil', label: 'CUIL', required: true, maxLength: 15 })}
+        ${fieldTemplate({
+          id: 'empleado-cuil',
+          name: 'cuil',
+          label: 'CUIL (sin puntos ni guiones)',
+          required: true,
+          maxLength: CUIL_LENGTH,
+          inputMode: 'numeric',
+          help: 'Ingresá los 11 números.',
+        })}
         ${CATALOG_FIELDS.map((field) => catalogFieldTemplate(field)).join('')}
         <div class="sm:col-span-2">
           <p class="mb-1.5 text-sm font-medium text-slate-700">Horario</p>
@@ -428,6 +465,73 @@ export function createEmpleadoForm({
 
   if (initialValues) fillEmpleadoForm(form, initialValues)
 
+  function currentErrors() {
+    return validateEmpleadoValues(readValues(form, catalogOptions), {
+      initialValues,
+      legacyValues: catalogOptions,
+    })
+  }
+
+  function validateField(name) {
+    if (!name) return
+    setFieldError(form, name, currentErrors()[name] ?? '')
+  }
+
+  function syncSubmitState() {
+    const hasValidationErrors = Object.keys(currentErrors()).length > 0
+    const hasVisibleErrors = Boolean(form.querySelector('[aria-invalid="true"]'))
+    submitButton.disabled =
+      form.dataset.submitting === 'true' || hasValidationErrors || hasVisibleErrors
+  }
+
+  form.addEventListener('input', (event) => {
+    const control = event.target
+    const name = fieldNameForControl(control)
+    let rejectedCharacters = false
+
+    if (name === 'dni') {
+      rejectedCharacters = sanitizeDigits(control, DNI_MAX_LENGTH)
+    } else if (name === 'cuil') {
+      rejectedCharacters = sanitizeDigits(control, CUIL_LENGTH)
+    }
+
+    if (rejectedCharacters) {
+      setFieldError(
+        form,
+        name,
+        name === 'dni'
+          ? 'El DNI debe contener entre 7 y 8 números.'
+          : 'El CUIL debe contener exactamente 11 números.',
+      )
+    } else {
+      validateField(name)
+    }
+    syncSubmitState()
+  })
+
+  form.addEventListener('focusout', (event) => {
+    const control = event.target
+    const name = fieldNameForControl(control)
+    if (control?.matches?.('input[type="text"]') && name) {
+      control.value = normalizeFieldValue(name, control.value)
+    }
+    validateField(name)
+    syncSubmitState()
+  })
+
+  form.addEventListener('change', (event) => {
+    validateField(fieldNameForControl(event.target))
+    syncSubmitState()
+  })
+
+  if (initialValues) {
+    const initialErrors = currentErrors()
+    ;['dni', 'cuil'].forEach((name) => {
+      if (initialErrors[name]) setFieldError(form, name, initialErrors[name])
+    })
+  }
+  syncSubmitState()
+
   function showFormError(message) {
     if (!message) {
       formError.textContent = ''
@@ -438,15 +542,6 @@ export function createEmpleadoForm({
     formError.textContent = message
     formError.classList.remove('hidden')
   }
-
-  form.querySelectorAll('input[type="text"]').forEach((input) => {
-    input.addEventListener('input', () => {
-      const name = input.name.replace(/Nuevo$/, '')
-      setFieldError(form, name, '')
-    })
-  })
-  form.querySelector('[name="horarioDesde"]')?.addEventListener('input', () => setFieldError(form, 'horario', ''))
-  form.querySelector('[name="horarioHasta"]')?.addEventListener('input', () => setFieldError(form, 'horario', ''))
 
   cancelButton.addEventListener('click', () => {
     onCancel()
@@ -463,11 +558,15 @@ export function createEmpleadoForm({
     }
 
     const values = readValues(form, catalogOptions)
-    const errors = validate(values)
+    const errors = validateEmpleadoValues(values, {
+      initialValues,
+      legacyValues: catalogOptions,
+    })
     const errorNames = Object.keys(errors)
 
     if (errorNames.length > 0) {
       errorNames.forEach((name) => setFieldError(form, name, errors[name]))
+      syncSubmitState()
       const first = errorNames[0]
       const focusTarget =
         form.querySelector(`[name="${first}"]`) ||
@@ -478,6 +577,7 @@ export function createEmpleadoForm({
       return
     }
 
+    form.dataset.submitting = 'true'
     submitButton.disabled = true
     submitButton.textContent = 'Guardando...'
     cancelButton.disabled = true
@@ -490,12 +590,15 @@ export function createEmpleadoForm({
         ...dtoFields,
       })
     } catch (error) {
-      showFormError(error.message || 'No se pudo guardar el empleado.')
+      const message = error.message || 'No se pudieron guardar los cambios.'
+      showFormError(message)
+      showToast({ message, tone: 'error' })
     } finally {
       if (submitButton.isConnected) {
-        submitButton.disabled = false
+        delete form.dataset.submitting
         submitButton.textContent = submitLabel
         cancelButton.disabled = false
+        syncSubmitState()
       }
     }
   })
@@ -518,7 +621,6 @@ export function createEmpleadoDetail(empleado) {
     ['Categoría', empleado.categoria],
     ['Sucursal', empleado.sucursal],
     ['Horario', horario],
-    ['Estado', empleado.activo ? 'Activo' : 'Inactivo'],
   ]
 
   wrapper.innerHTML = `
@@ -534,6 +636,10 @@ export function createEmpleadoDetail(empleado) {
         )
         .join('')}
     </dl>
+    <div class="mt-4 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-center">
+      <p class="text-xs font-medium uppercase tracking-wide text-slate-500">Estado</p>
+      <div class="mt-2 flex justify-center">${employeeStatusBadge(empleado.activo)}</div>
+    </div>
     <p class="mt-4 text-xs text-slate-500">La información biométrica no se gestiona en este panel. El enrolamiento de huella se realiza desde el agente local.</p>
   `
 
@@ -542,19 +648,12 @@ export function createEmpleadoDetail(empleado) {
 
 function createReadonlyMeta(empleado) {
   const meta = document.createElement('div')
-  meta.className = 'mb-4 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3'
-  const items = [['Estado', empleado.activo ? 'Activo' : 'Inactivo']]
-
-  meta.innerHTML = items
-    .map(
-      ([label, value]) => `
-        <div>
-          <p class="text-xs font-medium uppercase tracking-wide text-slate-500">${escapeHtml(label)}</p>
-          <p class="mt-1 text-sm text-slate-900">${displayValue(value)}</p>
-        </div>
-      `,
-    )
-    .join('')
+  meta.className =
+    'mb-4 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-center'
+  meta.innerHTML = `
+    <p class="text-xs font-medium uppercase tracking-wide text-slate-500">Estado</p>
+    <div class="mt-2 flex justify-center">${employeeStatusBadge(empleado.activo)}</div>
+  `
 
   return meta
 }
@@ -579,7 +678,7 @@ function promptEmpleadoChangesConfirm(changes) {
           .join('')}
       </div>
       <div class="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-        <button type="button" data-action="cancel" class="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100">
+        <button type="button" data-action="cancel" data-autofocus class="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500">
           Cancelar
         </button>
         <button type="button" data-action="confirm" class="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-500">
@@ -690,14 +789,15 @@ export function createDeactivateConfirm({ empleado, onCancel, onConfirm }) {
       <button
         type="button"
         id="empleado-deactivate-cancel"
-        class="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100"
+        data-autofocus
+        class="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
       >
         Cancelar
       </button>
       <button
         type="button"
         id="empleado-deactivate-confirm"
-        class="rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-500 disabled:cursor-not-allowed disabled:opacity-60"
+        class="rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
       >
         Desactivar
       </button>
@@ -720,8 +820,10 @@ export function createDeactivateConfirm({ empleado, onCancel, onConfirm }) {
     try {
       await onConfirm()
     } catch (err) {
-      error.textContent = err.message || 'No se pudo desactivar el empleado.'
+      const message = err.message || 'No se pudo desactivar el empleado.'
+      error.textContent = message
       error.classList.remove('hidden')
+      showToast({ message, tone: 'error' })
       confirmButton.disabled = false
       cancelButton.disabled = false
       confirmButton.textContent = 'Desactivar'

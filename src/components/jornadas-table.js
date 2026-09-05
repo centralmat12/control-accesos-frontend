@@ -8,7 +8,7 @@ export function createJornadasTable(jornadas) {
   const rows = jornadas
     .map(
       (item) => `
-        <tr class="hover:bg-slate-50">
+        <tr class="transition-colors hover:bg-slate-50 dark:hover:bg-slate-800/70">
           <td class="whitespace-nowrap px-4 py-3 text-sm font-medium text-slate-900">${displayValue(item.empleado)}</td>
           <td class="whitespace-nowrap px-4 py-3 text-sm text-slate-600">${displayValue(item.legajo)}</td>
           <td class="whitespace-nowrap px-4 py-3 text-sm text-slate-600">${item.fecha ? formatDate(new Date(`${item.fecha}T12:00:00`)) : '—'}</td>
@@ -23,9 +23,9 @@ export function createJornadasTable(jornadas) {
     .join('')
 
   section.innerHTML = `
-    <div class="overflow-x-auto">
+    <div class="max-h-[65vh] overflow-auto">
       <table class="min-w-full divide-y divide-slate-200">
-        <thead class="bg-slate-50">
+        <thead class="sticky top-0 z-10 bg-slate-50 shadow-[0_1px_0_0_var(--color-slate-200)] dark:bg-slate-800 dark:shadow-[0_1px_0_0_var(--color-slate-700)]">
           <tr>
             <th scope="col" class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Empleado</th>
             <th scope="col" class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Legajo</th>
