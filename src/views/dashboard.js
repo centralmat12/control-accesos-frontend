@@ -1,8 +1,12 @@
+import { getCurrentUser } from '../api/auth.js'
+import { canLoadTenantData } from '../api/empresa-context.js'
 import { getDashboardData } from '../api/dashboard.js'
 import { FICHADAS_LIMITE } from '../api/fichadas.js'
 import { createDashboardAlerts } from '../components/dashboard-alerts.js'
-import { createFeedbackState, createLoadingState } from '../components/feedback-state.js'
+import { createFeedbackState, createSelectEmpresaState } from '../components/feedback-state.js'
+import { createImplementationStatusSection } from '../components/implementation-status.js'
 import { createRecentPunchesTable } from '../components/recent-punches-table.js'
+import { createDashboardSkeleton } from '../components/skeleton.js'
 import { createStatCard } from '../components/stat-card.js'
 import { iconClock, iconLogin, iconLogout, iconUsers } from '../components/icons.js'
 import { formatClockTime } from '../utils/format.js'
@@ -29,12 +33,14 @@ export function renderDashboard(container, { onNavigate } = {}) {
     </section>
     <div id="dashboard-banner"></div>
     <div id="dashboard-content"></div>
+    <div id="dashboard-implementation"></div>
   `
 
   const updatedLabel = view.querySelector('#dashboard-updated')
   const refreshButton = view.querySelector('#dashboard-refresh')
   const banner = view.querySelector('#dashboard-banner')
   const content = view.querySelector('#dashboard-content')
+  view.querySelector('#dashboard-implementation')?.replaceChildren(createImplementationStatusSection())
 
   let cancelled = false
   let inFlight = false
@@ -119,12 +125,24 @@ export function renderDashboard(container, { onNavigate } = {}) {
       body.append(note)
     }
 
-    body.append(
-      createDashboardAlerts(data.alertas, {
-        onOpenEmpleados: (initialQuery) => onNavigate?.('empleados', initialQuery ? { initialQuery } : {}),
-      }),
-      createRecentPunchesTable(data.ultimasFichadas),
-    )
+    const alerts = createDashboardAlerts(data.alertas, {
+      onOpenEmpleados: (initialQuery) => onNavigate?.('empleados', initialQuery ? { initialQuery } : {}),
+    })
+    const recentPunches = createRecentPunchesTable(data.ultimasFichadas, {
+      onViewAll: () => onNavigate?.('fichadas'),
+    })
+    const widgets = document.createElement('div')
+    widgets.className = alerts
+      ? 'grid gap-6 lg:grid-cols-3 lg:items-start'
+      : 'grid'
+
+    if (alerts) {
+      alerts.classList.add('lg:col-span-1')
+      recentPunches.classList.add('lg:col-span-2')
+      widgets.append(alerts)
+    }
+    widgets.append(recentPunches)
+    body.append(widgets)
 
     content.replaceChildren(body)
   }
@@ -132,12 +150,23 @@ export function renderDashboard(container, { onNavigate } = {}) {
   async function load() {
     if (cancelled || inFlight) return
 
+    if (!canLoadTenantData(getCurrentUser())) {
+      hasSuccessfulData = false
+      refreshButton.disabled = true
+      setRefreshing(false)
+      banner.replaceChildren()
+      content.replaceChildren(createSelectEmpresaState())
+      return
+    }
+
+    refreshButton.disabled = false
+
     inFlight = true
     const seq = ++loadSeq
     setRefreshing(true)
     if (!hasSuccessfulData) {
       banner.replaceChildren()
-      content.replaceChildren(createLoadingState('Cargando dashboard...'))
+      content.replaceChildren(createDashboardSkeleton())
     }
 
     try {

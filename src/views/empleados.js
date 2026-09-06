@@ -1,15 +1,19 @@
 import { createEmpleado, deactivateEmpleado, getEmpleadoById, getEmpleados, patchEmpleado } from '../api/empleados.js'
 import { getCurrentUser } from '../api/auth.js'
-import { getEmpresaActual } from '../api/empresas.js'
+import { canLoadTenantData, getOperativeEmpresaId } from '../api/empresa-context.js'
+import { empresaDisplayName, getEmpresaActual } from '../api/empresas.js'
+import { isSuperadmin } from '../config/roles.js'
 import {
   createDeactivateConfirm,
   createEmpleadoForm,
   createEmpleadoRecord,
 } from '../components/empleado-form.js'
 import { createEmpleadosTable, fullName } from '../components/empleados-table.js'
-import { createFeedbackState, createLoadingState } from '../components/feedback-state.js'
+import { createFeedbackState, createSelectEmpresaState } from '../components/feedback-state.js'
 import { createPagination } from '../components/pagination.js'
 import { openModal } from '../components/modal.js'
+import { createDetailSkeleton, createTableSkeleton } from '../components/skeleton.js'
+import { showToast } from '../components/toast.js'
 import { filterEmpleados, sortEmpleados } from '../utils/empleado-list.js'
 import { summarizeEmpleadoDatos } from '../utils/empleado-alerts.js'
 import { uniqueCatalogValues } from '../utils/format.js'
@@ -19,9 +23,7 @@ const CONTROL_CLASS =
   'w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none placeholder:text-slate-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20'
 
 function sessionEmpresaId() {
-  const raw = getCurrentUser()?.empresaId
-  const empresaId = Number(raw)
-  return Number.isFinite(empresaId) && empresaId > 0 ? empresaId : null
+  return getOperativeEmpresaId(getCurrentUser())
 }
 
 function catalogsFromEmpleados(empleados) {
@@ -30,13 +32,6 @@ function catalogsFromEmpleados(empleados) {
     categoria: uniqueCatalogValues(empleados, 'categoria'),
     sucursal: uniqueCatalogValues(empleados, 'sucursal'),
   }
-}
-
-function empresaDisplayName(empresa, empresaId) {
-  if (empresa?.nombreFantasia || empresa?.razonSocial) {
-    return empresa.nombreFantasia || empresa.razonSocial
-  }
-  return empresaId ? `Empresa ${empresaId}` : ''
 }
 
 function fillCatalogSelect(select, values, allLabel, current) {
@@ -66,7 +61,25 @@ async function persistEmpleadoUpdate(empleadoId, patchDto) {
 }
 
 export async function renderEmpleados(container, { initialQuery } = {}) {
+  const user = getCurrentUser()
   const empresaId = sessionEmpresaId()
+
+  if (isSuperadmin(user) && !canLoadTenantData(user)) {
+    const view = document.createElement('div')
+    view.className = 'space-y-6'
+    view.innerHTML = `
+      <section>
+        <h2 class="text-xl font-semibold tracking-tight text-slate-900">Empleados</h2>
+        <p class="mt-1 text-sm text-slate-500">
+          Alta, consulta y baja lógica de las personas que registran fichadas. El enrolamiento de huella se realiza desde el agente local.
+        </p>
+      </section>
+    `
+    view.append(createSelectEmpresaState())
+    container.replaceChildren(view)
+    return
+  }
+
   const view = document.createElement('div')
   view.className = 'space-y-6'
 
@@ -293,7 +306,9 @@ export async function renderEmpleados(container, { initialQuery } = {}) {
     paginationContainer.replaceChildren()
     countLabel.textContent = ''
     if (!keepBanner) clearBanner()
-    results.replaceChildren(createLoadingState('Cargando empleados...'))
+    results.replaceChildren(
+      createTableSkeleton({ rows: 8, columns: 6, label: 'Cargando empleados' }),
+    )
 
     try {
       empleados = await getEmpleados()
@@ -327,7 +342,8 @@ export async function renderEmpleados(container, { initialQuery } = {}) {
   }
 
   function openCreateForm() {
-    if (!empresaId) {
+    const currentEmpresaId = sessionEmpresaId()
+    if (!currentEmpresaId) {
       showBanner({
         title: 'No se puede crear el empleado',
         message: 'La sesión no tiene una empresa válida. Volvé a iniciar sesión o contactá al administrador.',
@@ -337,17 +353,14 @@ export async function renderEmpleados(container, { initialQuery } = {}) {
     }
 
     const form = createEmpleadoForm({
-      empresaId,
+      empresaId: currentEmpresaId,
       catalogs: catalogsFromEmpleados(empleados),
       onCancel: () => closeActiveModal(),
       onSubmit: async (dto) => {
         await createEmpleado(dto)
         closeActiveModal()
-        showBanner({
-          title: 'Empleado creado',
-          message: 'El alta se registró correctamente. El enrolamiento de huella se hace desde el agente local.',
-        })
-        await loadEmpleados({ keepBanner: true })
+        showToast({ message: 'Empleado creado correctamente.', tone: 'success' })
+        await loadEmpleados()
       },
     })
 
@@ -363,9 +376,7 @@ export async function renderEmpleados(container, { initialQuery } = {}) {
   }
 
   async function openDetail(empleado) {
-    const loading = document.createElement('p')
-    loading.className = 'text-sm text-slate-500'
-    loading.textContent = 'Cargando empleado...'
+    const loading = createDetailSkeleton()
 
     const modal = openModal({
       title: fullName(empleado) || 'Empleado',
@@ -390,10 +401,7 @@ export async function renderEmpleados(container, { initialQuery } = {}) {
             syncFilterOptions()
             renderSummary()
             renderResults()
-            showBanner({
-              title: 'Empleado actualizado correctamente',
-              message: 'Los datos se refrescaron desde la API.',
-            })
+            showToast({ message: 'Cambios guardados.', tone: 'success' })
           },
         }),
       )
@@ -424,10 +432,7 @@ export async function renderEmpleados(container, { initialQuery } = {}) {
         syncFilterOptions()
         renderSummary()
         renderResults()
-        showBanner({
-          title: 'Empleado desactivado',
-          message: `${fullName(empleado) || 'El empleado'} ya no figura en el listado de activos.`,
-        })
+        showToast({ message: 'Empleado desactivado.', tone: 'success' })
       },
     })
 
@@ -442,7 +447,7 @@ export async function renderEmpleados(container, { initialQuery } = {}) {
     activeModalClose = modal.close
   }
 
-  if (!empresaId) {
+  if (!empresaId && !isSuperadmin(user)) {
     newButton.disabled = true
     banner.replaceChildren(
       createFeedbackState({
@@ -480,7 +485,7 @@ export async function renderEmpleados(container, { initialQuery } = {}) {
   })
 
   container.replaceChildren(view)
-  await loadEmpleados({ keepBanner: !empresaId })
+  await loadEmpleados({ keepBanner: Boolean(!empresaId && !isSuperadmin(user)) })
 
   if (initialQuery && loaded) {
     const hinted = visibleEmpleados()[0]

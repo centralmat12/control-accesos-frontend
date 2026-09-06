@@ -1,90 +1,55 @@
 import { escapeHtml } from '../utils/format.js'
 import { empleadoAlertLabel, empleadoSearchHint } from '../utils/empleado-alerts.js'
+import { iconAlertTriangle } from './icons.js'
 
 /**
- * Huella y estado de agente/lector no se muestran: la API no publica
- * `tieneHuella` ni heartbeat de agente/lector. No inferir con fichadas.
+ * La huella solo se muestra pendiente cuando `tieneHuella` es false.
+ * El estado de agente/lector no se infiere a partir de fichadas.
  */
 export function createDashboardAlerts(alertas, { onOpenEmpleados } = {}) {
+  if (!alertas?.items?.length) return null
+
+  const pendingCount = alertas.count ?? alertas.items.length
   const section = document.createElement('section')
-  section.className = 'rounded-xl border border-slate-200 bg-white p-5 shadow-sm'
+  section.className =
+    'rounded-xl border border-amber-300 bg-amber-50/80 p-5 shadow-sm shadow-amber-950/5 dark:border-amber-700/70 dark:bg-amber-950/30 dark:shadow-black/20'
 
   const heading = document.createElement('div')
   heading.className = 'mb-4'
   heading.innerHTML = `
-    <h2 class="text-base font-semibold text-slate-900">Alertas y pendientes</h2>
-    <p class="mt-1 text-sm text-slate-500">Datos obligatorios incompletos y pendientes operativos (horario, departamento o sucursal vacío), según GET /api/empleados. Desplegá una alerta y hacé clic en un empleado para abrirlo en Empleados.</p>
+    <div class="flex items-start gap-3">
+      <span class="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-amber-100 text-amber-800 ring-1 ring-inset ring-amber-600/20 dark:bg-amber-900/60 dark:text-amber-200 dark:ring-amber-400/20">
+        ${iconAlertTriangle()}
+      </span>
+      <div class="min-w-0">
+        <h2 class="text-base font-semibold text-amber-950 dark:text-amber-100">Alertas y pendientes</h2>
+        <p class="mt-1 text-sm font-medium text-amber-900/80 dark:text-amber-200/80">${pendingCount} ${pendingCount === 1 ? 'empleado requiere' : 'empleados requieren'} atención</p>
+      </div>
+    </div>
   `
   section.append(heading)
 
-  if (!alertas?.items?.length) {
-    const empty = document.createElement('p')
-    empty.className = 'text-sm text-slate-600'
-    empty.textContent = 'No hay pendientes operativos.'
-    section.append(empty)
-    return section
-  }
-
   const list = document.createElement('ul')
-  list.className = 'space-y-2'
+  list.className = 'max-h-80 space-y-2 overflow-y-auto pr-1'
 
-  alertas.items.forEach((item) => {
-    const isError = item.kind === 'inconsistency'
+  alertas.items.forEach((item, index) => {
     const li = document.createElement('li')
-    li.className = `rounded-lg border px-3 py-2 ${
-      isError ? 'border-red-200 bg-red-50' : 'border-amber-200 bg-amber-50'
-    }`
-
-    const toggle = document.createElement('button')
-    toggle.type = 'button'
-    toggle.className = `flex w-full items-start gap-2 text-left text-sm font-medium ${
-      isError ? 'text-red-900' : 'text-amber-950'
-    }`
-    toggle.setAttribute('aria-expanded', 'false')
-    toggle.innerHTML = `
-      <span class="mt-0.5 w-4 shrink-0 text-center" aria-hidden="true">${isError ? '❗' : '⚠'}</span>
-      <span class="min-w-0 flex-1">${escapeHtml(item.text)}</span>
-      <span class="shrink-0 text-xs font-normal ${isError ? 'text-red-700' : 'text-amber-800'}">${item.employees.length}</span>
+    li.innerHTML = `
+      <button
+        type="button"
+        data-alert-index="${index}"
+        class="w-full rounded-lg border border-amber-200 bg-white/60 px-3 py-2.5 text-left transition-colors hover:border-amber-300 hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500 dark:border-amber-800/70 dark:bg-slate-950/30 dark:hover:border-amber-700 dark:hover:bg-slate-900"
+      >
+        <span class="block text-sm font-semibold text-amber-950 dark:text-amber-100">${escapeHtml(empleadoAlertLabel(item.empleado))}</span>
+        <span class="mt-1 block text-xs leading-5 text-amber-900/80 dark:text-amber-200/80">
+          Falta: ${escapeHtml(item.missing.map(({ label }) => label).join(', '))}
+        </span>
+      </button>
     `
 
-    const details = document.createElement('div')
-    details.className = 'mt-2 hidden border-t border-black/10 pt-2'
-    details.innerHTML = `
-      <ul class="max-h-56 space-y-1 overflow-y-auto">
-        ${item.employees
-          .map((empleado, index) => {
-            return `
-              <li>
-                <button
-                  type="button"
-                  data-alert-index="${index}"
-                  class="text-sm font-medium underline-offset-2 hover:underline ${
-                    isError ? 'text-red-800' : 'text-amber-950'
-                  }"
-                >
-                  ${escapeHtml(empleadoAlertLabel(empleado))}
-                </button>
-              </li>
-            `
-          })
-          .join('')}
-      </ul>
-    `
-
-    details.querySelectorAll('[data-alert-index]').forEach((button) => {
-      button.addEventListener('click', (event) => {
-        event.stopPropagation()
-        const empleado = item.employees[Number(button.getAttribute('data-alert-index'))]
-        onOpenEmpleados?.(empleadoSearchHint(empleado) || undefined)
-      })
+    li.querySelector('[data-alert-index]')?.addEventListener('click', () => {
+      onOpenEmpleados?.(empleadoSearchHint(item.empleado) || undefined)
     })
-
-    toggle.addEventListener('click', () => {
-      const open = details.classList.toggle('hidden') === false
-      toggle.setAttribute('aria-expanded', String(open))
-    })
-
-    li.append(toggle, details)
     list.append(li)
   })
 
@@ -93,7 +58,7 @@ export function createDashboardAlerts(alertas, { onOpenEmpleados } = {}) {
   const go = document.createElement('button')
   go.type = 'button'
   go.className =
-    'mt-4 text-sm font-medium text-blue-700 hover:text-blue-600'
+    'mt-4 text-sm font-semibold text-amber-900 underline-offset-2 hover:underline dark:text-amber-200'
   go.textContent = 'Ir a Empleados'
   go.addEventListener('click', () => onOpenEmpleados?.())
   section.append(go)

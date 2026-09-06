@@ -325,16 +325,16 @@ La tabla de últimas fichadas usa campos reales: empleado, legajo, fecha, hora, 
 
 **Alertas y pendientes** se calcula en el cliente sobre el mismo `GET /api/empleados`:
 
-- inconsistencias: nombre, apellido, DNI o CUIL vacío;
-- pendientes operativos (no son error de API): horario, departamento o sucursal vacío.
+- faltantes: legajo, DNI, CUIL, nombre, apellido, departamento, categoría, sucursal u horario vacío;
+- huella: solo se considera faltante si la API devuelve explícitamente `tieneHuella: false`; si el campo no existe, no se infiere.
 
-Se puede desplegar cada alerta y hacer clic en un empleado: se abre Empleados con esa búsqueda, filtros en “Todos” y página 1.
+Cada empleado se cuenta una sola vez y la alerta lista todos sus faltantes. Al hacer clic se abre Empleados con esa búsqueda, filtros en “Todos” y página 1.
 
 **Actualizar** vuelve a consultar empleados y fichadas del día. **Última actualización: HH:mm:ss** es solo la hora en que este panel consultó la API, no la conexión del agente ni del lector. Mientras la vista Dashboard está abierta hay un refresco automático cada 60 s (se detiene al salir, al cerrar sesión o si la pestaña está oculta).
 
 Un error de API no se muestra como “0 empleados” ni “No hay pendientes”: la primera carga muestra error + Reintentar; un refresco fallido conserva los últimos datos válidos y avisa el error.
 
-No hay alerta de huella ni bloque de estado de agente/lector: la API no publica `tieneHuella` ni heartbeat de hardware. No se infiere con fichadas.
+No se consultan endpoints de huellas ni se infiere estado biométrico, de agente o lector a partir de fichadas.
 
 ## Empleados
 
@@ -352,7 +352,7 @@ paginación visual (30 / 50 / 100, predeterminado 30)
 tabla
 ```
 
-- **Resumen:** empleados activos, completos y con pendientes, calculados sobre todo el listado (no sobre la página visible). Completo / pendiente usa las mismas reglas que las alertas del Dashboard (no categoría ni legajo).
+- **Resumen:** empleados activos, completos y con pendientes, calculados sobre todo el listado (no sobre la página visible). Completo / pendiente usa las mismas reglas centralizadas que las alertas del Dashboard.
 - **Filtros de departamento y sucursal:** valores únicos del listado, ordenados alfabéticamente. No están hardcodeados.
 - **Estado de datos:** Todos, Completo, Con pendientes.
 - **Orden:** Legajo, Nombre y apellido, DNI, Departamento (ascendente / descendente).

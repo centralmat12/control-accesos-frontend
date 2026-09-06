@@ -1,5 +1,7 @@
 import { apiUrl } from '../config/api.js'
-import { getToken, logout } from './auth.js'
+import { isSuperadmin } from '../config/roles.js'
+import { getCurrentUser, getToken, logout } from './auth.js'
+import { getEmpresaContexto } from './empresa-context.js'
 
 function notifyUnauthorized() {
   logout()
@@ -30,10 +32,11 @@ export async function readErrorMessage(response, fallback) {
  *
  * Opciones propias (no se envían a fetch):
  * - missingAuthMessage: error si no hay token
+ * - skipEmpresaContext: no enviar X-Empresa-Id (p. ej. listado global de empresas)
  * - logLabel: prefijo de console.error en fallos de red (false = no loguear)
  */
 export async function apiFetch(path, options = {}) {
-  const { headers: extraHeaders, missingAuthMessage, logLabel, ...fetchOptions } = options
+  const { headers: extraHeaders, missingAuthMessage, logLabel, skipEmpresaContext, ...fetchOptions } = options
   const token = getToken()
 
   if (!token) {
@@ -44,6 +47,17 @@ export async function apiFetch(path, options = {}) {
   const headers = {
     Authorization: `Bearer ${token}`,
     ...extraHeaders,
+  }
+
+  const user = getCurrentUser()
+  delete headers['X-Empresa-Id']
+  delete headers['x-empresa-id']
+
+  if (!skipEmpresaContext && isSuperadmin(user)) {
+    const contexto = getEmpresaContexto()
+    if (contexto?.id) {
+      headers['X-Empresa-Id'] = String(contexto.id)
+    }
   }
 
   let response

@@ -1,14 +1,5 @@
 import { displayValue } from '../utils/format.js'
-
-function statusBadge(activo) {
-  const isActive = Boolean(activo)
-  const classes = isActive
-    ? 'bg-emerald-50 text-emerald-700 ring-emerald-600/10'
-    : 'bg-slate-100 text-slate-600 ring-slate-500/10'
-  const label = isActive ? 'Activo' : 'Inactivo'
-
-  return `<span class="inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ring-1 ring-inset ${classes}">${label}</span>`
-}
+import { employeeStatusBadge } from './badge.js'
 
 export function fullName(empleado) {
   return [empleado.nombre, empleado.apellido].filter(Boolean).join(' ')
@@ -47,15 +38,17 @@ export function createEmpleadosTable(
   const rows = empleados
     .map((empleado) => {
       const highlighted = highlightId != null && Number(empleado.id) === Number(highlightId)
-      const rowClass = highlighted ? 'bg-blue-50 hover:bg-blue-50' : 'hover:bg-slate-50'
+      const rowClass = highlighted
+        ? 'bg-blue-50 hover:bg-blue-50 dark:bg-blue-950/50 dark:hover:bg-blue-950/50'
+        : 'hover:bg-slate-50 dark:hover:bg-slate-800/70'
 
       return `
-        <tr class="${rowClass}">
+        <tr class="transition-colors ${rowClass}">
           <td class="whitespace-nowrap px-4 py-3 text-sm font-medium text-slate-900">${displayValue(empleado.legajo)}</td>
           <td class="whitespace-nowrap px-4 py-3 text-sm text-slate-900">${displayValue(fullName(empleado))}</td>
           <td class="whitespace-nowrap px-4 py-3 text-sm text-slate-600">${displayValue(empleado.dni)}</td>
           <td class="whitespace-nowrap px-4 py-3 text-sm text-slate-600">${displayValue(empleado.departamento)}</td>
-          <td class="whitespace-nowrap px-4 py-3">${statusBadge(empleado.activo)}</td>
+          <td class="whitespace-nowrap px-4 py-3">${employeeStatusBadge(empleado.activo)}</td>
           <td class="whitespace-nowrap px-4 py-3 text-right">
             <div class="flex justify-end gap-2">
               <button
@@ -64,7 +57,7 @@ export function createEmpleadosTable(
                 data-id="${Number(empleado.id)}"
                 class="rounded-lg px-2.5 py-1.5 text-sm font-medium text-blue-700 hover:bg-blue-50"
               >
-                Ver
+                Ver/Editar
               </button>
               <button
                 type="button"
@@ -82,9 +75,9 @@ export function createEmpleadosTable(
     .join('')
 
   section.innerHTML = `
-    <div class="overflow-x-auto">
+    <div class="max-h-[65vh] overflow-auto">
       <table class="min-w-full divide-y divide-slate-200">
-        <thead class="bg-slate-50">
+        <thead class="sticky top-0 z-10 bg-slate-50 shadow-[0_1px_0_0_var(--color-slate-200)] dark:bg-slate-800 dark:shadow-[0_1px_0_0_var(--color-slate-700)]">
           <tr>
             ${sortHeader('legajo', 'Legajo', sortKey, sortDir)}
             ${sortHeader('nombre', 'Nombre y apellido', sortKey, sortDir)}

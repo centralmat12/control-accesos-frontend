@@ -1,31 +1,20 @@
 import {
   displayMetodoLabel,
-  displayTipoLabel,
   displayValue,
-  esTipoEntrada,
-  esMetodoManual,
+  esMetodoBiometrico,
   formatDate,
   formatTime,
 } from '../utils/format.js'
+import { badgeHtml, movementBadge } from './badge.js'
 
 function tipoBadge(tipo) {
-  const isEntry = esTipoEntrada(tipo)
-  const classes = isEntry
-    ? 'bg-emerald-50 text-emerald-700 ring-emerald-600/10'
-    : 'bg-amber-50 text-amber-700 ring-amber-600/10'
-  const label = displayTipoLabel(tipo)
-
-  return `<span class="inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ring-1 ring-inset ${classes}">${displayValue(label)}</span>`
+  return movementBadge(tipo)
 }
 
 function metodoBadge(metodo) {
-  const isManual = esMetodoManual(metodo)
-  const classes = isManual
-    ? 'bg-slate-100 text-slate-700 ring-slate-500/10'
-    : 'bg-indigo-50 text-indigo-700 ring-indigo-600/10'
+  const isBiometric = esMetodoBiometrico(metodo)
   const label = displayMetodoLabel(metodo)
-
-  return `<span class="inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ring-1 ring-inset ${classes}">${displayValue(label)}</span>`
+  return badgeHtml(label, isBiometric ? 'info' : 'neutral')
 }
 
 export function createFichadasTable(fichadas) {
@@ -36,7 +25,7 @@ export function createFichadasTable(fichadas) {
   const rows = fichadas
     .map(
       (item) => `
-        <tr class="hover:bg-slate-50">
+        <tr class="transition-colors hover:bg-slate-50 dark:hover:bg-slate-800/70">
           <td class="whitespace-nowrap px-4 py-3 text-sm font-medium text-slate-900">${displayValue(item.empleado)}</td>
           <td class="whitespace-nowrap px-4 py-3 text-sm text-slate-600">${displayValue(item.legajo)}</td>
           <td class="whitespace-nowrap px-4 py-3 text-sm text-slate-600">${item.fechaHora ? formatDate(item.fechaHora) : '—'}</td>
@@ -49,9 +38,9 @@ export function createFichadasTable(fichadas) {
     .join('')
 
   section.innerHTML = `
-    <div class="overflow-x-auto">
+    <div class="max-h-[65vh] overflow-auto">
       <table class="min-w-full divide-y divide-slate-200">
-        <thead class="bg-slate-50">
+        <thead class="sticky top-0 z-10 bg-slate-50 shadow-[0_1px_0_0_var(--color-slate-200)] dark:bg-slate-800 dark:shadow-[0_1px_0_0_var(--color-slate-700)]">
           <tr>
             <th scope="col" class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Empleado</th>
             <th scope="col" class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Legajo</th>
