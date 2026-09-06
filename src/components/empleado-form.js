@@ -7,7 +7,7 @@ import {
   validateEmpleadoValues,
 } from '../utils/empleado-data.js'
 import { iconPencil } from './icons.js'
-import { employeeStatusBadge } from './badge.js'
+import { biometricStatusBadge, employeeStatusBadge } from './badge.js'
 import { openModal } from './modal.js'
 import { showToast } from './toast.js'
 
@@ -635,8 +635,12 @@ export function createEmpleadoDetail(empleado) {
           `,
         )
         .join('')}
+      <div class="sm:col-span-2">
+        <dt class="text-xs font-medium uppercase tracking-wide text-slate-500">Huella biométrica</dt>
+        <dd class="mt-1.5 flex flex-wrap items-center gap-1.5">${biometricStatusBadge(empleado.tieneHuella)}</dd>
+      </div>
     </dl>
-    <div class="mt-4 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-center">
+    <div class="mt-4 rounded-lg border border-slate-200 bg-white px-4 py-3 text-center dark:border-slate-700 dark:bg-slate-900">
       <p class="text-xs font-medium uppercase tracking-wide text-slate-500">Estado</p>
       <div class="mt-2 flex justify-center">${employeeStatusBadge(empleado.activo)}</div>
     </div>

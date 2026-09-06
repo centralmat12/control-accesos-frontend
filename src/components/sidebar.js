@@ -64,7 +64,7 @@ export function createSidebar({ currentView, user, onNavigate }) {
       <button
         type="button"
         data-sidebar-collapse
-        class="hidden w-full items-center justify-center rounded-lg px-2 py-2 text-sm font-semibold text-slate-400 hover:bg-slate-800 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 lg:inline-flex"
+        class="hidden w-full items-center justify-center rounded-lg px-2 py-2 text-2xl font-semibold text-slate-400 hover:bg-slate-800 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 lg:inline-flex"
         aria-label="${collapsed ? 'Expandir barra lateral' : 'Contraer barra lateral'}"
         aria-controls="app-sidebar"
         aria-expanded="${String(!collapsed)}"
@@ -72,7 +72,8 @@ export function createSidebar({ currentView, user, onNavigate }) {
       >
         ${collapsed ? '»' : '«'}
       </button>
-      <span data-sidebar-footer class="mt-2 block text-center ${collapsed ? 'lg:hidden' : ''}">Panel de administración</span>
+      <span data-sidebar-footer class="mt-2 block text-center ${collapsed ? 'lg:hidden' : ''}">Rama: feature/multiempresa-roles
+Commit: c30ac97 </span>
     </div>
   `
 

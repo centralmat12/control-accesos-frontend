@@ -4,6 +4,7 @@ import { getDashboardData } from '../api/dashboard.js'
 import { FICHADAS_LIMITE } from '../api/fichadas.js'
 import { createDashboardAlerts } from '../components/dashboard-alerts.js'
 import { createFeedbackState, createSelectEmpresaState } from '../components/feedback-state.js'
+import { createImplementationStatusSection } from '../components/implementation-status.js'
 import { createRecentPunchesTable } from '../components/recent-punches-table.js'
 import { createDashboardSkeleton } from '../components/skeleton.js'
 import { createStatCard } from '../components/stat-card.js'
@@ -32,12 +33,14 @@ export function renderDashboard(container, { onNavigate } = {}) {
     </section>
     <div id="dashboard-banner"></div>
     <div id="dashboard-content"></div>
+    <div id="dashboard-implementation"></div>
   `
 
   const updatedLabel = view.querySelector('#dashboard-updated')
   const refreshButton = view.querySelector('#dashboard-refresh')
   const banner = view.querySelector('#dashboard-banner')
   const content = view.querySelector('#dashboard-content')
+  view.querySelector('#dashboard-implementation')?.replaceChildren(createImplementationStatusSection())
 
   let cancelled = false
   let inFlight = false
