@@ -10,7 +10,7 @@ export function empleadoFaltantes(empleado) {
     .map(({ key, label }) => ({ key, label }))
 
   if (empleado?.tieneHuella === false) {
-    missing.push({ key: 'tieneHuella', label: 'Huella enrolada' })
+    missing.push({ key: 'tieneHuella', label: 'Huella biométrica enrolada' })
   }
 
   return missing
@@ -49,6 +49,18 @@ export function empleadoAlertLabel(empleado) {
   if (cuil) return `CUIL ${cuil}`
 
   return 'Empleado sin nombre ni documento'
+}
+
+export function empleadoAlertCopy(empleado, missing = []) {
+  const name = empleadoAlertLabel(empleado)
+  const faltantes = Array.isArray(missing) ? missing : []
+  const sinHuella = faltantes.some(({ key }) => key === 'tieneHuella')
+  const otros = faltantes.filter(({ key }) => key !== 'tieneHuella')
+
+  return {
+    title: sinHuella ? `${name} no tiene huella biométrica enrolada` : name,
+    detail: otros.length ? `Falta: ${otros.map(({ label }) => label).join(', ')}` : '',
+  }
 }
 
 export function empleadoSearchHint(empleado) {

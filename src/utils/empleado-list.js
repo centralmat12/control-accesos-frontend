@@ -35,8 +35,15 @@ export function matchesEmpleadoSearch(empleado, query) {
 }
 
 export function matchesCatalogFilter(empleado, key, selected) {
-  if (selected === 'todos') return true
-  return String(empleado?.[key] ?? '').trim() === selected
+  if (selected === 'todos' || selected == null || selected === '') return true
+  return String(empleado?.[key] ?? '').trim() === String(selected)
+}
+
+export function matchesIdFilter(empleado, key, selected) {
+  if (selected === 'todos' || selected == null || selected === '') return true
+  const value = empleado?.[key]
+  if (value == null || value === '') return false
+  return String(value) === String(selected)
 }
 
 export function matchesEstadoDatos(empleado, estado) {
@@ -47,16 +54,18 @@ export function matchesEstadoDatos(empleado, estado) {
   return true
 }
 
-export function filterEmpleados(empleados, { query, departamento, sucursal, estado }) {
+export function filterEmpleados(empleados, { query, departamento, sucursal, departamentoId, sucursalId, estado }) {
   const normalizedQuery = String(query ?? '')
     .trim()
     .toLowerCase()
+  const sucursalFilter = sucursalId ?? sucursal ?? 'todos'
+  const departamentoFilter = departamentoId ?? departamento ?? 'todos'
 
   return empleados.filter(
     (empleado) =>
       matchesEmpleadoSearch(empleado, normalizedQuery) &&
-      matchesCatalogFilter(empleado, 'departamento', departamento) &&
-      matchesCatalogFilter(empleado, 'sucursal', sucursal) &&
+      matchesIdFilter(empleado, 'sucursalId', sucursalFilter) &&
+      matchesIdFilter(empleado, 'departamentoId', departamentoFilter) &&
       matchesEstadoDatos(empleado, estado),
   )
 }

@@ -1,7 +1,13 @@
 import { getCurrentUser } from '../api/auth.js'
 import { canLoadTenantData } from '../api/empresa-context.js'
+import {
+  EMPRESAS_CATALOG_EVENT,
+  EMPRESAS_CATALOG_STATUS,
+  getEmpresasCatalogState,
+} from '../api/empresas.js'
 import { getDashboardData } from '../api/dashboard.js'
 import { FICHADAS_LIMITE } from '../api/fichadas.js'
+import { isSuperadmin } from '../config/roles.js'
 import { createDashboardAlerts } from '../components/dashboard-alerts.js'
 import { createFeedbackState, createSelectEmpresaState } from '../components/feedback-state.js'
 import { createImplementationStatusSection } from '../components/implementation-status.js'
@@ -10,6 +16,7 @@ import { createDashboardSkeleton } from '../components/skeleton.js'
 import { createStatCard } from '../components/stat-card.js'
 import { iconClock, iconLogin, iconLogout, iconUsers } from '../components/icons.js'
 import { formatClockTime } from '../utils/format.js'
+import { logInfo } from '../utils/activity-log.js'
 
 const REFRESH_INTERVAL_MS = 60_000
 
@@ -23,13 +30,16 @@ export function renderDashboard(container, { onNavigate } = {}) {
         <p id="dashboard-updated" class="mt-1 text-sm text-slate-500">Última actualización: —</p>
         <p class="mt-1 text-xs text-slate-400">Hora de la última consulta de este panel a la API. No indica conexión del agente ni del lector.</p>
       </div>
-      <button
-        type="button"
-        id="dashboard-refresh"
-        class="inline-flex items-center justify-center rounded-lg border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
-      >
-        Actualizar
-      </button>
+      <div class="flex flex-col items-stretch gap-1.5 sm:items-end">
+        <button
+          type="button"
+          id="dashboard-refresh"
+          class="inline-flex items-center justify-center rounded-lg border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          Actualizar
+        </button>
+        <p id="dashboard-refresh-hint" class="hidden max-w-xs text-xs text-slate-500 sm:text-right"></p>
+      </div>
     </section>
     <div id="dashboard-banner"></div>
     <div id="dashboard-content"></div>
@@ -38,6 +48,7 @@ export function renderDashboard(container, { onNavigate } = {}) {
 
   const updatedLabel = view.querySelector('#dashboard-updated')
   const refreshButton = view.querySelector('#dashboard-refresh')
+  const refreshHint = view.querySelector('#dashboard-refresh-hint')
   const banner = view.querySelector('#dashboard-banner')
   const content = view.querySelector('#dashboard-content')
   view.querySelector('#dashboard-implementation')?.replaceChildren(createImplementationStatusSection())
@@ -47,14 +58,82 @@ export function renderDashboard(container, { onNavigate } = {}) {
   let loadSeq = 0
   let hasSuccessfulData = false
   let timerId = null
+  let refreshBlocked = false
 
   function setUpdatedAt(date) {
     updatedLabel.textContent = `Última actualización: ${formatClockTime(date)}`
   }
 
+  function setRefreshHint(message) {
+    if (!message) {
+      refreshHint.textContent = ''
+      refreshHint.classList.add('hidden')
+      refreshButton.removeAttribute('aria-describedby')
+      return
+    }
+
+    refreshHint.textContent = message
+    refreshHint.classList.remove('hidden')
+    refreshButton.setAttribute('aria-describedby', 'dashboard-refresh-hint')
+  }
+
   function setRefreshing(active) {
-    refreshButton.disabled = active
+    refreshButton.disabled = refreshBlocked || active
     refreshButton.textContent = active ? 'Actualizando...' : 'Actualizar'
+  }
+
+  function showUnavailablePanel() {
+    hasSuccessfulData = false
+    refreshBlocked = true
+    setRefreshing(false)
+    banner.replaceChildren()
+
+    const catalog = getEmpresasCatalogState()
+
+    if (
+      catalog.status === EMPRESAS_CATALOG_STATUS.loading ||
+      catalog.status === EMPRESAS_CATALOG_STATUS.idle
+    ) {
+      content.replaceChildren(
+        createFeedbackState({
+          title: 'Cargando empresas',
+          message: 'Cargando empresas...',
+        }),
+      )
+      setRefreshHint('Esperá a que se cargue el listado de empresas.')
+      return
+    }
+
+    if (catalog.status === EMPRESAS_CATALOG_STATUS.empty) {
+      content.replaceChildren(
+        createFeedbackState({
+          title: 'No hay empresas disponibles',
+          message: 'No hay empresas disponibles para consultar.',
+        }),
+      )
+      setRefreshHint('No hay una empresa para consultar.')
+      return
+    }
+
+    if (catalog.status === EMPRESAS_CATALOG_STATUS.error) {
+      const block = createFeedbackState({
+        title: 'No se puede cargar el panel',
+        message: 'No fue posible obtener una empresa válida para consultar la información.',
+        tone: 'error',
+      })
+      if (catalog.statusCode === 403) {
+        const note = document.createElement('p')
+        note.className = 'mt-2 text-sm text-red-700 dark:text-red-300'
+        note.textContent = 'La cuenta actual no tiene permisos suficientes para consultar empresas.'
+        block.append(note)
+      }
+      content.replaceChildren(block)
+      setRefreshHint('El panel no se puede actualizar en este estado.')
+      return
+    }
+
+    content.replaceChildren(createSelectEmpresaState())
+    setRefreshHint('Elegí una empresa en el encabezado.')
   }
 
   function showRefreshError(message) {
@@ -151,14 +230,12 @@ export function renderDashboard(container, { onNavigate } = {}) {
     if (cancelled || inFlight) return
 
     if (!canLoadTenantData(getCurrentUser())) {
-      hasSuccessfulData = false
-      refreshButton.disabled = true
-      setRefreshing(false)
-      banner.replaceChildren()
-      content.replaceChildren(createSelectEmpresaState())
+      showUnavailablePanel()
       return
     }
 
+    refreshBlocked = false
+    setRefreshHint('')
     refreshButton.disabled = false
 
     inFlight = true
@@ -212,6 +289,7 @@ export function renderDashboard(container, { onNavigate } = {}) {
     stopAutoRefresh()
     timerId = window.setInterval(() => {
       if (document.visibilityState === 'hidden') return
+      if (isSuperadmin(getCurrentUser()) && !canLoadTenantData(getCurrentUser())) return
       void load()
     }, REFRESH_INTERVAL_MS)
   }
@@ -224,8 +302,18 @@ export function renderDashboard(container, { onNavigate } = {}) {
   }
 
   refreshButton.addEventListener('click', () => {
+    logInfo('Dashboard', 'Actualización manual del panel.')
     void load()
   })
+
+  function onEmpresasCatalogChange() {
+    if (cancelled) return
+    if (!canLoadTenantData(getCurrentUser())) {
+      showUnavailablePanel()
+    }
+  }
+
+  window.addEventListener(EMPRESAS_CATALOG_EVENT, onEmpresasCatalogChange)
 
   container.replaceChildren(view)
   void load()
@@ -234,5 +322,6 @@ export function renderDashboard(container, { onNavigate } = {}) {
   return () => {
     cancelled = true
     stopAutoRefresh()
+    window.removeEventListener(EMPRESAS_CATALOG_EVENT, onEmpresasCatalogChange)
   }
 }

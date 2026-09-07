@@ -6,27 +6,27 @@ import {
   normalizeEmpleadoValues,
   validateEmpleadoValues,
 } from '../utils/empleado-data.js'
+import { getSucursales } from '../api/sucursales.js'
 import { iconPencil } from './icons.js'
 import { biometricStatusBadge, employeeStatusBadge } from './badge.js'
 import { openModal } from './modal.js'
+import {
+  bindSucursalDepartamentoCascade,
+  fillSucursalOptions,
+  parseEntityId,
+  selectedOptionLabel,
+  setDepartamentoIdle,
+} from './sucursal-departamento-selects.js'
 import { showToast } from './toast.js'
 
-const OPTIONAL_MAX = 50
-const NEW_OPTION = '__nuevo__'
-const CATALOG_FIELDS = [
-  { name: 'departamento', label: 'Departamento' },
-  { name: 'categoria', label: 'Categoría' },
-  { name: 'sucursal', label: 'Sucursal' },
-]
 const EDITABLE_FIELDS = [
   { key: 'legajo', label: 'Legajo' },
   { key: 'nombre', label: 'Nombre' },
   { key: 'apellido', label: 'Apellido' },
   { key: 'dni', label: 'DNI' },
   { key: 'cuil', label: 'CUIL' },
-  { key: 'departamento', label: 'Departamento' },
-  { key: 'categoria', label: 'Categoría' },
-  { key: 'sucursal', label: 'Sucursal' },
+  { key: 'sucursalId', label: 'Sucursal', displayKey: 'sucursal' },
+  { key: 'departamentoId', label: 'Departamento', displayKey: 'departamento' },
   { key: 'horario', label: 'Horario' },
 ]
 const HORARIO_STORED = /^([01]\d|2[0-3]):([0-5]\d)\s*(?:-|a)\s*([01]\d|2[0-3]):([0-5]\d)$/i
@@ -37,7 +37,7 @@ function optionalValue(value) {
 }
 
 function inputClass() {
-  return 'w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none placeholder:text-slate-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20'
+  return 'w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none placeholder:text-slate-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 disabled:cursor-not-allowed disabled:opacity-60'
 }
 
 function fieldTemplate({
@@ -72,25 +72,6 @@ function fieldTemplate({
   `
 }
 
-function catalogFieldTemplate({ name, label }) {
-  return `
-    <div>
-      <label for="empleado-${name}" class="mb-1.5 block text-sm font-medium text-slate-700">${label}</label>
-      <select id="empleado-${name}" name="${name}Choice" class="${inputClass()}"></select>
-      <input
-        id="empleado-${name}-nuevo"
-        name="${name}Nuevo"
-        type="text"
-        maxlength="${OPTIONAL_MAX}"
-        autocomplete="off"
-        class="mt-2 hidden ${inputClass()}"
-        placeholder="Nuevo valor"
-      />
-      <p id="empleado-${name}-error" class="mt-1 hidden text-sm text-red-600"></p>
-    </div>
-  `
-}
-
 function setControlError(errorEl, controls, message) {
   const targets = controls.filter(Boolean)
 
@@ -117,38 +98,17 @@ function setControlError(errorEl, controls, message) {
 
 function setFieldError(form, name, message) {
   const error = form.querySelector(`#empleado-${name}-error`)
-  const select = form.querySelector(`[name="${name}Choice"]`)
-  const nuevo = form.querySelector(`[name="${name}Nuevo"]`)
   const input = form.querySelector(`[name="${name}"]`)
   const horarioDesde = name === 'horario' ? form.querySelector('[name="horarioDesde"]') : null
   const horarioHasta = name === 'horario' ? form.querySelector('[name="horarioHasta"]') : null
 
-  setControlError(error, [select, nuevo, input, horarioDesde, horarioHasta], message)
+  setControlError(error, [input, horarioDesde, horarioHasta], message)
 }
 
 function clearFieldErrors(form) {
-  ;['legajo', 'nombre', 'apellido', 'dni', 'cuil', 'departamento', 'categoria', 'sucursal', 'horario'].forEach(
-    (name) => setFieldError(form, name, ''),
+  ;['legajo', 'nombre', 'apellido', 'dni', 'cuil', 'sucursalId', 'departamentoId', 'horario'].forEach((name) =>
+    setFieldError(form, name, ''),
   )
-}
-
-function resolveCatalogValue(typed, existingValues) {
-  const value = optionalValue(typed)
-  if (!value) return null
-
-  const match = existingValues.find((item) => item.toLowerCase() === value.toLowerCase())
-  return match ?? value
-}
-
-function readCatalogField(form, name, existingValues) {
-  const select = form.querySelector(`[name="${name}Choice"]`)
-  if (!select) return null
-
-  if (select.value === NEW_OPTION) {
-    return resolveCatalogValue(form.querySelector(`[name="${name}Nuevo"]`)?.value, existingValues)
-  }
-
-  return optionalValue(select.value)
 }
 
 function normalizeTime(value) {
@@ -170,7 +130,7 @@ function readHorario(form) {
   return { desde, hasta }
 }
 
-function readValues(form, catalogs) {
+function readValues(form) {
   const data = new FormData(form)
   const { desde, hasta } = readHorario(form)
   let horario = null
@@ -182,15 +142,19 @@ function readValues(form, catalogs) {
     horario = `${desde}-${hasta}`
   }
 
+  const sucursalSelect = form.querySelector('[name="sucursalId"]')
+  const departamentoSelect = form.querySelector('[name="departamentoId"]')
+
   return normalizeEmpleadoValues({
     legajo: optionalValue(data.get('legajo')),
     nombre: String(data.get('nombre') ?? '').trim(),
     apellido: String(data.get('apellido') ?? '').trim(),
     dni: String(data.get('dni') ?? '').trim(),
     cuil: String(data.get('cuil') ?? '').trim(),
-    departamento: readCatalogField(form, 'departamento', catalogs.departamento),
-    categoria: readCatalogField(form, 'categoria', catalogs.categoria),
-    sucursal: readCatalogField(form, 'sucursal', catalogs.sucursal),
+    sucursalId: parseEntityId(sucursalSelect?.value),
+    departamentoId: parseEntityId(departamentoSelect?.value),
+    sucursal: selectedOptionLabel(sucursalSelect),
+    departamento: selectedOptionLabel(departamentoSelect),
     horario,
     horarioError,
   })
@@ -224,9 +188,10 @@ function snapshotEditable(empleado, { normalize = false } = {}) {
     apellido: String(source.apellido ?? ''),
     dni: String(source.dni ?? ''),
     cuil: String(source.cuil ?? ''),
-    departamento: rawOptional(source.departamento),
-    categoria: rawOptional(source.categoria),
+    sucursalId: parseEntityId(source.sucursalId),
+    departamentoId: parseEntityId(source.departamentoId),
     sucursal: rawOptional(source.sucursal),
+    departamento: rawOptional(source.departamento),
     horario: canonicalHorario(source.horario),
   }
 }
@@ -235,7 +200,7 @@ function diffEmpleadoFields(original, draft) {
   const before = snapshotEditable(original)
   const after = snapshotEditable(draft, { normalize: true })
 
-  return EDITABLE_FIELDS.flatMap(({ key, label }) => {
+  return EDITABLE_FIELDS.flatMap(({ key, label, displayKey }) => {
     const previous = before[key]
     const next = after[key]
     if (previous === next) return []
@@ -249,8 +214,8 @@ function diffEmpleadoFields(original, draft) {
       {
         key,
         label,
-        before: display(previous),
-        after: display(next),
+        before: display(displayKey ? before[displayKey] : previous),
+        after: display(displayKey ? after[displayKey] : next),
       },
     ]
   })
@@ -267,39 +232,23 @@ export function buildEmpleadoPatchDto(original, draft) {
 
   for (const { key } of EDITABLE_FIELDS) {
     if (before[key] === after[key]) continue
+
+    if (key === 'sucursalId') {
+      if (after.sucursalId) dto.sucursalId = after.sucursalId
+      else dto.sucursal = ''
+      continue
+    }
+
+    if (key === 'departamentoId') {
+      if (after.departamentoId) dto.departamentoId = after.departamentoId
+      else dto.departamento = ''
+      continue
+    }
+
     dto[key] = after[key] == null ? '' : after[key]
   }
 
   return dto
-}
-
-function fillSelect(select, values, current = '') {
-  select.replaceChildren()
-
-  const addOption = (value, label) => {
-    const option = document.createElement('option')
-    option.value = value
-    option.textContent = label
-    select.append(option)
-  }
-
-  addOption('', 'Seleccionar...')
-
-  const options = [...values]
-  const currentValue = optionalValue(current)
-  if (currentValue && !options.some((item) => item.toLowerCase() === currentValue.toLowerCase())) {
-    options.unshift(currentValue)
-  }
-
-  options.forEach((value) => addOption(value, value))
-  addOption(NEW_OPTION, 'Agregar nuevo...')
-
-  if (currentValue) {
-    const match = [...select.options].find(
-      (option) => option.value && option.value !== NEW_OPTION && option.value.toLowerCase() === currentValue.toLowerCase(),
-    )
-    select.value = match ? match.value : ''
-  }
 }
 
 function fillEmpleadoForm(form, values) {
@@ -320,31 +269,9 @@ function fillEmpleadoForm(form, values) {
   setInput('horarioHasta', hasta)
 }
 
-function bindCatalogField(form, name) {
-  const select = form.querySelector(`[name="${name}Choice"]`)
-  const nuevo = form.querySelector(`[name="${name}Nuevo"]`)
-  if (!select || !nuevo) return
-
-  const syncNuevo = () => {
-    const isNew = select.value === NEW_OPTION
-    nuevo.classList.toggle('hidden', !isNew)
-    if (!isNew) nuevo.value = ''
-    else queueMicrotask(() => nuevo.focus())
-  }
-
-  select.addEventListener('change', () => {
-    setFieldError(form, name, '')
-    syncNuevo()
-  })
-  nuevo.addEventListener('input', () => setFieldError(form, name, ''))
-  syncNuevo()
-}
-
 function fieldNameForControl(control) {
   const name = control?.name ?? ''
   if (name === 'horarioDesde' || name === 'horarioHasta') return 'horario'
-  if (name.endsWith('Choice')) return name.replace(/Choice$/, '')
-  if (name.endsWith('Nuevo')) return name.replace(/Nuevo$/, '')
   return name
 }
 
@@ -357,19 +284,12 @@ function sanitizeDigits(input, maxDigits) {
 
 export function createEmpleadoForm({
   empresaId,
-  catalogs = {},
   initialValues = null,
   submitLabel = 'Guardar',
   requireEmpresa = true,
   onCancel,
   onSubmit,
 }) {
-  const catalogOptions = {
-    departamento: catalogs.departamento ?? [],
-    categoria: catalogs.categoria ?? [],
-    sucursal: catalogs.sucursal ?? [],
-  }
-
   const wrapper = document.createElement('div')
 
   wrapper.innerHTML = `
@@ -403,7 +323,21 @@ export function createEmpleadoForm({
           inputMode: 'numeric',
           help: 'Ingresá los 11 números.',
         })}
-        ${CATALOG_FIELDS.map((field) => catalogFieldTemplate(field)).join('')}
+        <div>
+          <label for="empleado-sucursalId" class="mb-1.5 block text-sm font-medium text-slate-700">Sucursal</label>
+          <select id="empleado-sucursalId" name="sucursalId" class="${inputClass()}">
+            <option value="">Seleccionar...</option>
+          </select>
+          <p id="empleado-sucursalId-error" class="mt-1 hidden text-sm text-red-600"></p>
+        </div>
+        <div>
+          <label for="empleado-departamentoId" class="mb-1.5 block text-sm font-medium text-slate-700">Departamento</label>
+          <select id="empleado-departamentoId" name="departamentoId" class="${inputClass()}" disabled aria-describedby="empleado-departamento-hint">
+            <option value="">Seleccione una sucursal</option>
+          </select>
+          <p id="empleado-departamento-hint" class="mt-1 text-xs text-slate-500">Seleccione una sucursal</p>
+          <p id="empleado-departamentoId-error" class="mt-1 hidden text-sm text-red-600"></p>
+        </div>
         <div class="sm:col-span-2">
           <p class="mb-1.5 text-sm font-medium text-slate-700">Horario</p>
           <div class="grid gap-4 sm:grid-cols-2">
@@ -457,19 +391,35 @@ export function createEmpleadoForm({
   const formError = wrapper.querySelector('#empleado-form-error')
   const submitButton = wrapper.querySelector('#empleado-form-submit')
   const cancelButton = wrapper.querySelector('#empleado-form-cancel')
+  const sucursalSelect = form.querySelector('[name="sucursalId"]')
+  const departamentoSelect = form.querySelector('[name="departamentoId"]')
+  const departamentoHint = form.querySelector('#empleado-departamento-hint')
 
-  CATALOG_FIELDS.forEach(({ name }) => {
-    fillSelect(form.querySelector(`[name="${name}Choice"]`), catalogOptions[name], initialValues?.[name])
-    bindCatalogField(form, name)
+  setDepartamentoIdle(departamentoSelect, departamentoHint, { includeAll: false })
+
+  const cascade = bindSucursalDepartamentoCascade({
+    sucursalSelect,
+    departamentoSelect,
+    hintEl: departamentoHint,
+    includeAll: false,
+    onChange: () => {
+      setFieldError(form, 'sucursalId', '')
+      setFieldError(form, 'departamentoId', '')
+      syncSubmitState()
+    },
+    onDepartamentosError: (error) => {
+      if (error.message === 'Sesión expirada o no autorizada.') return
+      showToast({
+        message: error.message || 'No se pudieron cargar los departamentos.',
+        tone: 'error',
+      })
+    },
   })
 
   if (initialValues) fillEmpleadoForm(form, initialValues)
 
   function currentErrors() {
-    return validateEmpleadoValues(readValues(form, catalogOptions), {
-      initialValues,
-      legacyValues: catalogOptions,
-    })
+    return validateEmpleadoValues(readValues(form), { initialValues })
   }
 
   function validateField(name) {
@@ -557,11 +507,8 @@ export function createEmpleadoForm({
       return
     }
 
-    const values = readValues(form, catalogOptions)
-    const errors = validateEmpleadoValues(values, {
-      initialValues,
-      legacyValues: catalogOptions,
-    })
+    const values = readValues(form)
+    const errors = validateEmpleadoValues(values, { initialValues })
     const errorNames = Object.keys(errors)
 
     if (errorNames.length > 0) {
@@ -569,10 +516,7 @@ export function createEmpleadoForm({
       syncSubmitState()
       const first = errorNames[0]
       const focusTarget =
-        form.querySelector(`[name="${first}"]`) ||
-        form.querySelector(`[name="${first}Nuevo"]:not(.hidden)`) ||
-        form.querySelector(`[name="${first}Choice"]`) ||
-        form.querySelector('[name="horarioDesde"]')
+        form.querySelector(`[name="${first}"]`) || form.querySelector('[name="horarioDesde"]')
       focusTarget?.focus()
       return
     }
@@ -582,12 +526,12 @@ export function createEmpleadoForm({
     submitButton.textContent = 'Guardando...'
     cancelButton.disabled = true
 
-    const { horarioError: _ignored, ...dtoFields } = values
+    const { horarioError: _ignored, categoria: _categoria, ...draft } = values
 
     try {
       await onSubmit({
         empresaId,
-        ...dtoFields,
+        ...draft,
       })
     } catch (error) {
       const message = error.message || 'No se pudieron guardar los cambios.'
@@ -604,6 +548,31 @@ export function createEmpleadoForm({
   })
 
   queueMicrotask(() => form.querySelector('[name="nombre"]')?.focus())
+
+  ;(async () => {
+    try {
+      const sucursales = await getSucursales()
+      if (!form.isConnected) return
+      fillSucursalOptions(sucursalSelect, sucursales, {
+        currentId: initialValues?.sucursalId,
+      })
+      if (parseEntityId(sucursalSelect.value)) {
+        await cascade.reloadDepartamentos({ preserveDepartamentoId: initialValues?.departamentoId })
+      } else {
+        setDepartamentoIdle(departamentoSelect, departamentoHint, { includeAll: false })
+      }
+      syncSubmitState()
+    } catch (error) {
+      if (error.message === 'Sesión expirada o no autorizada.') return
+      if (!form.isConnected) return
+      fillSucursalOptions(sucursalSelect, [])
+      setDepartamentoIdle(departamentoSelect, departamentoHint, { includeAll: false })
+      const message = error.message || 'No se pudieron cargar las sucursales.'
+      showFormError(message)
+      showToast({ message, tone: 'error' })
+      syncSubmitState()
+    }
+  })()
 
   return wrapper
 }
@@ -644,7 +613,7 @@ export function createEmpleadoDetail(empleado) {
       <p class="text-xs font-medium uppercase tracking-wide text-slate-500">Estado</p>
       <div class="mt-2 flex justify-center">${employeeStatusBadge(empleado.activo)}</div>
     </div>
-    <p class="mt-4 text-xs text-slate-500">La información biométrica no se gestiona en este panel. El enrolamiento de huella se realiza desde el agente local.</p>
+    <p class="mt-4 text-xs text-slate-500">La información biométrica no se gestiona en este panel. El enrolamiento de huella se realiza desde la app de escritorio.</p>
   `
 
   return wrapper
@@ -713,7 +682,7 @@ function promptEmpleadoChangesConfirm(changes) {
   })
 }
 
-export function createEmpleadoRecord({ empleado, empresaLabel = '', catalogs = {}, persistUpdate, onUpdated }) {
+export function createEmpleadoRecord({ empleado, empresaLabel = '', persistUpdate, onUpdated }) {
   void empresaLabel
   const root = document.createElement('div')
   let current = empleado
@@ -750,7 +719,6 @@ export function createEmpleadoRecord({ empleado, empresaLabel = '', catalogs = {
 
     const form = createEmpleadoForm({
       empresaId: Number(current.empresaId),
-      catalogs,
       initialValues: current,
       submitLabel: 'Guardar cambios',
       requireEmpresa: false,

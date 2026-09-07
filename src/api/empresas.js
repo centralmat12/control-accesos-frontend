@@ -4,6 +4,31 @@ import { getEmpresaContexto } from './empresa-context.js'
 import { apiFetch } from './http.js'
 import { isSuperadmin } from '../config/roles.js'
 
+export const EMPRESAS_CATALOG_EVENT = 'ca:empresas-catalog'
+
+export const EMPRESAS_CATALOG_STATUS = {
+  idle: 'idle',
+  loading: 'loading',
+  ready: 'ready',
+  empty: 'empty',
+  error: 'error',
+}
+
+let catalogState = { status: EMPRESAS_CATALOG_STATUS.idle, message: '', statusCode: 0 }
+
+export function getEmpresasCatalogState() {
+  return catalogState
+}
+
+export function setEmpresasCatalogState({ status, message = '', statusCode = 0 }) {
+  catalogState = {
+    status,
+    message: String(message ?? ''),
+    statusCode: Number(statusCode) || 0,
+  }
+  window.dispatchEvent(new CustomEvent(EMPRESAS_CATALOG_EVENT, { detail: catalogState }))
+}
+
 function pickText(item, ...keys) {
   for (const key of keys) {
     const value = pick(item, key)
@@ -63,6 +88,12 @@ function normalizeEmpresas(payload) {
   return []
 }
 
+function createStatusError(message, status) {
+  const error = new Error(message)
+  error.status = status
+  return error
+}
+
 export async function getEmpresas() {
   const { url, response } = await apiFetch('/api/empresas', {
     skipEmpresaContext: true,
@@ -71,12 +102,12 @@ export async function getEmpresas() {
   })
 
   if (response.status === 403) {
-    throw new Error('No tenés permiso para ver las empresas.')
+    throw createStatusError('No tenés permiso para ver las empresas.', 403)
   }
 
   if (!response.ok) {
     console.error('Empresas: respuesta HTTP no exitosa', { url, status: response.status })
-    throw new Error(`No se pudieron cargar las empresas (${response.status}).`)
+    throw createStatusError(`No se pudieron cargar las empresas (${response.status}).`, response.status)
   }
 
   return normalizeEmpresas(await response.json()).filter((empresa) => Number(empresa.id) > 0)

@@ -1,5 +1,6 @@
 import { apiUrl } from '../config/api.js'
 import { isSuperadmin } from '../config/roles.js'
+import { logApiNetworkError, logApiResponse } from '../utils/activity-log.js'
 import { getCurrentUser, getToken, logout } from './auth.js'
 import { getEmpresaContexto } from './empresa-context.js'
 
@@ -44,6 +45,7 @@ export async function apiFetch(path, options = {}) {
   }
 
   const url = apiUrl(path)
+  const method = String(fetchOptions.method || 'GET').toUpperCase()
   const headers = {
     Authorization: `Bearer ${token}`,
     ...extraHeaders,
@@ -65,6 +67,7 @@ export async function apiFetch(path, options = {}) {
   try {
     response = await fetch(url, { ...fetchOptions, headers })
   } catch (error) {
+    logApiNetworkError(method, path)
     if (logLabel !== false) {
       console.error(`${logLabel ?? 'API'}: error de red o CORS`, { url, error })
     }
@@ -73,6 +76,8 @@ export async function apiFetch(path, options = {}) {
       `No se pudo conectar con la API (${url}). Si el servidor responde, suele ser CORS o que el navegador no llega a esa URL.`,
     )
   }
+
+  logApiResponse(method, path, response.status)
 
   if (response.status === 401) {
     notifyUnauthorized()

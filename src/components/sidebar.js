@@ -72,8 +72,7 @@ export function createSidebar({ currentView, user, onNavigate }) {
       >
         ${collapsed ? '»' : '«'}
       </button>
-      <span data-sidebar-footer class="mt-2 block text-center ${collapsed ? 'lg:hidden' : ''}">Rama: feature/multiempresa-roles
-Commit: c30ac97 </span>
+      <span data-sidebar-footer class="mt-2 block text-center ${collapsed ? 'lg:hidden' : ''}">Rama: Versión: v0.1.0-beta</span>
     </div>
   `
 

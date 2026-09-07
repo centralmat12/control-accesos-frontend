@@ -122,6 +122,7 @@ export function validateEmpleadoValues(values, { initialValues, legacyValues = {
   const errors = {}
 
   Object.entries(FIELD_VALIDATORS).forEach(([name, validator]) => {
+    if (name === 'departamento' || name === 'sucursal' || name === 'categoria') return
     const error = validator(normalized[name])
     const unchangedLegacyValue =
       ['legajo', 'departamento', 'categoria', 'sucursal'].includes(name) &&
@@ -149,7 +150,6 @@ export const EMPLEADO_DATA_FIELDS = [
   { key: 'nombre', label: 'Nombre' },
   { key: 'apellido', label: 'Apellido' },
   { key: 'departamento', label: 'Departamento' },
-  { key: 'categoria', label: 'Categoría' },
   { key: 'sucursal', label: 'Sucursal' },
   { key: 'horario', label: 'Horario' },
 ]

@@ -6,6 +6,7 @@ export const NAV_ITEMS = [
   { id: 'dashboard', label: 'Dashboard', path: '/', roles: [ROLES.Superadmin, ROLES.Admin, ROLES.Rrhh] },
   { id: 'fichadas', label: 'Fichadas', path: '/fichadas', roles: [ROLES.Superadmin, ROLES.Admin, ROLES.Rrhh] },
   { id: 'empleados', label: 'Empleados', path: '/empleados', roles: [ROLES.Superadmin, ROLES.Admin, ROLES.Rrhh] },
+  { id: 'registros', label: 'Registros', path: '/registros', roles: [ROLES.Superadmin, ROLES.Admin, ROLES.Rrhh] },
   { id: 'areas', label: 'Áreas', path: '/areas', hidden: true },
   { id: 'horarios', label: 'Horarios', path: '/horarios', hidden: true },
   { id: 'dispositivos', label: 'Dispositivos', path: '/dispositivos', hidden: true },
