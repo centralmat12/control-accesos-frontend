@@ -91,7 +91,6 @@ export async function renderFichadas(container) {
     view.className = 'space-y-6'
     view.innerHTML = `
       <section>
-        <h2 class="text-xl font-semibold tracking-tight text-slate-900">Fichadas</h2>
         <p class="mt-1 text-sm text-slate-500">Consultá los registros de asistencia de los empleados.</p>
       </section>
     `

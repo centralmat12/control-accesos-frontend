@@ -1,5 +1,5 @@
 import { escapeHtml } from '../utils/format.js'
-import { empleadoAlertLabel, empleadoSearchHint } from '../utils/empleado-alerts.js'
+import { empleadoAlertCopy, empleadoSearchHint } from '../utils/empleado-alerts.js'
 import { iconAlertTriangle } from './icons.js'
 
 /**
@@ -33,6 +33,7 @@ export function createDashboardAlerts(alertas, { onOpenEmpleados } = {}) {
   list.className = 'max-h-80 space-y-2 overflow-y-auto pr-1'
 
   alertas.items.forEach((item, index) => {
+    const copy = empleadoAlertCopy(item.empleado, item.missing)
     const li = document.createElement('li')
     li.innerHTML = `
       <button
@@ -40,10 +41,12 @@ export function createDashboardAlerts(alertas, { onOpenEmpleados } = {}) {
         data-alert-index="${index}"
         class="w-full rounded-lg border border-amber-200 bg-white/60 px-3 py-2.5 text-left transition-colors hover:border-amber-300 hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500 dark:border-amber-800/70 dark:bg-slate-950/30 dark:hover:border-amber-700 dark:hover:bg-slate-900"
       >
-        <span class="block text-sm font-semibold text-amber-950 dark:text-amber-100">${escapeHtml(empleadoAlertLabel(item.empleado))}</span>
-        <span class="mt-1 block text-xs leading-5 text-amber-900/80 dark:text-amber-200/80">
-          Falta: ${escapeHtml(item.missing.map(({ label }) => label).join(', '))}
-        </span>
+        <span class="block text-sm font-semibold text-amber-950 dark:text-amber-100">${escapeHtml(copy.title)}</span>
+        ${
+          copy.detail
+            ? `<span class="mt-1 block text-xs leading-5 text-amber-900/80 dark:text-amber-200/80">${escapeHtml(copy.detail)}</span>`
+            : ''
+        }
       </button>
     `
 

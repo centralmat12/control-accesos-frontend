@@ -2,6 +2,7 @@ import { createEmpleado, deactivateEmpleado, getEmpleadoById, getEmpleados, patc
 import { getCurrentUser } from '../api/auth.js'
 import { canLoadTenantData, getOperativeEmpresaId } from '../api/empresa-context.js'
 import { empresaDisplayName, getEmpresaActual } from '../api/empresas.js'
+import { getSucursales } from '../api/sucursales.js'
 import { isSuperadmin } from '../config/roles.js'
 import {
   createDeactivateConfirm,
@@ -13,42 +14,27 @@ import { createFeedbackState, createSelectEmpresaState } from '../components/fee
 import { createPagination } from '../components/pagination.js'
 import { openModal } from '../components/modal.js'
 import { createDetailSkeleton, createTableSkeleton } from '../components/skeleton.js'
+import {
+  DEPARTAMENTO_ALL,
+  SUCURSAL_ALL,
+  bindSucursalDepartamentoCascade,
+  fillSucursalOptions,
+  parseEntityId,
+  setDepartamentoIdle,
+} from '../components/sucursal-departamento-selects.js'
 import { showToast } from '../components/toast.js'
 import { filterEmpleados, sortEmpleados } from '../utils/empleado-list.js'
 import { summarizeEmpleadoDatos } from '../utils/empleado-alerts.js'
-import { uniqueCatalogValues } from '../utils/format.js'
 import { DEFAULT_PAGE_SIZE, PAGE_SIZE_OPTIONS, paginateItems } from '../utils/paginate.js'
 
 const CONTROL_CLASS =
-  'w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none placeholder:text-slate-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20'
+  'w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none placeholder:text-slate-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 disabled:cursor-not-allowed disabled:opacity-60'
+
+const ENROLLMENT_COPY =
+  'Alta, consulta y baja lógica de las personas que registran fichadas. El enrolamiento de huella se realiza desde la app de escritorio.'
 
 function sessionEmpresaId() {
   return getOperativeEmpresaId(getCurrentUser())
-}
-
-function catalogsFromEmpleados(empleados) {
-  return {
-    departamento: uniqueCatalogValues(empleados, 'departamento'),
-    categoria: uniqueCatalogValues(empleados, 'categoria'),
-    sucursal: uniqueCatalogValues(empleados, 'sucursal'),
-  }
-}
-
-function fillCatalogSelect(select, values, allLabel, current) {
-  select.replaceChildren()
-
-  const addOption = (value, label) => {
-    const option = document.createElement('option')
-    option.value = value
-    option.textContent = label
-    select.append(option)
-  }
-
-  addOption('todos', allLabel)
-  values.forEach((value) => addOption(value, value))
-
-  const stillValid = [...select.options].some((option) => option.value === current)
-  select.value = stillValid ? current : 'todos'
 }
 
 /**
@@ -69,9 +55,9 @@ export async function renderEmpleados(container, { initialQuery } = {}) {
     view.className = 'space-y-6'
     view.innerHTML = `
       <section>
-        <h2 class="text-xl font-semibold tracking-tight text-slate-900">Empleados</h2>
+        <h2 class="text-xl font-semibold tracking-tight text-slate-900"></h2>
         <p class="mt-1 text-sm text-slate-500">
-          Alta, consulta y baja lógica de las personas que registran fichadas. El enrolamiento de huella se realiza desde el agente local.
+          ${ENROLLMENT_COPY}
         </p>
       </section>
     `
@@ -88,7 +74,7 @@ export async function renderEmpleados(container, { initialQuery } = {}) {
       <div>
         <h2 class="text-xl font-semibold tracking-tight text-slate-900">Empleados</h2>
         <p class="mt-1 text-sm text-slate-500">
-          Alta, consulta y baja lógica de las personas que registran fichadas. El enrolamiento de huella se realiza desde el agente local.
+          ${ENROLLMENT_COPY}
         </p>
       </div>
       <button
@@ -113,16 +99,17 @@ export async function renderEmpleados(container, { initialQuery } = {}) {
           />
         </div>
         <div class="min-w-0">
-          <label for="empleados-departamento" class="mb-1.5 block text-sm font-medium text-slate-700">Departamento</label>
-          <select id="empleados-departamento" class="${CONTROL_CLASS}">
-            <option value="todos">Todos</option>
+          <label for="empleados-sucursal" class="mb-1.5 block text-sm font-medium text-slate-700">Sucursal</label>
+          <select id="empleados-sucursal" class="${CONTROL_CLASS}">
+            <option value="${SUCURSAL_ALL}">Todas</option>
           </select>
         </div>
         <div class="min-w-0">
-          <label for="empleados-sucursal" class="mb-1.5 block text-sm font-medium text-slate-700">Sucursal</label>
-          <select id="empleados-sucursal" class="${CONTROL_CLASS}">
-            <option value="todos">Todas</option>
+          <label for="empleados-departamento" class="mb-1.5 block text-sm font-medium text-slate-700">Departamento</label>
+          <select id="empleados-departamento" class="${CONTROL_CLASS}" disabled aria-describedby="empleados-departamento-hint">
+            <option value="${DEPARTAMENTO_ALL}">Seleccione una sucursal</option>
           </select>
+          <p id="empleados-departamento-hint" class="mt-1 text-xs text-slate-500">Seleccione una sucursal</p>
         </div>
         <div class="min-w-0 sm:col-span-2 xl:col-span-1">
           <label for="empleados-estado" class="mb-1.5 block text-sm font-medium text-slate-700">Estado de datos</label>
@@ -154,6 +141,7 @@ export async function renderEmpleados(container, { initialQuery } = {}) {
   const countLabel = view.querySelector('#empleados-count')
   const searchInput = view.querySelector('#empleados-search')
   const departamentoSelect = view.querySelector('#empleados-departamento')
+  const departamentoHint = view.querySelector('#empleados-departamento-hint')
   const sucursalSelect = view.querySelector('#empleados-sucursal')
   const estadoSelect = view.querySelector('#empleados-estado')
   const pageSizeSelect = view.querySelector('#empleados-page-size')
@@ -189,10 +177,13 @@ export async function renderEmpleados(container, { initialQuery } = {}) {
   }
 
   function getFilters() {
+    const sucursalId = parseEntityId(sucursalSelect.value)
+    const departamentoId = parseEntityId(departamentoSelect.value)
+
     return {
       query: searchInput.value,
-      departamento: departamentoSelect.value,
-      sucursal: sucursalSelect.value,
+      sucursalId: sucursalId ? String(sucursalId) : SUCURSAL_ALL,
+      departamentoId: sucursalId && !departamentoSelect.disabled && departamentoId ? String(departamentoId) : DEPARTAMENTO_ALL,
       estado: estadoSelect.value,
     }
   }
@@ -224,9 +215,27 @@ export async function renderEmpleados(container, { initialQuery } = {}) {
     `
   }
 
-  function syncFilterOptions() {
-    fillCatalogSelect(departamentoSelect, uniqueCatalogValues(empleados, 'departamento'), 'Todos', departamentoSelect.value)
-    fillCatalogSelect(sucursalSelect, uniqueCatalogValues(empleados, 'sucursal'), 'Todas', sucursalSelect.value)
+  async function loadSucursales() {
+    try {
+      const sucursales = await getSucursales()
+      if (!sucursalSelect.isConnected) return
+      fillSucursalOptions(sucursalSelect, sucursales, {
+        includeAll: true,
+        currentId: parseEntityId(sucursalSelect.value),
+      })
+      if (!parseEntityId(sucursalSelect.value)) {
+        setDepartamentoIdle(departamentoSelect, departamentoHint, { includeAll: true })
+      }
+    } catch (error) {
+      if (error.message === 'Sesión expirada o no autorizada.') return
+      if (!sucursalSelect.isConnected) return
+      fillSucursalOptions(sucursalSelect, [], { includeAll: true })
+      setDepartamentoIdle(departamentoSelect, departamentoHint, { includeAll: true })
+      showToast({
+        message: error.message || 'No se pudieron cargar las sucursales.',
+        tone: 'error',
+      })
+    }
   }
 
   function visibleEmpleados() {
@@ -314,7 +323,6 @@ export async function renderEmpleados(container, { initialQuery } = {}) {
       empleados = await getEmpleados()
       loaded = true
       loadError = false
-      syncFilterOptions()
       renderSummary()
       renderResults()
     } catch (error) {
@@ -354,7 +362,6 @@ export async function renderEmpleados(container, { initialQuery } = {}) {
 
     const form = createEmpleadoForm({
       empresaId: currentEmpresaId,
-      catalogs: catalogsFromEmpleados(empleados),
       onCancel: () => closeActiveModal(),
       onSubmit: async (dto) => {
         await createEmpleado(dto)
@@ -394,11 +401,9 @@ export async function renderEmpleados(container, { initialQuery } = {}) {
         createEmpleadoRecord({
           empleado: detail,
           empresaLabel: empresaDisplayName(empresa, detail.empresaId),
-          catalogs: catalogsFromEmpleados(empleados),
           persistUpdate: persistEmpleadoUpdate,
           onUpdated: (updated) => {
             empleados = empleados.map((item) => (Number(item.id) === Number(updated.id) ? { ...item, ...updated } : item))
-            syncFilterOptions()
             renderSummary()
             renderResults()
             showToast({ message: 'Cambios guardados.', tone: 'success' })
@@ -429,7 +434,6 @@ export async function renderEmpleados(container, { initialQuery } = {}) {
         await deactivateEmpleado(empleado.id)
         empleados = empleados.filter((item) => Number(item.id) !== Number(empleado.id))
         closeActiveModal()
-        syncFilterOptions()
         renderSummary()
         renderResults()
         showToast({ message: 'Empleado desactivado.', tone: 'success' })
@@ -461,9 +465,9 @@ export async function renderEmpleados(container, { initialQuery } = {}) {
 
   if (initialQuery) {
     searchInput.value = initialQuery
-    departamentoSelect.value = 'todos'
-    sucursalSelect.value = 'todos'
+    sucursalSelect.value = SUCURSAL_ALL
     estadoSelect.value = 'todos'
+    setDepartamentoIdle(departamentoSelect, departamentoHint, { includeAll: true })
     resetPage()
   }
 
@@ -473,10 +477,23 @@ export async function renderEmpleados(container, { initialQuery } = {}) {
     renderResults()
   }
 
+  bindSucursalDepartamentoCascade({
+    sucursalSelect,
+    departamentoSelect,
+    hintEl: departamentoHint,
+    includeAll: true,
+    onChange: onFilterChange,
+    onDepartamentosError: (error) => {
+      if (error.message === 'Sesión expirada o no autorizada.') return
+      showToast({
+        message: error.message || 'No se pudieron cargar los departamentos.',
+        tone: 'error',
+      })
+    },
+  })
+
   newButton.addEventListener('click', openCreateForm)
   searchInput.addEventListener('input', onFilterChange)
-  departamentoSelect.addEventListener('change', onFilterChange)
-  sucursalSelect.addEventListener('change', onFilterChange)
   estadoSelect.addEventListener('change', onFilterChange)
   pageSizeSelect.addEventListener('change', () => {
     pageSize = Number(pageSizeSelect.value) || DEFAULT_PAGE_SIZE
@@ -485,7 +502,11 @@ export async function renderEmpleados(container, { initialQuery } = {}) {
   })
 
   container.replaceChildren(view)
-  await loadEmpleados({ keepBanner: Boolean(!empresaId && !isSuperadmin(user)) })
+  setDepartamentoIdle(departamentoSelect, departamentoHint, { includeAll: true })
+  await Promise.all([
+    loadEmpleados({ keepBanner: Boolean(!empresaId && !isSuperadmin(user)) }),
+    loadSucursales(),
+  ])
 
   if (initialQuery && loaded) {
     const hinted = visibleEmpleados()[0]

@@ -4,12 +4,8 @@
  * Actualización: PATCH /api/empleados/{id} con EmpleadoPatchDto (campos opcionales).
  * No enviar id, empresaId, activo ni datos biométricos.
  *
- * Pendiente de backend:
- * - Reactivar empleado / listar inactivos (GET hoy solo devuelve Activo = true)
- * - Paginación de servidor (el listado pagina en el cliente)
- * - Campo booleano `tieneHuella` (o equivalente) en el empleado, o un endpoint de estado
- *   de enrolamiento que NO devuelva templateBiometrico. El Dashboard no infiere huella
- *   ni muestra contador 0 hasta que exista ese dato.
+ * GET /api/empleados proyecta `tieneHuella` (bool). Solo se alerta
+ * huella faltante cuando el valor es exactamente false.
  *
  * No usar GET /api/huellas/empresa/{id} (expone plantillas).
  * No usar POST /api/empleados/enrolar (solo el agente local).
@@ -24,6 +20,12 @@ function pickOptionalBoolean(item, ...keys) {
   return undefined
 }
 
+function pickId(item, ...keys) {
+  const value = pick(item, ...keys)
+  const id = Number(value)
+  return Number.isFinite(id) && id > 0 ? id : null
+}
+
 function mapEmpleado(item) {
   return {
     id: pick(item, 'id', 'Id'),
@@ -34,8 +36,10 @@ function mapEmpleado(item) {
     nombre: pick(item, 'nombre', 'Nombre'),
     apellido: pick(item, 'apellido', 'Apellido'),
     departamento: pick(item, 'departamento', 'Departamento'),
+    departamentoId: pickId(item, 'departamentoId', 'DepartamentoId'),
     categoria: pick(item, 'categoria', 'Categoria'),
     sucursal: pick(item, 'sucursal', 'Sucursal'),
+    sucursalId: pickId(item, 'sucursalId', 'SucursalId'),
     horario: pick(item, 'horario', 'Horario'),
     tieneHuella: pickOptionalBoolean(item, 'tieneHuella', 'TieneHuella'),
     activo: Boolean(pick(item, 'activo', 'Activo')),

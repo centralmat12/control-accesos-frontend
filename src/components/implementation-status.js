@@ -2,7 +2,6 @@ import { featureStatusBadge } from './badge.js'
 import { escapeHtml } from '../utils/format.js'
 
 const IMPLEMENTATION_ITEMS = [
-  { label: 'Estado de huella', status: 'api' },
   { label: 'Asignación por sucursal/departamento', status: 'api' },
   { label: 'Usuarios del sistema', status: 'ui' },
   { label: 'Sucursales', status: 'ui' },

@@ -8,11 +8,14 @@ import { renderDashboard } from './views/dashboard.js'
 import { renderEmpleados } from './views/empleados.js'
 import { renderFichadas } from './views/fichadas.js'
 import { renderLogin } from './views/login.js'
+import { renderRegistros } from './views/registros.js'
+import { logInfo } from './utils/activity-log.js'
 
 const views = {
   dashboard: renderDashboard,
   fichadas: renderFichadas,
   empleados: renderEmpleados,
+  registros: renderRegistros,
 }
 
 let activeViewCleanup = null
@@ -43,10 +46,18 @@ export function bootstrap(root) {
       return
     }
 
+    const openingLayout = !mainEl
+
     const navigate = (viewId, options = {}) => {
+      const changed = viewId !== currentView || Object.keys(options).length > 0
       if (viewId === currentView && Object.keys(options).length === 0) {
         setSidebarOpen(false)
         return
+      }
+
+      if (changed) {
+        const label = NAV_ITEMS.find((item) => item.id === viewId)?.label ?? viewId
+        logInfo('Navegación', `Usuario abrió la sección ${label}.`)
       }
 
       currentView = viewId
@@ -72,6 +83,10 @@ export function bootstrap(root) {
     mainEl = main
     viewExtras = { onNavigate: navigate, ...pendingViewOptions }
     pendingViewOptions = {}
+    if (openingLayout) {
+      const label = NAV_ITEMS.find((item) => item.id === currentView)?.label ?? currentView
+      logInfo('Navegación', `Usuario abrió la sección ${label}.`)
+    }
     void renderView(main, currentView, viewExtras)
   }
 

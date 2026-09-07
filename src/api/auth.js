@@ -1,5 +1,6 @@
 import { apiUrl } from '../config/api.js'
 import { isSuperadmin } from '../config/roles.js'
+import { logApiNetworkError, logApiResponse, logInfo } from '../utils/activity-log.js'
 import { clearEmpresaContexto } from './empresa-context.js'
 
 const SESSION_KEY = 'ca.auth.user'
@@ -129,11 +130,14 @@ export async function login({ email, password }) {
       }),
     })
   } catch (error) {
+    logApiNetworkError('POST', '/api/Auth/Login')
     console.error('Login: error de red o CORS', { url: loginUrl, error })
     throw new Error(
       `No se pudo conectar con la API (${loginUrl}). Si el servidor responde, suele ser CORS o que el navegador no llega a esa URL.`,
     )
   }
+
+  logApiResponse('POST', '/api/Auth/Login', response.status)
 
   if (!response.ok) {
     console.error('Login: respuesta HTTP no exitosa', { url: loginUrl, status: response.status })
@@ -171,6 +175,7 @@ export async function login({ email, password }) {
 }
 
 export function logout() {
+  logInfo('Autenticación', 'Cierre de sesión.')
   clearEmpresaContexto({ silent: true })
   clearSession()
 }

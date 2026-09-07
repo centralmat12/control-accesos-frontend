@@ -41,8 +41,8 @@ export function movementBadge(tipo) {
  * undefined/null = dato no disponible en la API web (no se infiere).
  */
 export function biometricStatusBadge(tieneHuella) {
-  if (tieneHuella === true) return badgeHtml('Enrolada', 'success')
-  if (tieneHuella === false) return badgeHtml('Sin enrolar', 'neutral')
+  if (tieneHuella === true) return badgeHtml('Huella biométrica enrolada', 'success')
+  if (tieneHuella === false) return badgeHtml('Huella biométrica no enrolada', 'warning')
 
   return `${badgeHtml('Estado no disponible', 'neutral')} ${featureStatusBadge('api')}`
 }
