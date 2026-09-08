@@ -27,6 +27,17 @@ export async function readErrorMessage(response, fallback) {
   return text
 }
 
+export function createApiError(message, status) {
+  const error = new Error(message)
+  error.status = Number(status) || 0
+  return error
+}
+
+function parseEmpresaId(value) {
+  const id = Number(value)
+  return Number.isFinite(id) && id > 0 ? id : null
+}
+
 /**
  * Petición autenticada a la API.
  * No agrega Content-Type: cada módulo define headers y body.
@@ -34,10 +45,12 @@ export async function readErrorMessage(response, fallback) {
  * Opciones propias (no se envían a fetch):
  * - missingAuthMessage: error si no hay token
  * - skipEmpresaContext: no enviar X-Empresa-Id (p. ej. listado global de empresas)
+ * - empresaId: SuperAdmin — X-Empresa-Id explícito (detalle de empresa / sucursales).
+ *   Ignorado para ADMIN/RRHH: el tenant sale del claim empresa_id.
  * - logLabel: prefijo de console.error en fallos de red (false = no loguear)
  */
 export async function apiFetch(path, options = {}) {
-  const { headers: extraHeaders, missingAuthMessage, logLabel, skipEmpresaContext, ...fetchOptions } = options
+  const { headers: extraHeaders, missingAuthMessage, logLabel, skipEmpresaContext, empresaId, ...fetchOptions } = options
   const token = getToken()
 
   if (!token) {
@@ -56,9 +69,9 @@ export async function apiFetch(path, options = {}) {
   delete headers['x-empresa-id']
 
   if (!skipEmpresaContext && isSuperadmin(user)) {
-    const contexto = getEmpresaContexto()
-    if (contexto?.id) {
-      headers['X-Empresa-Id'] = String(contexto.id)
+    const contextoId = parseEmpresaId(empresaId) ?? getEmpresaContexto()?.id
+    if (contextoId) {
+      headers['X-Empresa-Id'] = String(contextoId)
     }
   }
 

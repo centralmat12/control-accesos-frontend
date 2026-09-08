@@ -3,8 +3,7 @@ import { escapeHtml } from '../utils/format.js'
 
 const IMPLEMENTATION_ITEMS = [
   { label: 'Asignación por sucursal/departamento', status: 'api' },
-  { label: 'Usuarios del sistema', status: 'ui' },
-  { label: 'Sucursales', status: 'ui' },
+  { label: 'Listado de usuarios del sistema', status: 'api' },
   { label: 'Departamentos', status: 'ui' },
   { label: 'Agentes', status: 'ui' },
 ]

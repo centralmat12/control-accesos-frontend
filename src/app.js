@@ -1,9 +1,11 @@
-import { DEFAULT_VIEW, NAV_ITEMS } from './config/navigation.js'
+import { DEFAULT_VIEW, NAV_ITEMS, canAccessView } from './config/navigation.js'
 import { getCurrentUser, isAuthenticated, logout } from './api/auth.js'
 import { EMPRESA_CONTEXTO_EVENT } from './api/empresa-context.js'
 import { createLayout } from './components/layout.js'
 import { setSidebarOpen } from './components/sidebar.js'
+import { createFeedbackState } from './components/feedback-state.js'
 import { createViewSkeleton } from './components/skeleton.js'
+import { renderAdministracion } from './views/administracion.js'
 import { renderDashboard } from './views/dashboard.js'
 import { renderEmpleados } from './views/empleados.js'
 import { renderFichadas } from './views/fichadas.js'
@@ -16,6 +18,7 @@ const views = {
   fichadas: renderFichadas,
   empleados: renderEmpleados,
   registros: renderRegistros,
+  administracion: renderAdministracion,
 }
 
 let activeViewCleanup = null
@@ -105,6 +108,23 @@ export function bootstrap(root) {
 
 async function renderView(main, viewId, extras = {}) {
   clearActiveView()
+  const user = getCurrentUser()
+
+  if (!canAccessView(user, viewId)) {
+    const message =
+      viewId === 'administracion'
+        ? 'No tenés permisos para acceder a Administración'
+        : 'No tenés permisos para acceder a esta sección.'
+    main.replaceChildren(
+      createFeedbackState({
+        title: 'Acceso denegado',
+        message,
+        tone: 'error',
+      }),
+    )
+    return
+  }
+
   const render = views[viewId]
 
   if (!render) {

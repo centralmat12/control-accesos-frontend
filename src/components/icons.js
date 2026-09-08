@@ -91,11 +91,18 @@ export function iconList() {
   </svg>`
 }
 
+export function iconBuilding() {
+  return `<svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+    <path stroke-linecap="round" stroke-linejoin="round" d="M4 21V5a1 1 0 0 1 1-1h6v17H4Zm8 0V9h7a1 1 0 0 1 1 1v11M8 8h.01M8 12h.01M8 16h.01M16 13h.01M16 17h.01" />
+  </svg>`
+}
+
 export const NAV_ICONS = {
   dashboard: iconDashboard,
   fichadas: iconClock,
   empleados: iconUsers,
   registros: iconList,
+  administracion: iconBuilding,
   areas: iconMap,
   horarios: iconCalendar,
   dispositivos: iconDevice,
