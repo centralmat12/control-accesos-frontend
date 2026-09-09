@@ -85,9 +85,28 @@ export function iconPencil() {
   </svg>`
 }
 
+export function iconEye() {
+  return `<svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+    <path stroke-linecap="round" stroke-linejoin="round" d="M2.1 12s3.4-7 9.9-7 9.9 7 9.9 7-3.4 7-9.9 7-9.9-7-9.9-7Z" />
+    <circle cx="12" cy="12" r="3" />
+  </svg>`
+}
+
+export function iconEyeOff() {
+  return `<svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+    <path stroke-linecap="round" stroke-linejoin="round" d="M3 3l18 18M10.6 10.6A3 3 0 0 0 12 15a3 3 0 0 0 2.4-1.2M9.9 5.1A11 11 0 0 1 12 5c6.5 0 9.9 7 9.9 7a16 16 0 0 1-3.2 3.8M6.1 6.1C3.9 7.6 2.1 12 2.1 12a16 16 0 0 0 5.2 5.4M14.1 14.1 9.9 9.9" />
+  </svg>`
+}
+
 export function iconList() {
   return `<svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
     <path stroke-linecap="round" stroke-linejoin="round" d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01" />
+  </svg>`
+}
+
+export function iconBuilding() {
+  return `<svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+    <path stroke-linecap="round" stroke-linejoin="round" d="M4 21V5a1 1 0 0 1 1-1h6v17H4Zm8 0V9h7a1 1 0 0 1 1 1v11M8 8h.01M8 12h.01M8 16h.01M16 13h.01M16 17h.01" />
   </svg>`
 }
 
@@ -96,6 +115,7 @@ export const NAV_ICONS = {
   fichadas: iconClock,
   empleados: iconUsers,
   registros: iconList,
+  administracion: iconBuilding,
   areas: iconMap,
   horarios: iconCalendar,
   dispositivos: iconDevice,

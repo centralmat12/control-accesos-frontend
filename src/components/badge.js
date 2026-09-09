@@ -15,6 +15,7 @@ const TONES = {
 
 export const FEATURE_STATUS = {
   api: { label: 'Requiere integración API', tone: 'warning' },
+  apiEnable: { label: 'Requiere habilitación en API', tone: 'warning' },
   ui: { label: 'Interfaz pendiente', tone: 'info' },
   soon: { label: 'Próximamente', tone: 'neutral' },
 }

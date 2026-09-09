@@ -1,7 +1,9 @@
 import { pick } from '../utils/pick.js'
+import { buildEmpresaAltaDto } from '../utils/empresa-data.js'
+import { puedeCrearEmpresas } from '../config/administracion.js'
 import { getCurrentUser, getToken } from './auth.js'
 import { getEmpresaContexto } from './empresa-context.js'
-import { apiFetch } from './http.js'
+import { apiFetch, createApiError, readErrorMessage } from './http.js'
 import { isSuperadmin } from '../config/roles.js'
 
 export const EMPRESAS_CATALOG_EVENT = 'ca:empresas-catalog'
@@ -88,12 +90,6 @@ function normalizeEmpresas(payload) {
   return []
 }
 
-function createStatusError(message, status) {
-  const error = new Error(message)
-  error.status = status
-  return error
-}
-
 export async function getEmpresas() {
   const { url, response } = await apiFetch('/api/empresas', {
     skipEmpresaContext: true,
@@ -102,15 +98,61 @@ export async function getEmpresas() {
   })
 
   if (response.status === 403) {
-    throw createStatusError('No tenés permiso para ver las empresas.', 403)
+    throw createApiError('No tenés permiso para ver las empresas.', 403)
   }
 
   if (!response.ok) {
     console.error('Empresas: respuesta HTTP no exitosa', { url, status: response.status })
-    throw createStatusError(`No se pudieron cargar las empresas (${response.status}).`, response.status)
+    throw createApiError(`No se pudieron cargar las empresas (${response.status}).`, response.status)
   }
 
   return normalizeEmpresas(await response.json()).filter((empresa) => Number(empresa.id) > 0)
+}
+
+/**
+ * POST /api/empresas — body del modelo Empresa: nombreFantasia, razonSocial, cuit.
+ * El controller autoriza la policy SoloSuperadmin.
+ */
+export async function createEmpresa({ nombreFantasia, razonSocial, cuit }) {
+  if (!puedeCrearEmpresas(getCurrentUser())) {
+    throw createApiError('No tenés permiso para crear empresas.', 403)
+  }
+
+  const { dto, hasErrors } = buildEmpresaAltaDto({ nombreFantasia, razonSocial, cuit })
+  if (hasErrors) {
+    throw createApiError('Los datos de la empresa no son válidos.', 400)
+  }
+
+  const { url, response } = await apiFetch('/api/empresas', {
+    method: 'POST',
+    skipEmpresaContext: true,
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(dto),
+    missingAuthMessage: 'No hay sesión activa. Iniciá sesión para crear empresas.',
+    logLabel: 'Empresas',
+  })
+
+  if (response.status === 403) {
+    throw createApiError('No tenés permiso para crear empresas.', 403)
+  }
+
+  if (response.status === 400) {
+    throw createApiError(await readErrorMessage(response, 'Los datos de la empresa no son válidos.'), 400)
+  }
+
+  if (response.status === 409) {
+    throw createApiError('Ya existe una empresa con ese CUIT.', 409)
+  }
+
+  if (!response.ok) {
+    console.error('Empresas: alta HTTP no exitosa', { url, status: response.status })
+    throw createApiError(
+      await readErrorMessage(response, `No se pudo crear la empresa (${response.status}).`),
+      response.status,
+    )
+  }
+
+  return mapEmpresa(await response.json())
 }
 
 export async function getEmpresaActual() {

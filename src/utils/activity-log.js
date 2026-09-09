@@ -89,10 +89,13 @@ function resourceFromPath(path) {
     return { action: 'Empresas', noun: 'empresas', consulting: 'consultar empresas' }
   }
   if (route.includes('/sucursales')) {
-    return { action: 'Empleados', noun: 'sucursales', consulting: 'consultar sucursales' }
+    return { action: 'Sucursales', noun: 'sucursales', consulting: 'consultar sucursales' }
   }
   if (route.includes('/departamentos')) {
     return { action: 'Empleados', noun: 'departamentos', consulting: 'consultar departamentos' }
+  }
+  if (route.includes('/usuarios')) {
+    return { action: 'Usuarios', noun: 'usuarios', consulting: 'administrar usuarios' }
   }
 
   return { action: 'Sistema', noun: 'datos', consulting: 'consultar la API' }
@@ -106,6 +109,9 @@ function successDetail(method, path) {
   if (route.includes('/auth')) return 'Inicio de sesión correcto.'
   if (verb === 'POST') {
     if (noun === 'empleados') return 'Empleado creado correctamente.'
+    if (noun === 'usuarios') return 'Usuario creado correctamente.'
+    if (noun === 'empresas') return 'Empresa creada correctamente.'
+    if (noun === 'sucursales') return 'Sucursal creada correctamente.'
     return `Alta de ${noun} registrada correctamente.`
   }
   if (verb === 'PATCH' || verb === 'PUT') {

@@ -18,6 +18,14 @@ import {
   setDepartamentoIdle,
 } from './sucursal-departamento-selects.js'
 import { showToast } from './toast.js'
+import {
+  FORM_HELP_CLASS,
+  FORM_INPUT_CLASS,
+  FORM_LABEL_CLASS,
+  fieldIds,
+  formFieldMarkup,
+  wireFormFields,
+} from './form-field.js'
 
 const EDITABLE_FIELDS = [
   { key: 'legajo', label: 'Legajo' },
@@ -34,81 +42,6 @@ const HORARIO_STORED = /^([01]\d|2[0-3]):([0-5]\d)\s*(?:-|a)\s*([01]\d|2[0-3]):(
 function optionalValue(value) {
   const trimmed = String(value ?? '').trim()
   return trimmed || null
-}
-
-function inputClass() {
-  return 'w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none placeholder:text-slate-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 disabled:cursor-not-allowed disabled:opacity-60'
-}
-
-function fieldTemplate({
-  id,
-  name,
-  label,
-  required = false,
-  maxLength,
-  autocomplete = 'off',
-  inputMode,
-  help,
-}) {
-  const describedBy = [help ? `${id}-help` : '', `${id}-error`].filter(Boolean).join(' ')
-
-  return `
-    <div>
-      <label for="${id}" class="mb-1.5 block text-sm font-medium text-slate-700">${label}</label>
-      <input
-        id="${id}"
-        name="${name}"
-        type="text"
-        maxlength="${maxLength}"
-        autocomplete="${autocomplete}"
-        ${inputMode ? `inputmode="${inputMode}"` : ''}
-        aria-describedby="${describedBy}"
-        ${required ? 'required' : ''}
-        class="${inputClass()}"
-      />
-      ${help ? `<p id="${id}-help" class="mt-1 text-xs text-slate-500">${help}</p>` : ''}
-      <p id="${id}-error" class="mt-1 hidden text-sm text-red-600" aria-live="polite"></p>
-    </div>
-  `
-}
-
-function setControlError(errorEl, controls, message) {
-  const targets = controls.filter(Boolean)
-
-  if (message) {
-    if (errorEl) {
-      errorEl.textContent = message
-      errorEl.classList.remove('hidden')
-    }
-    targets.forEach((control) => {
-      control.classList.add('border-red-300')
-      control.setAttribute('aria-invalid', 'true')
-    })
-  } else {
-    if (errorEl) {
-      errorEl.textContent = ''
-      errorEl.classList.add('hidden')
-    }
-    targets.forEach((control) => {
-      control.classList.remove('border-red-300')
-      control.removeAttribute('aria-invalid')
-    })
-  }
-}
-
-function setFieldError(form, name, message) {
-  const error = form.querySelector(`#empleado-${name}-error`)
-  const input = form.querySelector(`[name="${name}"]`)
-  const horarioDesde = name === 'horario' ? form.querySelector('[name="horarioDesde"]') : null
-  const horarioHasta = name === 'horario' ? form.querySelector('[name="horarioHasta"]') : null
-
-  setControlError(error, [input, horarioDesde, horarioHasta], message)
-}
-
-function clearFieldErrors(form) {
-  ;['legajo', 'nombre', 'apellido', 'dni', 'cuil', 'sucursalId', 'departamentoId', 'horario'].forEach((name) =>
-    setFieldError(form, name, ''),
-  )
 }
 
 function normalizeTime(value) {
@@ -137,7 +70,7 @@ function readValues(form) {
   let horarioError = ''
 
   if ((desde && !hasta) || (!desde && hasta)) {
-    horarioError = 'Completá hora desde y hora hasta, o dejá ambas vacías.'
+    horarioError = 'Completá ambas horas o dejá las dos sin asignar.'
   } else if (desde && hasta) {
     horario = `${desde}-${hasta}`
   }
@@ -291,55 +224,76 @@ export function createEmpleadoForm({
   onSubmit,
 }) {
   const wrapper = document.createElement('div')
+  const horarioIds = fieldIds('empleado-horario')
+  const sucursalIds = fieldIds('empleado-sucursalId')
+  const departamentoIds = fieldIds('empleado-departamentoId')
 
   wrapper.innerHTML = `
     <form id="empleado-form" class="space-y-4" lang="es-AR" novalidate>
       <p id="empleado-form-error" class="hidden rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800" role="alert"></p>
       <div class="grid gap-4 sm:grid-cols-2">
-        ${fieldTemplate({
+        ${formFieldMarkup({
+          id: 'empleado-nombre',
+          name: 'nombre',
+          label: 'Nombre',
+          required: true,
+          maxLength: 50,
+          autocomplete: 'given-name',
+          helpText: 'Ingresá el nombre del empleado.',
+        })}
+        ${formFieldMarkup({
+          id: 'empleado-apellido',
+          name: 'apellido',
+          label: 'Apellido',
+          required: true,
+          maxLength: 50,
+          autocomplete: 'family-name',
+          helpText: 'Ingresá el apellido del empleado.',
+        })}
+        ${formFieldMarkup({
+          id: 'empleado-dni',
+          name: 'dni',
+          label: 'DNI',
+          required: true,
+          maxLength: DNI_MAX_LENGTH,
+          inputMode: 'numeric',
+          helpText: 'Ingresá el número de documento sin puntos.',
+        })}
+        ${formFieldMarkup({
+          id: 'empleado-cuil',
+          name: 'cuil',
+          label: 'CUIL',
+          required: true,
+          maxLength: CUIL_LENGTH,
+          inputMode: 'numeric',
+          helpText: 'Ingresá los 11 dígitos. Ejemplo: 20-12345678-3.',
+        })}
+        ${formFieldMarkup({
           id: 'empleado-legajo',
           name: 'legajo',
           label: 'Legajo',
           maxLength: 20,
-          help: 'Admite letras y números; el guion solo puede utilizarse entre bloques.',
+          helpText: 'Ingresá el identificador interno asignado al empleado.',
         })}
-        ${fieldTemplate({
-          id: 'empleado-dni',
-          name: 'dni',
-          label: 'DNI (sin puntos ni guiones)',
-          required: true,
-          maxLength: DNI_MAX_LENGTH,
-          inputMode: 'numeric',
-          help: 'Solo números.',
+        ${formFieldMarkup({
+          id: 'empleado-sucursalId',
+          name: 'sucursalId',
+          label: 'Sucursal',
+          tag: 'select',
+          helpText: 'Seleccioná la sucursal donde trabaja el empleado.',
+          optionsHtml: '<option value="">Seleccionar...</option>',
         })}
-        ${fieldTemplate({ id: 'empleado-nombre', name: 'nombre', label: 'Nombre', required: true, maxLength: 50, autocomplete: 'given-name' })}
-        ${fieldTemplate({ id: 'empleado-apellido', name: 'apellido', label: 'Apellido', required: true, maxLength: 50, autocomplete: 'family-name' })}
-        ${fieldTemplate({
-          id: 'empleado-cuil',
-          name: 'cuil',
-          label: 'CUIL (sin puntos ni guiones)',
-          required: true,
-          maxLength: CUIL_LENGTH,
-          inputMode: 'numeric',
-          help: 'Ingresá los 11 números.',
+        ${formFieldMarkup({
+          id: 'empleado-departamentoId',
+          name: 'departamentoId',
+          label: 'Departamento',
+          tag: 'select',
+          disabled: true,
+          helpText: 'Seleccioná el departamento correspondiente.',
+          optionsHtml: '<option value="">Seleccione una sucursal</option>',
         })}
-        <div>
-          <label for="empleado-sucursalId" class="mb-1.5 block text-sm font-medium text-slate-700">Sucursal</label>
-          <select id="empleado-sucursalId" name="sucursalId" class="${inputClass()}">
-            <option value="">Seleccionar...</option>
-          </select>
-          <p id="empleado-sucursalId-error" class="mt-1 hidden text-sm text-red-600"></p>
-        </div>
-        <div>
-          <label for="empleado-departamentoId" class="mb-1.5 block text-sm font-medium text-slate-700">Departamento</label>
-          <select id="empleado-departamentoId" name="departamentoId" class="${inputClass()}" disabled aria-describedby="empleado-departamento-hint">
-            <option value="">Seleccione una sucursal</option>
-          </select>
-          <p id="empleado-departamento-hint" class="mt-1 text-xs text-slate-500">Seleccione una sucursal</p>
-          <p id="empleado-departamentoId-error" class="mt-1 hidden text-sm text-red-600"></p>
-        </div>
-        <div class="sm:col-span-2">
-          <p class="mb-1.5 text-sm font-medium text-slate-700">Horario</p>
+        <div class="sm:col-span-2" data-form-field="horario">
+          <p class="${FORM_LABEL_CLASS}" id="empleado-horario-label">Horario</p>
           <div class="grid gap-4 sm:grid-cols-2">
             <div>
               <label for="empleado-horario-desde" class="mb-1.5 block text-xs font-medium text-slate-500">Hora desde</label>
@@ -349,7 +303,8 @@ export function createEmpleadoForm({
                 type="time"
                 step="60"
                 lang="es-AR"
-                class="${inputClass()}"
+                aria-describedby="${horarioIds.helpId}"
+                class="${FORM_INPUT_CLASS}"
               />
             </div>
             <div>
@@ -360,12 +315,13 @@ export function createEmpleadoForm({
                 type="time"
                 step="60"
                 lang="es-AR"
-                class="${inputClass()}"
+                aria-describedby="${horarioIds.helpId}"
+                class="${FORM_INPUT_CLASS}"
               />
             </div>
           </div>
-          <p class="mt-1.5 text-xs text-slate-500">Formato 24 horas. Si se completa, se guarda como HH:mm-HH:mm. Los turnos nocturnos (por ejemplo 22:00 a 06:00) son válidos.</p>
-          <p id="empleado-horario-error" class="mt-1 hidden text-sm text-red-600"></p>
+          <p id="${horarioIds.helpId}" class="${FORM_HELP_CLASS}">Completá ambas horas o dejá las dos sin asignar.</p>
+          <p id="${horarioIds.errorId}" class="mt-1 hidden text-sm text-red-600" aria-live="polite"></p>
         </div>
       </div>
       <div class="flex flex-col-reverse gap-2 border-t border-slate-100 pt-4 sm:flex-row sm:justify-end">
@@ -393,19 +349,88 @@ export function createEmpleadoForm({
   const cancelButton = wrapper.querySelector('#empleado-form-cancel')
   const sucursalSelect = form.querySelector('[name="sucursalId"]')
   const departamentoSelect = form.querySelector('[name="departamentoId"]')
-  const departamentoHint = form.querySelector('#empleado-departamento-hint')
+  const horarioDesde = form.querySelector('[name="horarioDesde"]')
+  const horarioHasta = form.querySelector('[name="horarioHasta"]')
 
-  setDepartamentoIdle(departamentoSelect, departamentoHint, { includeAll: false })
+  setDepartamentoIdle(departamentoSelect, null, { includeAll: false })
+  if (initialValues) fillEmpleadoForm(form, initialValues)
+
+  function currentErrors() {
+    return validateEmpleadoValues(readValues(form), { initialValues })
+  }
+
+  const fields = wireFormFields(
+    form,
+    [
+      {
+        name: 'nombre',
+        helpId: fieldIds('empleado-nombre').helpId,
+        errorId: fieldIds('empleado-nombre').errorId,
+        normalizeOnBlur: (value) => normalizeFieldValue('nombre', value),
+        getError: () => currentErrors().nombre ?? '',
+      },
+      {
+        name: 'apellido',
+        helpId: fieldIds('empleado-apellido').helpId,
+        errorId: fieldIds('empleado-apellido').errorId,
+        normalizeOnBlur: (value) => normalizeFieldValue('apellido', value),
+        getError: () => currentErrors().apellido ?? '',
+      },
+      {
+        name: 'dni',
+        helpId: fieldIds('empleado-dni').helpId,
+        errorId: fieldIds('empleado-dni').errorId,
+        getError: () => currentErrors().dni ?? '',
+      },
+      {
+        name: 'cuil',
+        helpId: fieldIds('empleado-cuil').helpId,
+        errorId: fieldIds('empleado-cuil').errorId,
+        getError: () => currentErrors().cuil ?? '',
+      },
+      {
+        name: 'legajo',
+        helpId: fieldIds('empleado-legajo').helpId,
+        errorId: fieldIds('empleado-legajo').errorId,
+        normalizeOnBlur: (value) => normalizeFieldValue('legajo', value),
+        getError: () => currentErrors().legajo ?? '',
+      },
+      {
+        name: 'sucursalId',
+        helpId: sucursalIds.helpId,
+        errorId: sucursalIds.errorId,
+        getError: () => currentErrors().sucursalId ?? '',
+      },
+      {
+        name: 'departamentoId',
+        helpId: departamentoIds.helpId,
+        errorId: departamentoIds.errorId,
+        getError: () => currentErrors().departamentoId ?? '',
+      },
+      {
+        name: 'horario',
+        helpId: horarioIds.helpId,
+        errorId: horarioIds.errorId,
+        controls: [horarioDesde, horarioHasta],
+        readValue: () => `${horarioDesde.value}|${horarioHasta.value}`,
+        getError: () => currentErrors().horario ?? '',
+      },
+    ],
+    {
+      onAfterChange: () => {
+        showFormError('')
+      },
+    },
+  )
 
   const cascade = bindSucursalDepartamentoCascade({
     sucursalSelect,
     departamentoSelect,
-    hintEl: departamentoHint,
+    hintEl: null,
     includeAll: false,
     onChange: () => {
-      setFieldError(form, 'sucursalId', '')
-      setFieldError(form, 'departamentoId', '')
-      syncSubmitState()
+      fields.refresh('sucursalId')
+      fields.refresh('departamentoId')
     },
     onDepartamentosError: (error) => {
       if (error.message === 'Sesión expirada o no autorizada.') return
@@ -416,71 +441,16 @@ export function createEmpleadoForm({
     },
   })
 
-  if (initialValues) fillEmpleadoForm(form, initialValues)
-
-  function currentErrors() {
-    return validateEmpleadoValues(readValues(form), { initialValues })
-  }
-
-  function validateField(name) {
-    if (!name) return
-    setFieldError(form, name, currentErrors()[name] ?? '')
-  }
-
-  function syncSubmitState() {
-    const hasValidationErrors = Object.keys(currentErrors()).length > 0
-    const hasVisibleErrors = Boolean(form.querySelector('[aria-invalid="true"]'))
-    submitButton.disabled =
-      form.dataset.submitting === 'true' || hasValidationErrors || hasVisibleErrors
-  }
-
-  form.addEventListener('input', (event) => {
-    const control = event.target
-    const name = fieldNameForControl(control)
-    let rejectedCharacters = false
-
-    if (name === 'dni') {
-      rejectedCharacters = sanitizeDigits(control, DNI_MAX_LENGTH)
-    } else if (name === 'cuil') {
-      rejectedCharacters = sanitizeDigits(control, CUIL_LENGTH)
-    }
-
-    if (rejectedCharacters) {
-      setFieldError(
-        form,
-        name,
-        name === 'dni'
-          ? 'El DNI debe contener entre 7 y 8 números.'
-          : 'El CUIL debe contener exactamente 11 números.',
-      )
-    } else {
-      validateField(name)
-    }
-    syncSubmitState()
-  })
-
-  form.addEventListener('focusout', (event) => {
-    const control = event.target
-    const name = fieldNameForControl(control)
-    if (control?.matches?.('input[type="text"]') && name) {
-      control.value = normalizeFieldValue(name, control.value)
-    }
-    validateField(name)
-    syncSubmitState()
-  })
-
-  form.addEventListener('change', (event) => {
-    validateField(fieldNameForControl(event.target))
-    syncSubmitState()
-  })
-
-  if (initialValues) {
-    const initialErrors = currentErrors()
-    ;['dni', 'cuil'].forEach((name) => {
-      if (initialErrors[name]) setFieldError(form, name, initialErrors[name])
-    })
-  }
-  syncSubmitState()
+  form.addEventListener(
+    'input',
+    (event) => {
+      const control = event.target
+      const name = fieldNameForControl(control)
+      if (name === 'dni' && sanitizeDigits(control, DNI_MAX_LENGTH)) fields.markInteracted('dni')
+      if (name === 'cuil' && sanitizeDigits(control, CUIL_LENGTH)) fields.markInteracted('cuil')
+    },
+    true,
+  )
 
   function showFormError(message) {
     if (!message) {
@@ -499,7 +469,7 @@ export function createEmpleadoForm({
 
   form.addEventListener('submit', async (event) => {
     event.preventDefault()
-    clearFieldErrors(form)
+    if (form.dataset.submitting === 'true') return
     showFormError('')
 
     if (requireEmpresa && (!Number.isFinite(empresaId) || empresaId <= 0)) {
@@ -507,17 +477,9 @@ export function createEmpleadoForm({
       return
     }
 
-    const values = readValues(form)
-    const errors = validateEmpleadoValues(values, { initialValues })
-    const errorNames = Object.keys(errors)
-
-    if (errorNames.length > 0) {
-      errorNames.forEach((name) => setFieldError(form, name, errors[name]))
-      syncSubmitState()
-      const first = errorNames[0]
-      const focusTarget =
-        form.querySelector(`[name="${first}"]`) || form.querySelector('[name="horarioDesde"]')
-      focusTarget?.focus()
+    const result = fields.validateAll()
+    if (result.hasErrors) {
+      result.firstInvalid?.focus()
       return
     }
 
@@ -526,6 +488,7 @@ export function createEmpleadoForm({
     submitButton.textContent = 'Guardando...'
     cancelButton.disabled = true
 
+    const values = readValues(form)
     const { horarioError: _ignored, categoria: _categoria, ...draft } = values
 
     try {
@@ -542,7 +505,6 @@ export function createEmpleadoForm({
         delete form.dataset.submitting
         submitButton.textContent = submitLabel
         cancelButton.disabled = false
-        syncSubmitState()
       }
     }
   })
@@ -559,18 +521,16 @@ export function createEmpleadoForm({
       if (parseEntityId(sucursalSelect.value)) {
         await cascade.reloadDepartamentos({ preserveDepartamentoId: initialValues?.departamentoId })
       } else {
-        setDepartamentoIdle(departamentoSelect, departamentoHint, { includeAll: false })
+        setDepartamentoIdle(departamentoSelect, null, { includeAll: false })
       }
-      syncSubmitState()
     } catch (error) {
       if (error.message === 'Sesión expirada o no autorizada.') return
       if (!form.isConnected) return
       fillSucursalOptions(sucursalSelect, [])
-      setDepartamentoIdle(departamentoSelect, departamentoHint, { includeAll: false })
+      setDepartamentoIdle(departamentoSelect, null, { includeAll: false })
       const message = error.message || 'No se pudieron cargar las sucursales.'
       showFormError(message)
       showToast({ message, tone: 'error' })
-      syncSubmitState()
     }
   })()
 
@@ -663,7 +623,7 @@ function promptEmpleadoChangesConfirm(changes) {
     const finish = (value) => {
       if (settled) return
       settled = true
-      modal.close()
+      modal.close({ force: true })
       resolve(value)
     }
 
@@ -672,6 +632,7 @@ function promptEmpleadoChangesConfirm(changes) {
       content,
       labelledBy: 'empleado-changes-title',
       stacked: true,
+      closeOnBackdrop: false,
       onClose: () => {
         if (!settled) resolve(false)
       },

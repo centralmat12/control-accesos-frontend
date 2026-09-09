@@ -53,16 +53,18 @@ export function validateLegajo(value) {
 
 export function validateDni(value) {
   const normalized = normalizeFieldValue('dni', value)
+  if (!normalized) return 'Ingresá el DNI.'
   if (!new RegExp(`^\\d{${DNI_MIN_LENGTH},${DNI_MAX_LENGTH}}$`).test(normalized)) {
-    return 'El DNI debe contener entre 7 y 8 números.'
+    return 'El DNI debe contener entre 7 y 8 números, sin puntos.'
   }
   return ''
 }
 
 export function validateCuil(value) {
   const normalized = normalizeFieldValue('cuil', value)
+  if (!normalized) return 'Ingresá el CUIL.'
   if (!new RegExp(`^\\d{${CUIL_LENGTH}}$`).test(normalized)) {
-    return 'El CUIL debe contener exactamente 11 números.'
+    return 'El CUIL debe contener 11 dígitos.'
   }
   return ''
 }
