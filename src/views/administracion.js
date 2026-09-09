@@ -218,8 +218,9 @@ export async function renderAdministracion(container) {
     if (!canListUsuarios) {
       usuariosState.replaceChildren(
         createFeedbackState({
-          title: 'Listado no disponible',
-          message: 'El listado de usuarios requiere GET /api/usuarios.',
+          title: 'Consulta de usuarios no disponible',
+          message:
+            'El alta (POST /api/usuarios) y la consulta son operaciones independientes. La API actual no expone GET /api/usuarios, por eso no se muestra un listado. Tampoco hay restablecimiento de contraseña ni bloqueo por intentos fallidos.',
         }),
       )
     }

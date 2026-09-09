@@ -54,17 +54,35 @@ export function matchesEstadoDatos(empleado, estado) {
   return true
 }
 
-export function filterEmpleados(empleados, { query, departamento, sucursal, departamentoId, sucursalId, estado }) {
+export function matchesSucursalMultiFilter(empleado, { sucursalIds = [], includeUnassigned = false } = {}) {
+  if ((!sucursalIds || sucursalIds.length === 0) && !includeUnassigned) return true
+
+  const id = Number(empleado?.sucursalId)
+  const hasId = Number.isFinite(id) && id > 0
+  if (!hasId) return includeUnassigned === true
+  return sucursalIds.some((item) => String(item) === String(id))
+}
+
+export function filterEmpleados(
+  empleados,
+  { query, departamento, sucursal, departamentoId, sucursalId, sucursalIds, includeUnassigned, estado },
+) {
   const normalizedQuery = String(query ?? '')
     .trim()
     .toLowerCase()
-  const sucursalFilter = sucursalId ?? sucursal ?? 'todos'
   const departamentoFilter = departamentoId ?? departamento ?? 'todos'
+  const useMulti = Array.isArray(sucursalIds)
+  const multi = {
+    sucursalIds: Array.isArray(sucursalIds) ? sucursalIds : [],
+    includeUnassigned: includeUnassigned === true,
+  }
 
   return empleados.filter(
     (empleado) =>
       matchesEmpleadoSearch(empleado, normalizedQuery) &&
-      matchesIdFilter(empleado, 'sucursalId', sucursalFilter) &&
+      (useMulti
+        ? matchesSucursalMultiFilter(empleado, multi)
+        : matchesIdFilter(empleado, 'sucursalId', sucursal ?? sucursalId ?? 'todos')) &&
       matchesIdFilter(empleado, 'departamentoId', departamentoFilter) &&
       matchesEstadoDatos(empleado, estado),
   )

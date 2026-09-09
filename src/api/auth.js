@@ -111,6 +111,12 @@ function userFromToken(token, fallbackEmail) {
   return user
 }
 
+export const LOGIN_TEMPORARY_LOCK_MESSAGE =
+  'Por seguridad, la cuenta se encuentra temporalmente bloqueada. Intentá nuevamente más tarde o contactá a un administrador.'
+
+export const LOGIN_RATE_LIMIT_MESSAGE =
+  'Se realizaron demasiados intentos. Esperá unos minutos antes de volver a intentar.'
+
 export async function login({ email, password }) {
   const normalizedEmail = String(email ?? '').trim()
   const normalizedPassword = String(password ?? '')
@@ -152,6 +158,14 @@ export async function login({ email, password }) {
 
     if (response.status === 403) {
       throw new Error('No tenés permiso para iniciar sesión.')
+    }
+
+    if (response.status === 423) {
+      throw new Error(LOGIN_TEMPORARY_LOCK_MESSAGE)
+    }
+
+    if (response.status === 429) {
+      throw new Error(LOGIN_RATE_LIMIT_MESSAGE)
     }
 
     throw new Error(`No se pudo iniciar sesión (${response.status}).`)

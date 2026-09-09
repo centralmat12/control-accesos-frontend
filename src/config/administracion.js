@@ -5,10 +5,11 @@
  * significa que altas de usuarios, empresas y sucursales salen de esta UI.
  *
  * Contratos (inspección, sin modificar backend):
- * - GET  /api/usuarios  → no existe
+ * - GET  /api/usuarios  → no existe (confirmado en el commit actual de la API)
  * - POST /api/usuarios  → Policy PuedeCrearUsuarios (SuperAdmin | ADMIN)
  *   SuperAdmin: X-Empresa-Id + body.empresaId coincidentes (JWT sin empresa_id)
  *   ADMIN: JWT empresa_id, sin X-Empresa-Id
+ * - Restablecer / cambiar / desbloquear contraseña → no existen
  * - GET  /api/empresas  → SuperAdmin: todas. ADMIN/RRHH: solo Id == empresa_id
  * - POST /api/empresas  → SoloSuperadmin
  * - POST /api/sucursales → SoloSuperadmin + X-Empresa-Id

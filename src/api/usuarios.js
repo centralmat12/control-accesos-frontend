@@ -5,8 +5,14 @@
  * Policy PuedeCrearUsuarios: SuperAdmin | ADMIN.
  * SuperAdmin: X-Empresa-Id y body.empresaId con el mismo ID seleccionado.
  * ADMIN: JWT empresa_id, sin X-Empresa-Id.
- * No hay GET/PATCH/DELETE en UsuariosController.
+ * No hay GET/PATCH/DELETE, restablecimiento ni cambio de contraseña en UsuariosController.
  * Respuesta 201: AuthResponseDto { token, mensaje }. El token no se guarda ni se muestra.
+ *
+ * Auditado contra ControlFichajes.API actual:
+ * - GET /api/usuarios y GET /api/usuarios/{id} no existen.
+ * - No hay restablecer-password, cambiar-password ni desbloquear.
+ * - Usuario tiene Activo, pero no RequiereCambioPassword, IntentosFallidos ni BloqueadoHasta.
+ * POST y GET son operaciones independientes: el alta no habilita un listado.
  */
 import {
   validateEmailValue,
@@ -17,6 +23,16 @@ import { puedeCrearUsuarios } from '../config/administracion.js'
 import { isAssignableUsuarioRole, normalizeRole, USUARIO_ROLES_API } from '../config/roles.js'
 import { getCurrentUser } from './auth.js'
 import { apiFetch, createApiError, readErrorMessage } from './http.js'
+
+export const USUARIO_API_CAPABILITIES = Object.freeze({
+  listar: false,
+  obtenerPorId: false,
+  restablecerPassword: false,
+  cambiarPassword: false,
+  desbloquear: false,
+  requiereCambioPassword: false,
+  bloqueoPorIntentos: false,
+})
 
 const PASSWORD_MIN = 8
 const PASSWORD_MAX = 255

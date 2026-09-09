@@ -2,6 +2,7 @@ import { createEmpleado, deactivateEmpleado, getEmpleadoById, getEmpleados, patc
 import { getCurrentUser } from '../api/auth.js'
 import { canLoadTenantData, getOperativeEmpresaId } from '../api/empresa-context.js'
 import { empresaDisplayName, getEmpresaActual } from '../api/empresas.js'
+import { filterDepartamentosForSucursalSelection, getDepartamentos } from '../api/departamentos.js'
 import { getSucursales } from '../api/sucursales.js'
 import { isSuperadmin } from '../config/roles.js'
 import {
@@ -14,14 +15,8 @@ import { createFeedbackState, createSelectEmpresaState } from '../components/fee
 import { createPagination } from '../components/pagination.js'
 import { openFormModal, openModal } from '../components/modal.js'
 import { createDetailSkeleton, createTableSkeleton } from '../components/skeleton.js'
-import {
-  DEPARTAMENTO_ALL,
-  SUCURSAL_ALL,
-  bindSucursalDepartamentoCascade,
-  fillSucursalOptions,
-  parseEntityId,
-  setDepartamentoIdle,
-} from '../components/sucursal-departamento-selects.js'
+import { DEPARTAMENTO_ALL, fillDepartamentoOptions, parseEntityId, setDepartamentoIdle } from '../components/sucursal-departamento-selects.js'
+import { createSucursalMultiSelect } from '../components/sucursal-multi-select.js'
 import { showToast } from '../components/toast.js'
 import { filterEmpleados, sortEmpleados } from '../utils/empleado-list.js'
 import { summarizeEmpleadoDatos } from '../utils/empleado-alerts.js'
@@ -99,17 +94,15 @@ export async function renderEmpleados(container, { initialQuery } = {}) {
           />
         </div>
         <div class="min-w-0">
-          <label for="empleados-sucursal" class="mb-1.5 block text-sm font-medium text-slate-700">Sucursal</label>
-          <select id="empleados-sucursal" class="${CONTROL_CLASS}">
-            <option value="${SUCURSAL_ALL}">Todas</option>
-          </select>
+          <label id="empleados-sucursal-label" class="mb-1.5 block text-sm font-medium text-slate-700">Sucursal</label>
+          <div id="empleados-sucursal-host"></div>
         </div>
         <div class="min-w-0">
           <label for="empleados-departamento" class="mb-1.5 block text-sm font-medium text-slate-700">Departamento</label>
           <select id="empleados-departamento" class="${CONTROL_CLASS}" disabled aria-describedby="empleados-departamento-hint">
-            <option value="${DEPARTAMENTO_ALL}">Seleccione una sucursal</option>
+            <option value="${DEPARTAMENTO_ALL}">Todos</option>
           </select>
-          <p id="empleados-departamento-hint" class="mt-1 text-xs text-slate-500">Seleccione una sucursal</p>
+          <p id="empleados-departamento-hint" class="mt-1 text-xs text-slate-500">Según las sucursales seleccionadas</p>
         </div>
         <div class="min-w-0 sm:col-span-2 xl:col-span-1">
           <label for="empleados-estado" class="mb-1.5 block text-sm font-medium text-slate-700">Estado de datos</label>
@@ -118,6 +111,11 @@ export async function renderEmpleados(container, { initialQuery } = {}) {
             <option value="completo">Completo</option>
             <option value="pendientes">Con pendientes</option>
           </select>
+        </div>
+        <div class="min-w-0 sm:col-span-2 xl:col-span-4 flex items-end">
+          <button type="button" id="empleados-clear-filters" class="rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
+            Limpiar filtros
+          </button>
         </div>
       </div>
     </section>
@@ -142,10 +140,20 @@ export async function renderEmpleados(container, { initialQuery } = {}) {
   const searchInput = view.querySelector('#empleados-search')
   const departamentoSelect = view.querySelector('#empleados-departamento')
   const departamentoHint = view.querySelector('#empleados-departamento-hint')
-  const sucursalSelect = view.querySelector('#empleados-sucursal')
+  const sucursalHost = view.querySelector('#empleados-sucursal-host')
   const estadoSelect = view.querySelector('#empleados-estado')
   const pageSizeSelect = view.querySelector('#empleados-page-size')
+  const clearFiltersButton = view.querySelector('#empleados-clear-filters')
   const newButton = view.querySelector('#empleados-new')
+  const sucursalFilter = createSucursalMultiSelect({
+    id: 'empleados-sucursal-multi',
+    labelledBy: 'empleados-sucursal-label',
+    onChange: () => {
+      void syncDepartamentoFilter()
+      onFilterChange()
+    },
+  })
+  sucursalHost.replaceChildren(sucursalFilter.element)
 
   let empleados = []
   let loaded = false
@@ -156,6 +164,9 @@ export async function renderEmpleados(container, { initialQuery } = {}) {
   let sortDir = 'asc'
   let highlightId = null
   let activeModalClose = null
+  let sucursalCatalog = []
+  let departamentoCatalog = []
+  let departamentoLoadGeneration = 0
 
   function closeActiveModal(options) {
     activeModalClose?.(options)
@@ -176,13 +187,15 @@ export async function renderEmpleados(container, { initialQuery } = {}) {
   }
 
   function getFilters() {
-    const sucursalId = parseEntityId(sucursalSelect.value)
+    const sucursal = sucursalFilter.getValue()
     const departamentoId = parseEntityId(departamentoSelect.value)
 
     return {
       query: searchInput.value,
-      sucursalId: sucursalId ? String(sucursalId) : SUCURSAL_ALL,
-      departamentoId: sucursalId && !departamentoSelect.disabled && departamentoId ? String(departamentoId) : DEPARTAMENTO_ALL,
+      sucursalIds: sucursal.sucursalIds,
+      includeUnassigned: sucursal.includeUnassigned,
+      departamentoId:
+        !departamentoSelect.disabled && departamentoId ? String(departamentoId) : DEPARTAMENTO_ALL,
       estado: estadoSelect.value,
     }
   }
@@ -214,22 +227,121 @@ export async function renderEmpleados(container, { initialQuery } = {}) {
     `
   }
 
-  async function loadSucursales() {
-    try {
-      const sucursales = await getSucursales()
-      if (!sucursalSelect.isConnected) return
-      fillSucursalOptions(sucursalSelect, sucursales, {
+  const DEPT_HINT_UNASSIGNED = 'Sin sucursal no hay departamentos asociados'
+
+  function sucursalNameMap() {
+    const names = new Map()
+    for (const item of sucursalCatalog) {
+      const id = Number(item?.id)
+      if (!Number.isFinite(id) || id <= 0) continue
+      const nombre = String(item.nombre ?? '').trim()
+      if (nombre) names.set(id, nombre)
+    }
+    for (const empleado of empleados) {
+      const id = Number(empleado?.sucursalId)
+      if (!Number.isFinite(id) || id <= 0 || names.has(id)) continue
+      const nombre = String(empleado.sucursal ?? '').trim()
+      if (nombre) names.set(id, nombre)
+    }
+    return names
+  }
+
+  function applySucursalCatalog() {
+    if (!sucursalFilter.element.isConnected) return
+    sucursalFilter.setSucursales([
+      ...sucursalCatalog,
+      ...empleados.map((empleado) => ({ id: empleado.sucursalId, nombre: empleado.sucursal })),
+    ])
+  }
+
+  async function syncDepartamentoFilter({ preserveDepartamentoId } = {}) {
+    const sucursal = sucursalFilter.getValue()
+    const onlyUnassigned = sucursal.sucursalIds.length === 0 && sucursal.includeUnassigned
+    const currentId =
+      preserveDepartamentoId === null
+        ? null
+        : (preserveDepartamentoId ?? parseEntityId(departamentoSelect.value))
+
+    departamentoLoadGeneration += 1
+    const current = departamentoLoadGeneration
+
+    if (onlyUnassigned) {
+      setDepartamentoIdle(departamentoSelect, departamentoHint, {
         includeAll: true,
-        currentId: parseEntityId(sucursalSelect.value),
+        message: DEPT_HINT_UNASSIGNED,
       })
-      if (!parseEntityId(sucursalSelect.value)) {
-        setDepartamentoIdle(departamentoSelect, departamentoHint, { includeAll: true })
+      return
+    }
+
+    if (!departamentoCatalog.length && departamentoSelect.isConnected) {
+      departamentoSelect.disabled = true
+      departamentoSelect.replaceChildren()
+      const loading = document.createElement('option')
+      loading.value = ''
+      loading.textContent = 'Cargando...'
+      departamentoSelect.append(loading)
+      departamentoSelect.value = ''
+      if (departamentoHint) {
+        departamentoHint.textContent = ''
+        departamentoHint.classList.add('hidden')
       }
+    }
+
+    try {
+      if (!departamentoCatalog.length) {
+        departamentoCatalog = await getDepartamentos()
+      }
+      if (current !== departamentoLoadGeneration) return
+
+      const departamentos = filterDepartamentosForSucursalSelection(departamentoCatalog, sucursal)
+      fillDepartamentoOptions(departamentoSelect, departamentos, departamentoHint, {
+        includeAll: true,
+        currentId,
+        sucursalNames: sucursalNameMap(),
+      })
+    } catch (error) {
+      if (current !== departamentoLoadGeneration) return
+      setDepartamentoIdle(departamentoSelect, departamentoHint, {
+        includeAll: true,
+        message: error.message || 'No se pudieron cargar los departamentos.',
+      })
+      if (error.message !== 'Sesión expirada o no autorizada.') {
+        showToast({
+          message: error.message || 'No se pudieron cargar los departamentos.',
+          tone: 'error',
+        })
+      }
+    }
+  }
+
+  async function loadDepartamentos() {
+    try {
+      departamentoCatalog = await getDepartamentos()
+      await syncDepartamentoFilter()
     } catch (error) {
       if (error.message === 'Sesión expirada o no autorizada.') return
-      if (!sucursalSelect.isConnected) return
-      fillSucursalOptions(sucursalSelect, [], { includeAll: true })
-      setDepartamentoIdle(departamentoSelect, departamentoHint, { includeAll: true })
+      departamentoCatalog = []
+      setDepartamentoIdle(departamentoSelect, departamentoHint, {
+        includeAll: true,
+        message: error.message || 'No se pudieron cargar los departamentos.',
+      })
+      showToast({
+        message: error.message || 'No se pudieron cargar los departamentos.',
+        tone: 'error',
+      })
+    }
+  }
+
+  async function loadSucursales() {
+    try {
+      sucursalCatalog = await getSucursales()
+      applySucursalCatalog()
+      await syncDepartamentoFilter()
+    } catch (error) {
+      if (error.message === 'Sesión expirada o no autorizada.') return
+      sucursalCatalog = []
+      applySucursalCatalog()
+      await syncDepartamentoFilter()
       showToast({
         message: error.message || 'No se pudieron cargar las sucursales.',
         tone: 'error',
@@ -322,6 +434,7 @@ export async function renderEmpleados(container, { initialQuery } = {}) {
       empleados = await getEmpleados()
       loaded = true
       loadError = false
+      applySucursalCatalog()
       renderSummary()
       renderResults()
     } catch (error) {
@@ -466,9 +579,8 @@ export async function renderEmpleados(container, { initialQuery } = {}) {
 
   if (initialQuery) {
     searchInput.value = initialQuery
-    sucursalSelect.value = SUCURSAL_ALL
+    sucursalFilter.clear()
     estadoSelect.value = 'todos'
-    setDepartamentoIdle(departamentoSelect, departamentoHint, { includeAll: true })
     resetPage()
   }
 
@@ -478,24 +590,21 @@ export async function renderEmpleados(container, { initialQuery } = {}) {
     renderResults()
   }
 
-  bindSucursalDepartamentoCascade({
-    sucursalSelect,
-    departamentoSelect,
-    hintEl: departamentoHint,
-    includeAll: true,
-    onChange: onFilterChange,
-    onDepartamentosError: (error) => {
-      if (error.message === 'Sesión expirada o no autorizada.') return
-      showToast({
-        message: error.message || 'No se pudieron cargar los departamentos.',
-        tone: 'error',
-      })
-    },
-  })
+  async function clearAllFilters() {
+    searchInput.value = ''
+    sucursalFilter.clear()
+    estadoSelect.value = 'todos'
+    await syncDepartamentoFilter({ preserveDepartamentoId: null })
+    onFilterChange()
+  }
 
   newButton.addEventListener('click', openCreateForm)
   searchInput.addEventListener('input', onFilterChange)
   estadoSelect.addEventListener('change', onFilterChange)
+  departamentoSelect.addEventListener('change', onFilterChange)
+  clearFiltersButton.addEventListener('click', () => {
+    void clearAllFilters()
+  })
   pageSizeSelect.addEventListener('change', () => {
     pageSize = Number(pageSizeSelect.value) || DEFAULT_PAGE_SIZE
     resetPage()
@@ -503,15 +612,23 @@ export async function renderEmpleados(container, { initialQuery } = {}) {
   })
 
   container.replaceChildren(view)
-  setDepartamentoIdle(departamentoSelect, departamentoHint, { includeAll: true })
+  setDepartamentoIdle(departamentoSelect, departamentoHint, {
+    includeAll: true,
+    message: 'Cargando departamentos...',
+  })
   await Promise.all([
     loadEmpleados({ keepBanner: Boolean(!empresaId && !isSuperadmin(user)) }),
     loadSucursales(),
+    loadDepartamentos(),
   ])
 
   if (initialQuery && loaded) {
     const hinted = visibleEmpleados()[0]
     highlightId = hinted?.id ?? null
     if (highlightId) renderResults()
+  }
+
+  return () => {
+    sucursalFilter.destroy()
   }
 }
