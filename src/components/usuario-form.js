@@ -1,89 +1,122 @@
 import { getEmpresas, empresaDisplayName } from '../api/empresas.js'
-import { validateUsuarioEmail, validateUsuarioPassword } from '../api/usuarios.js'
+import {
+  clearPasswordInput,
+  validateUsuarioAlta,
+} from '../api/usuarios.js'
 import { USUARIO_ROLES_API } from '../config/roles.js'
 import { escapeHtml } from '../utils/format.js'
 import { showToast } from './toast.js'
+import {
+  applyPasswordConfirmPresentation,
+  bindPasswordVisibilityToggle,
+  fieldIds,
+  formFieldMarkup,
+  formPasswordFieldMarkup,
+  formStaticFieldMarkup,
+  passwordConfirmStatus,
+  passwordRequirementsMarkup,
+  syncPasswordRequirements,
+  wireFormFields,
+} from './form-field.js'
 
-const INPUT_CLASS =
-  'w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none placeholder:text-slate-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 disabled:cursor-not-allowed disabled:opacity-60'
-
-function setFieldError(form, name, message) {
-  const error = form.querySelector(`#usuario-${name}-error`)
-  const input = form.querySelector(`[name="${name}"]`)
-  if (message) {
-    if (error) {
-      error.textContent = message
-      error.classList.remove('hidden')
-    }
-    input?.classList.add('border-red-300')
-    input?.setAttribute('aria-invalid', 'true')
-  } else {
-    if (error) {
-      error.textContent = ''
-      error.classList.add('hidden')
-    }
-    input?.classList.remove('border-red-300')
-    input?.removeAttribute('aria-invalid')
-  }
-}
-
-function validateNombre(value) {
-  const nombre = String(value ?? '').trim()
-  if (!nombre) return 'Ingresá el nombre.'
-  if (nombre.length > 50) return 'El nombre no puede superar 50 caracteres.'
-  return ''
-}
-
-function validateEmpresa(value) {
+function parsePositiveId(value) {
   const id = Number(value)
-  if (!Number.isFinite(id) || id <= 0) return 'Seleccioná una empresa.'
-  return ''
+  return Number.isFinite(id) && id > 0 ? id : null
 }
 
-function validateRol(value) {
-  if (!USUARIO_ROLES_API.includes(String(value ?? '').trim())) return 'Seleccioná un rol.'
-  return ''
+function empresaFieldMarkup({ permitirElegirEmpresa, empresaIdFija }) {
+  if (permitirElegirEmpresa) {
+    return formFieldMarkup({
+      id: 'usuario-empresaId',
+      name: 'empresaId',
+      label: 'Empresa asignada',
+      required: true,
+      tag: 'select',
+      helpText: 'Seleccioná la empresa a la que pertenecerá el usuario.',
+      optionsHtml: '<option value="">Cargando empresas...</option>',
+    })
+  }
+
+  const fixedId = empresaIdFija ? escapeHtml(String(empresaIdFija)) : ''
+  return `
+    ${formStaticFieldMarkup({
+      id: 'usuario-empresa',
+      label: 'Empresa asignada',
+      required: true,
+      valueHtml: fixedId ? `Empresa ${fixedId}` : 'Empresa de la sesión',
+      helpText: 'El usuario quedará asociado a la empresa de tu sesión.',
+    })}
+    <input id="usuario-empresaId" name="empresaId" type="hidden" value="${fixedId}" />
+  `
 }
 
-export function createUsuarioForm({ onCancel, onSubmit, empresaIdPermitida = null }) {
+export function createUsuarioForm({
+  onCancel,
+  onSubmit,
+  empresaIdPermitida = null,
+  permitirElegirEmpresa = empresaIdPermitida == null,
+} = {}) {
   const wrapper = document.createElement('div')
+  const empresaIdFija = parsePositiveId(empresaIdPermitida)
+  const canChooseEmpresa = permitirElegirEmpresa === true
+  const nombreIds = fieldIds('usuario-nombreUsuario')
+  const emailIds = fieldIds('usuario-email')
+  const passwordIds = fieldIds('usuario-password')
+  const confirmIds = fieldIds('usuario-passwordConfirm')
+  const empresaIds = fieldIds('usuario-empresaId')
+  const rolIds = fieldIds('usuario-rol')
 
   wrapper.innerHTML = `
     <form id="usuario-form" class="space-y-4" novalidate>
       <p id="usuario-form-error" class="hidden rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800" role="alert"></p>
-      <div>
-        <label for="usuario-nombreUsuario" class="mb-1.5 block text-sm font-medium text-slate-700">Nombre</label>
-        <input id="usuario-nombreUsuario" name="nombreUsuario" type="text" maxlength="50" autocomplete="name" required class="${INPUT_CLASS}" />
-        <p id="usuario-nombreUsuario-error" class="mt-1 hidden text-sm text-red-600"></p>
-      </div>
-      <div>
-        <label for="usuario-email" class="mb-1.5 block text-sm font-medium text-slate-700">Correo</label>
-        <input id="usuario-email" name="email" type="email" maxlength="100" autocomplete="email" required class="${INPUT_CLASS}" />
-        <p id="usuario-email-error" class="mt-1 hidden text-sm text-red-600"></p>
-      </div>
-      <div>
-        <label for="usuario-password" class="mb-1.5 block text-sm font-medium text-slate-700">Contraseña inicial</label>
-        <input id="usuario-password" name="password" type="password" maxlength="255" autocomplete="new-password" required class="${INPUT_CLASS}" />
-        <p class="mt-1 text-xs text-slate-500">Mínimo 8 caracteres. No se guarda en el navegador.</p>
-        <p id="usuario-password-error" class="mt-1 hidden text-sm text-red-600"></p>
-      </div>
-      <div>
-        <label for="usuario-empresaId" class="mb-1.5 block text-sm font-medium text-slate-700">Empresa asignada</label>
-        <select id="usuario-empresaId" name="empresaId" required class="${INPUT_CLASS}">
-          <option value="">Cargando empresas...</option>
-        </select>
-        <p class="mt-1 text-xs text-slate-500">Obligatoria. La API exige EmpresaId en el alta.</p>
-        <p id="usuario-empresaId-error" class="mt-1 hidden text-sm text-red-600"></p>
-      </div>
-      <div>
-        <label for="usuario-rol" class="mb-1.5 block text-sm font-medium text-slate-700">Rol</label>
-        <select id="usuario-rol" name="rol" required class="${INPUT_CLASS}">
-          <option value="">Seleccionar...</option>
-          ${USUARIO_ROLES_API.map((rol) => `<option value="${escapeHtml(rol)}">${escapeHtml(rol)}</option>`).join('')}
-        </select>
-        <p class="mt-1 text-xs text-slate-500">La API solo acepta ADMIN o RRHH.</p>
-        <p id="usuario-rol-error" class="mt-1 hidden text-sm text-red-600"></p>
-      </div>
+      ${formFieldMarkup({
+        id: 'usuario-nombreUsuario',
+        name: 'nombreUsuario',
+        label: 'Nombre del usuario',
+        required: true,
+        maxLength: 50,
+        autocomplete: 'name',
+        helpText: 'Ingresá el nombre y apellido de la persona que utilizará la cuenta.',
+      })}
+      ${formFieldMarkup({
+        id: 'usuario-email',
+        name: 'email',
+        label: 'Correo electrónico',
+        required: true,
+        type: 'email',
+        maxLength: 100,
+        autocomplete: 'email',
+        helpText: 'Ingresá un correo válido. Se utilizará para iniciar sesión.',
+      })}
+      ${formPasswordFieldMarkup({
+        id: 'usuario-password',
+        name: 'password',
+        label: 'Contraseña inicial',
+        required: true,
+        autocomplete: 'new-password',
+        describedBy: 'usuario-password-rules',
+      })}
+      ${passwordRequirementsMarkup('usuario-password-rules')}
+      ${formPasswordFieldMarkup({
+        id: 'usuario-passwordConfirm',
+        name: 'passwordConfirm',
+        label: 'Confirmar contraseña',
+        required: true,
+        autocomplete: 'new-password',
+        helpText: 'Volvé a ingresar la contraseña.',
+      })}
+      ${empresaFieldMarkup({ permitirElegirEmpresa: canChooseEmpresa, empresaIdFija })}
+      ${formFieldMarkup({
+        id: 'usuario-rol',
+        name: 'rol',
+        label: 'Rol de acceso',
+        required: true,
+        tag: 'select',
+        helpText: 'Define las funciones disponibles. Solo se permiten ADMIN y RRHH.',
+        optionsHtml: `<option value="">Seleccionar...</option>${USUARIO_ROLES_API.map(
+          (rol) => `<option value="${escapeHtml(rol)}">${escapeHtml(rol)}</option>`,
+        ).join('')}`,
+      })}
       <div class="flex flex-col-reverse gap-2 border-t border-slate-100 pt-4 sm:flex-row sm:justify-end">
         <button type="button" id="usuario-form-cancel" class="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100">
           Cancelar
@@ -101,6 +134,17 @@ export function createUsuarioForm({ onCancel, onSubmit, empresaIdPermitida = nul
   const cancelButton = wrapper.querySelector('#usuario-form-cancel')
   const empresaSelect = form.querySelector('[name="empresaId"]')
   const passwordInput = form.querySelector('[name="password"]')
+  const passwordConfirmInput = form.querySelector('[name="passwordConfirm"]')
+  const empresaNombreLabel = form.querySelector('#usuario-empresa-value')
+  const passwordRules = form.querySelector('#usuario-password-rules')
+  const confirmHelp = form.querySelector('#usuario-passwordConfirm-help')
+  const confirmError = form.querySelector('#usuario-passwordConfirm-error')
+  const confirmSuccess = form.querySelector('#usuario-passwordConfirm-success')
+
+  form.querySelectorAll('[data-password-toggle]').forEach((button) => {
+    const input = button.parentElement?.querySelector('input')
+    bindPasswordVisibilityToggle(input, button)
+  })
 
   function showFormError(message) {
     if (!message) {
@@ -112,8 +156,10 @@ export function createUsuarioForm({ onCancel, onSubmit, empresaIdPermitida = nul
     formError.classList.remove('hidden')
   }
 
-  function clearPassword() {
-    if (passwordInput) passwordInput.value = ''
+  function clearPasswords() {
+    clearPasswordInput(passwordInput)
+    clearPasswordInput(passwordConfirmInput)
+    syncPasswordRequirements(passwordRules, '')
   }
 
   function readValues() {
@@ -121,63 +167,109 @@ export function createUsuarioForm({ onCancel, onSubmit, empresaIdPermitida = nul
       nombreUsuario: String(form.querySelector('[name="nombreUsuario"]')?.value ?? '').trim(),
       email: String(form.querySelector('[name="email"]')?.value ?? '').trim(),
       password: String(passwordInput?.value ?? ''),
+      passwordConfirm: String(passwordConfirmInput?.value ?? ''),
       empresaId: empresaSelect?.value,
       rol: String(form.querySelector('[name="rol"]')?.value ?? '').trim(),
     }
   }
 
-  function currentErrors() {
-    const values = readValues()
-    return {
-      nombreUsuario: validateNombre(values.nombreUsuario),
-      email: validateUsuarioEmail(values.email),
-      password: validateUsuarioPassword(values.password),
-      empresaId: validateEmpresa(values.empresaId),
-      rol: validateRol(values.rol),
-    }
-  }
+  const fieldConfigs = [
+    {
+      name: 'nombreUsuario',
+      helpId: nombreIds.helpId,
+      errorId: nombreIds.errorId,
+      normalizeOnBlur: (value) => String(value ?? '').trim(),
+      getError: () => validateUsuarioAlta(readValues()).nombreUsuario,
+    },
+    {
+      name: 'email',
+      helpId: emailIds.helpId,
+      errorId: emailIds.errorId,
+      normalizeOnBlur: (value) => String(value ?? '').trim(),
+      getError: () => validateUsuarioAlta(readValues()).email,
+    },
+    {
+      name: 'password',
+      helpId: '',
+      errorId: passwordIds.errorId,
+      extraDescribedBy: 'usuario-password-rules',
+      live: true,
+      silent: true,
+      getError: () => validateUsuarioAlta(readValues()).password,
+    },
+    {
+      name: 'passwordConfirm',
+      helpId: confirmIds.helpId,
+      errorId: confirmIds.errorId,
+      live: true,
+      customPresentation: true,
+      getError: () => validateUsuarioAlta(readValues()).passwordConfirm,
+      onPresent: ({ submitted }) => {
+        applyPasswordConfirmPresentation({
+          input: passwordConfirmInput,
+          helpEl: confirmHelp,
+          errorEl: confirmError,
+          successEl: confirmSuccess,
+          helpId: confirmIds.helpId,
+          errorId: confirmIds.errorId,
+          successId: 'usuario-passwordConfirm-success',
+          status: passwordConfirmStatus(passwordInput.value, passwordConfirmInput.value),
+          submitted,
+        })
+      },
+    },
+    {
+      name: 'empresaId',
+      helpId: canChooseEmpresa ? empresaIds.helpId : fieldIds('usuario-empresa').helpId,
+      errorId: canChooseEmpresa ? empresaIds.errorId : fieldIds('usuario-empresa').errorId,
+      getError: () => validateUsuarioAlta(readValues()).empresaId,
+    },
+    {
+      name: 'rol',
+      helpId: rolIds.helpId,
+      errorId: rolIds.errorId,
+      getError: () => validateUsuarioAlta(readValues()).rol,
+    },
+  ]
 
-  function syncSubmitState() {
-    const errors = currentErrors()
-    submitButton.disabled = form.dataset.submitting === 'true' || Object.values(errors).some(Boolean)
-  }
-
-  ;['nombreUsuario', 'email', 'password', 'empresaId', 'rol'].forEach((name) => {
-    const control = form.querySelector(`[name="${name}"]`)
-    control?.addEventListener('input', () => {
-      setFieldError(form, name, '')
+  const fields = wireFormFields(form, fieldConfigs, {
+    onAfterChange: (name) => {
+      if (name === 'password') {
+        syncPasswordRequirements(passwordRules, passwordInput.value)
+        fields.refresh('passwordConfirm')
+      }
       showFormError('')
-      syncSubmitState()
-    })
-    control?.addEventListener('change', () => {
-      const errors = currentErrors()
-      setFieldError(form, name, errors[name] ?? '')
-      syncSubmitState()
-    })
+    },
   })
 
-  form.querySelector('[name="email"]')?.addEventListener('focusout', (event) => {
-    event.target.value = String(event.target.value ?? '').trim()
-  })
-  form.querySelector('[name="nombreUsuario"]')?.addEventListener('focusout', (event) => {
-    event.target.value = String(event.target.value ?? '').trim()
-  })
+  syncPasswordRequirements(passwordRules, '')
 
   cancelButton.addEventListener('click', () => {
-    clearPassword()
     onCancel()
   })
 
   form.addEventListener('submit', async (event) => {
     event.preventDefault()
+    if (form.dataset.submitting === 'true') return
+
     showFormError('')
     const values = readValues()
-    const errors = currentErrors()
-    const errorNames = Object.keys(errors).filter((name) => errors[name])
-    if (errorNames.length > 0) {
-      errorNames.forEach((name) => setFieldError(form, name, errors[name]))
-      syncSubmitState()
-      form.querySelector(`[name="${errorNames[0]}"]`)?.focus()
+    const altaErrors = validateUsuarioAlta(values)
+    const result = fields.validateAll()
+    const hasAltaErrors = Object.values(altaErrors).some(Boolean)
+    if (result.hasErrors || hasAltaErrors) {
+      const first = result.firstInvalid ?? form.querySelector(
+        ['nombreUsuario', 'email', 'password', 'passwordConfirm', 'empresaId', 'rol']
+          .filter((name) => altaErrors[name])
+          .map((name) => `[name="${name}"]`)
+          .join(','),
+      )
+      first?.focus()
+      return
+    }
+
+    if (!canChooseEmpresa && parsePositiveId(values.empresaId) !== empresaIdFija) {
+      showFormError('No se puede cambiar la empresa de la sesión ADMIN.')
       return
     }
 
@@ -199,17 +291,17 @@ export function createUsuarioForm({ onCancel, onSubmit, empresaIdPermitida = nul
       showFormError(message)
       showToast({ message, tone: 'error' })
     } finally {
-      clearPassword()
+      clearPasswords()
+      fields.refresh('password')
+      fields.refresh('passwordConfirm')
       if (submitButton.isConnected) {
         delete form.dataset.submitting
         submitButton.textContent = 'Crear usuario'
         cancelButton.disabled = false
-        syncSubmitState()
       }
     }
   })
 
-  syncSubmitState()
   queueMicrotask(() => form.querySelector('[name="nombreUsuario"]')?.focus())
 
   ;(async () => {
@@ -217,38 +309,47 @@ export function createUsuarioForm({ onCancel, onSubmit, empresaIdPermitida = nul
       const empresas = await getEmpresas()
       if (!form.isConnected) return
 
-      const allowedId = Number(empresaIdPermitida)
-      const scoped =
-        Number.isFinite(allowedId) && allowedId > 0
-          ? empresas.filter((empresa) => Number(empresa.id) === allowedId)
-          : empresas
+      if (!canChooseEmpresa) {
+        const scoped = empresaIdFija
+          ? empresas.filter((empresa) => Number(empresa.id) === empresaIdFija)
+          : []
+        const nombre = scoped[0] ? empresaDisplayName(scoped[0]) : ''
+        if (empresaNombreLabel) {
+          empresaNombreLabel.textContent =
+            nombre || (empresaIdFija ? `Empresa ${empresaIdFija}` : 'Empresa de la sesión')
+        }
+        if (empresaSelect && empresaIdFija) {
+          empresaSelect.value = String(empresaIdFija)
+        }
+        if (!empresaIdFija) {
+          showFormError('La sesión ADMIN no incluye una empresa válida.')
+        }
+        return
+      }
 
       empresaSelect.replaceChildren(new Option('Seleccionar...', ''))
-      scoped
+      empresas
         .slice()
         .sort((a, b) => empresaDisplayName(a).localeCompare(empresaDisplayName(b), 'es'))
         .forEach((empresa) => {
           const label = empresaDisplayName(empresa)
-          if (!label || !empresa.id) return
-          empresaSelect.append(new Option(label, String(empresa.id)))
+          const id = parsePositiveId(empresa.id)
+          if (!label || !id) return
+          empresaSelect.append(new Option(label, String(id)))
         })
 
-      if (scoped.length === 1) {
-        empresaSelect.value = String(scoped[0].id)
-      }
-
-      if (scoped.length === 0) {
+      if (empresas.length === 0) {
         showFormError('No hay empresas disponibles para asignar.')
       }
-      syncSubmitState()
     } catch (error) {
       if (error.message === 'Sesión expirada o no autorizada.') return
       if (!form.isConnected) return
-      empresaSelect.replaceChildren(new Option('Empresas no disponibles', ''))
+      if (canChooseEmpresa) {
+        empresaSelect.replaceChildren(new Option('Empresas no disponibles', ''))
+      }
       const message = error.message || 'No se pudieron cargar las empresas.'
       showFormError(message)
       showToast({ message, tone: 'error' })
-      syncSubmitState()
     }
   })()
 

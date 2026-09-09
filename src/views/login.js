@@ -1,11 +1,23 @@
 import { login } from '../api/auth.js'
 import { APP_NAME } from '../config/navigation.js'
 import { createThemeToggle } from '../components/theme-toggle.js'
+import {
+  fieldIds,
+  formFieldMarkup,
+  validateEmailValue,
+  wireFormFields,
+} from '../components/form-field.js'
+
+const LOGIN_INPUT_EXTRA =
+  'dark:border-slate-700 dark:bg-slate-950 dark:text-white dark:placeholder:text-slate-500 focus:ring-blue-500/30'
 
 export function renderLogin(container, { onSuccess }) {
   const view = document.createElement('div')
   view.className =
     'relative flex min-h-screen items-center justify-center bg-slate-50 px-4 py-10 text-slate-900 dark:bg-slate-950 dark:text-slate-100'
+
+  const emailIds = fieldIds('login-email')
+  const passwordIds = fieldIds('login-password')
 
   view.innerHTML = `
     <div id="login-theme-toggle" class="absolute right-4 top-4 sm:right-6 sm:top-6"></div>
@@ -18,30 +30,26 @@ export function renderLogin(container, { onSuccess }) {
 
       <form id="login-form" class="rounded-2xl border border-slate-200 bg-white p-6 shadow-xl dark:border-slate-800 dark:bg-slate-900 sm:p-8" novalidate>
         <div class="space-y-4">
-          <div>
-            <label for="login-email" class="mb-1.5 block text-sm font-medium text-slate-700 dark:text-slate-300">Correo</label>
-            <input
-              id="login-email"
-              name="email"
-              type="email"
-              autocomplete="username"
-              required
-              class="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none placeholder:text-slate-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/30 dark:border-slate-700 dark:bg-slate-950 dark:text-white dark:placeholder:text-slate-500"
-              placeholder="correo@empresa.com"
-            />
-          </div>
-          <div>
-            <label for="login-password" class="mb-1.5 block text-sm font-medium text-slate-700 dark:text-slate-300">Contraseña</label>
-            <input
-              id="login-password"
-              name="password"
-              type="password"
-              autocomplete="current-password"
-              required
-              class="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none placeholder:text-slate-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/30 dark:border-slate-700 dark:bg-slate-950 dark:text-white dark:placeholder:text-slate-500"
-              placeholder="••••••••"
-            />
-          </div>
+          ${formFieldMarkup({
+            id: 'login-email',
+            name: 'email',
+            label: 'Correo electrónico',
+            required: true,
+            type: 'email',
+            autocomplete: 'username',
+            extraInputClass: LOGIN_INPUT_EXTRA,
+            helpText: 'Ingresá el correo asociado a tu cuenta.',
+          })}
+          ${formFieldMarkup({
+            id: 'login-password',
+            name: 'password',
+            label: 'Contraseña',
+            required: true,
+            type: 'password',
+            autocomplete: 'current-password',
+            extraInputClass: LOGIN_INPUT_EXTRA,
+            helpText: 'Ingresá la contraseña correspondiente a tu usuario.',
+          })}
         </div>
 
         <p id="login-error" class="mt-4 hidden rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-300" role="alert"></p>
@@ -62,30 +70,56 @@ export function renderLogin(container, { onSuccess }) {
   const form = view.querySelector('#login-form')
   const errorEl = view.querySelector('#login-error')
   const submitBtn = view.querySelector('#login-submit')
+  const emailInput = form.querySelector('[name="email"]')
+  const passwordInput = form.querySelector('[name="password"]')
+
+  const fields = wireFormFields(form, [
+    {
+      name: 'email',
+      helpId: emailIds.helpId,
+      errorId: emailIds.errorId,
+      normalizeOnBlur: (value) => String(value ?? '').trim(),
+      getError: () => validateEmailValue(emailInput.value),
+    },
+    {
+      name: 'password',
+      helpId: passwordIds.helpId,
+      errorId: passwordIds.errorId,
+      getError: () => (String(passwordInput.value ?? '') ? '' : 'Ingresá la contraseña.'),
+    },
+  ])
 
   form.addEventListener('submit', async (event) => {
     event.preventDefault()
+    if (form.dataset.submitting === 'true') return
 
-    const data = new FormData(form)
-    const email = String(data.get('email') ?? '')
-    const password = String(data.get('password') ?? '')
+    const result = fields.validateAll()
+    if (result.hasErrors) {
+      result.firstInvalid?.focus()
+      return
+    }
 
     errorEl.classList.add('hidden')
     errorEl.textContent = ''
+    form.dataset.submitting = 'true'
     submitBtn.disabled = true
     submitBtn.textContent = 'Ingresando...'
 
     try {
-      await login({ email, password })
+      await login({
+        email: String(emailInput.value ?? '').trim(),
+        password: String(passwordInput.value ?? ''),
+      })
       onSuccess()
     } catch (error) {
       errorEl.textContent = error.message || 'No se pudo iniciar sesión.'
       errorEl.classList.remove('hidden')
+      delete form.dataset.submitting
       submitBtn.disabled = false
       submitBtn.textContent = 'Iniciar sesión'
     }
   })
 
   container.replaceChildren(view)
-  view.querySelector('#login-email')?.focus()
+  emailInput?.focus()
 }

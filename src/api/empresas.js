@@ -1,4 +1,5 @@
 import { pick } from '../utils/pick.js'
+import { buildEmpresaAltaDto } from '../utils/empresa-data.js'
 import { puedeCrearEmpresas } from '../config/administracion.js'
 import { getCurrentUser, getToken } from './auth.js'
 import { getEmpresaContexto } from './empresa-context.js'
@@ -117,10 +118,9 @@ export async function createEmpresa({ nombreFantasia, razonSocial, cuit }) {
     throw createApiError('No tenés permiso para crear empresas.', 403)
   }
 
-  const dto = {
-    nombreFantasia: String(nombreFantasia ?? '').trim(),
-    razonSocial: String(razonSocial ?? '').trim(),
-    cuit: String(cuit ?? '').trim(),
+  const { dto, hasErrors } = buildEmpresaAltaDto({ nombreFantasia, razonSocial, cuit })
+  if (hasErrors) {
+    throw createApiError('Los datos de la empresa no son válidos.', 400)
   }
 
   const { url, response } = await apiFetch('/api/empresas', {
@@ -141,7 +141,7 @@ export async function createEmpresa({ nombreFantasia, razonSocial, cuit }) {
   }
 
   if (response.status === 409) {
-    throw createApiError(await readErrorMessage(response, 'Ya existe una empresa con esos datos.'), 409)
+    throw createApiError('Ya existe una empresa con ese CUIT.', 409)
   }
 
   if (!response.ok) {

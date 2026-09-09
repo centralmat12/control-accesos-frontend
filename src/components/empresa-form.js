@@ -1,56 +1,54 @@
 import { showToast } from './toast.js'
-
-const INPUT_CLASS =
-  'w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none placeholder:text-slate-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 disabled:cursor-not-allowed disabled:opacity-60'
-
-function setFieldError(form, name, message) {
-  const error = form.querySelector(`#empresa-${name}-error`)
-  const input = form.querySelector(`[name="${name}"]`)
-  if (message) {
-    if (error) {
-      error.textContent = message
-      error.classList.remove('hidden')
-    }
-    input?.classList.add('border-red-300')
-    input?.setAttribute('aria-invalid', 'true')
-  } else {
-    if (error) {
-      error.textContent = ''
-      error.classList.add('hidden')
-    }
-    input?.classList.remove('border-red-300')
-    input?.removeAttribute('aria-invalid')
-  }
-}
-
-function validateRequired(value, label, maxLength) {
-  const text = String(value ?? '').trim()
-  if (!text) return `Ingresá ${label}.`
-  if (text.length > maxLength) return `No puede superar ${maxLength} caracteres.`
-  return ''
-}
+import { fieldIds, formFieldMarkup, wireFormFields } from './form-field.js'
+import {
+  buildEmpresaAltaDto,
+  normalizeEmpresaText,
+  sanitizeCuitDigits,
+  validateEmpresaCuit,
+  validateNombreComercial,
+  validateRazonSocial,
+} from '../utils/empresa-data.js'
 
 export function createEmpresaForm({ onCancel, onSubmit }) {
   const wrapper = document.createElement('div')
+  const nombreIds = fieldIds('empresa-nombreFantasia')
+  const razonIds = fieldIds('empresa-razonSocial')
+  const cuitIds = fieldIds('empresa-cuit')
 
   wrapper.innerHTML = `
     <form id="empresa-form" class="space-y-4" novalidate>
       <p id="empresa-form-error" class="hidden rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800" role="alert"></p>
-      <div>
-        <label for="empresa-nombreFantasia" class="mb-1.5 block text-sm font-medium text-slate-700">Nombre de fantasía</label>
-        <input id="empresa-nombreFantasia" name="nombreFantasia" type="text" maxlength="100" required class="${INPUT_CLASS}" />
-        <p id="empresa-nombreFantasia-error" class="mt-1 hidden text-sm text-red-600"></p>
-      </div>
-      <div>
-        <label for="empresa-razonSocial" class="mb-1.5 block text-sm font-medium text-slate-700">Razón social</label>
-        <input id="empresa-razonSocial" name="razonSocial" type="text" maxlength="100" required class="${INPUT_CLASS}" />
-        <p id="empresa-razonSocial-error" class="mt-1 hidden text-sm text-red-600"></p>
-      </div>
-      <div>
-        <label for="empresa-cuit" class="mb-1.5 block text-sm font-medium text-slate-700">CUIT</label>
-        <input id="empresa-cuit" name="cuit" type="text" maxlength="20" required class="${INPUT_CLASS}" />
-        <p id="empresa-cuit-error" class="mt-1 hidden text-sm text-red-600"></p>
-      </div>
+      ${formFieldMarkup({
+        id: 'empresa-nombreFantasia',
+        name: 'nombreFantasia',
+        label: 'Nombre comercial',
+        required: true,
+        type: 'text',
+        maxLength: 100,
+        autocomplete: 'organization',
+        helpText: 'Ingresá el nombre por el que se identifica públicamente la empresa.',
+      })}
+      ${formFieldMarkup({
+        id: 'empresa-razonSocial',
+        name: 'razonSocial',
+        label: 'Razón social',
+        required: true,
+        type: 'text',
+        maxLength: 100,
+        autocomplete: 'off',
+        helpText: 'Ingresá la denominación legal registrada, incluyendo el tipo societario cuando corresponda.',
+      })}
+      ${formFieldMarkup({
+        id: 'empresa-cuit',
+        name: 'cuit',
+        label: 'CUIT',
+        required: true,
+        type: 'text',
+        maxLength: 11,
+        inputMode: 'numeric',
+        autocomplete: 'off',
+        helpText: 'Ingresá los 11 dígitos sin puntos, espacios ni guiones. Ejemplo: 30123456789.',
+      })}
       <div class="flex flex-col-reverse gap-2 border-t border-slate-100 pt-4 sm:flex-row sm:justify-end">
         <button type="button" id="empresa-form-cancel" class="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100">
           Cancelar
@@ -66,6 +64,13 @@ export function createEmpresaForm({ onCancel, onSubmit }) {
   const formError = wrapper.querySelector('#empresa-form-error')
   const submitButton = wrapper.querySelector('#empresa-form-submit')
   const cancelButton = wrapper.querySelector('#empresa-form-cancel')
+  const nombreInput = form.querySelector('[name="nombreFantasia"]')
+  const razonInput = form.querySelector('[name="razonSocial"]')
+  const cuitInput = form.querySelector('[name="cuit"]')
+
+  cuitInput.setAttribute('inputmode', 'numeric')
+  cuitInput.setAttribute('maxlength', '11')
+  cuitInput.setAttribute('pattern', '[0-9]*')
 
   function showFormError(message) {
     if (!message) {
@@ -78,51 +83,73 @@ export function createEmpresaForm({ onCancel, onSubmit }) {
   }
 
   function readValues() {
-    return {
-      nombreFantasia: String(form.querySelector('[name="nombreFantasia"]')?.value ?? '').trim(),
-      razonSocial: String(form.querySelector('[name="razonSocial"]')?.value ?? '').trim(),
-      cuit: String(form.querySelector('[name="cuit"]')?.value ?? '').trim(),
-    }
-  }
-
-  function currentErrors() {
-    const values = readValues()
-    return {
-      nombreFantasia: validateRequired(values.nombreFantasia, 'el nombre de fantasía', 100),
-      razonSocial: validateRequired(values.razonSocial, 'la razón social', 100),
-      cuit: validateRequired(values.cuit, 'el CUIT', 20),
-    }
-  }
-
-  function syncSubmitState() {
-    submitButton.disabled = form.dataset.submitting === 'true' || Object.values(currentErrors()).some(Boolean)
-  }
-
-  ;['nombreFantasia', 'razonSocial', 'cuit'].forEach((name) => {
-    const control = form.querySelector(`[name="${name}"]`)
-    control?.addEventListener('input', () => {
-      setFieldError(form, name, '')
-      showFormError('')
-      syncSubmitState()
+    const { dto } = buildEmpresaAltaDto({
+      nombreFantasia: nombreInput?.value,
+      razonSocial: razonInput?.value,
+      cuit: cuitInput?.value,
     })
-    control?.addEventListener('focusout', (event) => {
-      event.target.value = String(event.target.value ?? '').trim()
-      setFieldError(form, name, currentErrors()[name] ?? '')
-      syncSubmitState()
-    })
-  })
+    return dto
+  }
+
+  const fields = wireFormFields(form, [
+    {
+      name: 'nombreFantasia',
+      helpId: nombreIds.helpId,
+      errorId: nombreIds.errorId,
+      normalizeOnBlur: (value) => normalizeEmpresaText(value),
+      getError: () => validateNombreComercial(nombreInput.value),
+    },
+    {
+      name: 'razonSocial',
+      helpId: razonIds.helpId,
+      errorId: razonIds.errorId,
+      normalizeOnBlur: (value) => normalizeEmpresaText(value),
+      getError: () => validateRazonSocial(razonInput.value),
+    },
+    {
+      name: 'cuit',
+      helpId: cuitIds.helpId,
+      errorId: cuitIds.errorId,
+      normalizeOnBlur: (value) => sanitizeCuitDigits(value),
+      getError: () => validateEmpresaCuit(cuitInput.value),
+    },
+  ])
+
+  cuitInput.addEventListener(
+    'input',
+    () => {
+      const sanitized = sanitizeCuitDigits(cuitInput.value)
+      if (cuitInput.value !== sanitized) {
+        cuitInput.value = sanitized
+        fields.markInteracted('cuit')
+      }
+    },
+    true,
+  )
 
   cancelButton.addEventListener('click', onCancel)
 
   form.addEventListener('submit', async (event) => {
     event.preventDefault()
+    if (form.dataset.submitting === 'true') return
+
     showFormError('')
-    const errors = currentErrors()
-    const errorNames = Object.keys(errors).filter((name) => errors[name])
-    if (errorNames.length > 0) {
-      errorNames.forEach((name) => setFieldError(form, name, errors[name]))
-      syncSubmitState()
-      form.querySelector(`[name="${errorNames[0]}"]`)?.focus()
+    const result = fields.validateAll()
+    if (result.hasErrors) {
+      result.firstInvalid?.focus()
+      return
+    }
+
+    const payload = readValues()
+    const { hasErrors, errors } = buildEmpresaAltaDto({
+      nombreFantasia: payload.nombreFantasia,
+      razonSocial: payload.razonSocial,
+      cuit: sanitizeCuitDigits(cuitInput.value),
+    })
+    if (hasErrors) {
+      fields.validateAll()
+      const first = Object.keys(errors).find((name) => errors[name])
+      form.querySelector(`[name="${first}"]`)?.focus()
       return
     }
 
@@ -132,7 +159,7 @@ export function createEmpresaForm({ onCancel, onSubmit }) {
     cancelButton.disabled = true
 
     try {
-      await onSubmit(readValues())
+      await onSubmit(payload)
     } catch (error) {
       const message = error.message || 'No se pudo crear la empresa.'
       showFormError(message)
@@ -142,12 +169,10 @@ export function createEmpresaForm({ onCancel, onSubmit }) {
         delete form.dataset.submitting
         submitButton.textContent = 'Crear empresa'
         cancelButton.disabled = false
-        syncSubmitState()
       }
     }
   })
 
-  syncSubmitState()
-  queueMicrotask(() => form.querySelector('[name="nombreFantasia"]')?.focus())
+  queueMicrotask(() => nombreInput?.focus())
   return wrapper
 }

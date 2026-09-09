@@ -12,7 +12,7 @@ import {
 import { createEmpleadosTable, fullName } from '../components/empleados-table.js'
 import { createFeedbackState, createSelectEmpresaState } from '../components/feedback-state.js'
 import { createPagination } from '../components/pagination.js'
-import { openModal } from '../components/modal.js'
+import { openFormModal, openModal } from '../components/modal.js'
 import { createDetailSkeleton, createTableSkeleton } from '../components/skeleton.js'
 import {
   DEPARTAMENTO_ALL,
@@ -157,9 +157,8 @@ export async function renderEmpleados(container, { initialQuery } = {}) {
   let highlightId = null
   let activeModalClose = null
 
-  function closeActiveModal() {
-    activeModalClose?.()
-    activeModalClose = null
+  function closeActiveModal(options) {
+    activeModalClose?.(options)
   }
 
   function showBanner({ title, message, tone = 'success' }) {
@@ -365,13 +364,13 @@ export async function renderEmpleados(container, { initialQuery } = {}) {
       onCancel: () => closeActiveModal(),
       onSubmit: async (dto) => {
         await createEmpleado(dto)
-        closeActiveModal()
+        closeActiveModal({ force: true })
         showToast({ message: 'Empleado creado correctamente.', tone: 'success' })
         await loadEmpleados()
       },
     })
 
-    const modal = openModal({
+    const modal = openFormModal({
       title: 'Nuevo empleado',
       content: form,
       labelledBy: 'empleado-create-title',
@@ -389,6 +388,8 @@ export async function renderEmpleados(container, { initialQuery } = {}) {
       title: fullName(empleado) || 'Empleado',
       content: loading,
       labelledBy: 'empleado-detail-title',
+      closeOnBackdrop: () => !modal.dialog.querySelector('form'),
+      unsavedChanges: true,
       onClose: () => {
         activeModalClose = null
       },
@@ -412,7 +413,7 @@ export async function renderEmpleados(container, { initialQuery } = {}) {
       )
     } catch (error) {
       if (error.message === 'Sesión expirada o no autorizada.') {
-        closeActiveModal()
+        closeActiveModal({ force: true })
         return
       }
 
@@ -433,7 +434,7 @@ export async function renderEmpleados(container, { initialQuery } = {}) {
       onConfirm: async () => {
         await deactivateEmpleado(empleado.id)
         empleados = empleados.filter((item) => Number(item.id) !== Number(empleado.id))
-        closeActiveModal()
+        closeActiveModal({ force: true })
         renderSummary()
         renderResults()
         showToast({ message: 'Empleado desactivado.', tone: 'success' })

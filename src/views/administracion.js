@@ -5,9 +5,9 @@ import { createUsuario } from '../api/usuarios.js'
 import {
   API_ENABLEMENT_HINT,
   empresaIdDeTenant,
+  puedeAbrirNuevoUsuario,
   puedeCrearEmpresas,
   puedeCrearSucursales,
-  puedeCrearUsuarios,
   puedeEditarSucursales,
   puedeListarUsuarios,
 } from '../config/administracion.js'
@@ -16,7 +16,7 @@ import { createEmpresaForm } from '../components/empresa-form.js'
 import { createFeedbackState } from '../components/feedback-state.js'
 import { createSucursalForm } from '../components/sucursal-form.js'
 import { createUsuarioForm } from '../components/usuario-form.js'
-import { openModal } from '../components/modal.js'
+import { openFormModal } from '../components/modal.js'
 import { createTableSkeleton } from '../components/skeleton.js'
 import { showToast } from '../components/toast.js'
 import { isAdmin, isSuperadmin } from '../config/roles.js'
@@ -78,13 +78,12 @@ function createActionControl({ id, label, enabled, disabledMessage = '' }) {
 
 export async function renderAdministracion(container) {
   const user = getCurrentUser()
-  const canCreateUsuarios = puedeCrearUsuarios(user)
+  const canCreateUsuarios = puedeAbrirNuevoUsuario(user)
   const canCreateEmpresas = puedeCrearEmpresas(user)
   const canListUsuarios = puedeListarUsuarios()
   const tenantEmpresaId = empresaIdDeTenant(user)
-  const usuarioDisabledMessage = isSuperadmin(user)
-    ? 'La API autoriza el alta de usuarios únicamente al rol ADMIN.'
-    : isAdmin(user) && !tenantEmpresaId
+  const usuarioDisabledMessage =
+    isAdmin(user) && !tenantEmpresaId
       ? 'La sesión ADMIN no incluye una empresa válida.'
       : API_ENABLEMENT_HINT
   const empresaDisabledMessage = isAdmin(user)
@@ -128,9 +127,8 @@ export async function renderAdministracion(container) {
   let empresaQuery = ''
   let activeModalClose = null
 
-  function closeActiveModal() {
-    activeModalClose?.()
-    activeModalClose = null
+  function closeActiveModal(options) {
+    activeModalClose?.(options)
   }
 
   function setSection(next) {
@@ -192,14 +190,15 @@ export async function renderAdministracion(container) {
     if (!canCreateUsuarios) return
     const form = createUsuarioForm({
       empresaIdPermitida: tenantEmpresaId,
+      permitirElegirEmpresa: isSuperadmin(user),
       onCancel: () => closeActiveModal(),
       onSubmit: async (dto) => {
         await createUsuario(dto)
-        closeActiveModal()
+        closeActiveModal({ force: true })
         showToast({ message: 'Usuario creado correctamente.', tone: 'success' })
       },
     })
-    const modal = openModal({
+    const modal = openFormModal({
       title: 'Nuevo usuario',
       content: form,
       labelledBy: 'usuario-create-title',
@@ -342,12 +341,12 @@ export async function renderAdministracion(container) {
       onCancel: () => closeActiveModal(),
       onSubmit: async (dto) => {
         await createEmpresa(dto)
-        closeActiveModal()
+        closeActiveModal({ force: true })
         showToast({ message: 'Empresa creada correctamente.', tone: 'success' })
         await loadEmpresas()
       },
     })
-    const modal = openModal({
+    const modal = openFormModal({
       title: 'Nueva empresa',
       content: form,
       labelledBy: 'empresa-create-title',
@@ -510,12 +509,12 @@ export async function renderAdministracion(container) {
           ...dto,
           empresaId: Number(selectedEmpresa.id),
         })
-        closeActiveModal()
+        closeActiveModal({ force: true })
         showToast({ message: 'Sucursal creada correctamente.', tone: 'success' })
         await loadSucursales()
       },
     })
-    const modal = openModal({
+    const modal = openFormModal({
       title: 'Agregar sucursal',
       content: form,
       labelledBy: 'sucursal-create-title',
@@ -555,12 +554,12 @@ export async function renderAdministracion(container) {
           empresaId,
           serialLector: dto.serialLector,
         })
-        closeActiveModal()
+        closeActiveModal({ force: true })
         showToast({ message: 'Sucursal actualizada correctamente', tone: 'success' })
         await loadSucursales()
       },
     })
-    const modal = openModal({
+    const modal = openFormModal({
       title: 'Editar sucursal',
       content: form,
       labelledBy: 'sucursal-edit-title',
@@ -623,5 +622,5 @@ export async function renderAdministracion(container) {
   container.replaceChildren(view)
   setSection(SECTIONS.usuarios)
 
-  return () => closeActiveModal()
+  return () => closeActiveModal({ force: true })
 }
