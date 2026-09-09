@@ -97,6 +97,9 @@ function resourceFromPath(path) {
   if (route.includes('/usuarios')) {
     return { action: 'Usuarios', noun: 'usuarios', consulting: 'administrar usuarios' }
   }
+  if (route.includes('/agentes')) {
+    return { action: 'Agentes', noun: 'agentes', consulting: 'administrar agentes' }
+  }
 
   return { action: 'Sistema', noun: 'datos', consulting: 'consultar la API' }
 }
@@ -112,6 +115,8 @@ function successDetail(method, path) {
     if (noun === 'usuarios') return 'Usuario creado correctamente.'
     if (noun === 'empresas') return 'Empresa creada correctamente.'
     if (noun === 'sucursales') return 'Sucursal creada correctamente.'
+    if (noun === 'agentes' && route.includes('rotar-secret')) return 'Operación de agente registrada correctamente.'
+    if (noun === 'agentes') return 'Agente creado correctamente.'
     return `Alta de ${noun} registrada correctamente.`
   }
   if (verb === 'PATCH' || verb === 'PUT') {
