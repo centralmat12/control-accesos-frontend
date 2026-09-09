@@ -80,6 +80,7 @@ export function openModal({
   closeOnBackdrop = true,
   closeOnEscape = true,
   unsavedChanges = false,
+  hideCloseButton = false,
   isDirty,
 } = {}) {
   const overlay = document.createElement('div')
@@ -115,7 +116,11 @@ export function openModal({
   body.className = 'overflow-y-auto px-5 py-4'
   if (content) body.append(content)
 
-  header.append(heading, closeButton)
+  if (hideCloseButton) {
+    header.append(heading)
+  } else {
+    header.append(heading, closeButton)
+  }
   dialog.append(header, body)
   overlay.append(dialog)
 
@@ -190,9 +195,11 @@ export function openModal({
     void close()
   }
 
-  closeButton.addEventListener('click', () => {
-    void close()
-  })
+  if (!hideCloseButton) {
+    closeButton.addEventListener('click', () => {
+      void close()
+    })
+  }
   overlay.addEventListener('click', (event) => {
     if (event.target !== overlay) return
     if (!allowsBackdropClose()) return
@@ -209,7 +216,10 @@ export function openModal({
   queueMicrotask(() => {
     const preferredFocus = dialog.querySelector('[data-autofocus]')
     if (preferredFocus) preferredFocus.focus()
-    else if (!dialog.contains(document.activeElement)) closeButton.focus()
+    else if (!dialog.contains(document.activeElement)) {
+      const fallback = hideCloseButton ? focusableElements(dialog)[0] : closeButton
+      fallback?.focus()
+    }
   })
 
   return { overlay, dialog, close }
@@ -221,5 +231,60 @@ export function openFormModal(options = {}) {
     closeOnEscape: true,
     unsavedChanges: true,
     ...options,
+  })
+}
+
+export function openConfirmModal({
+  title,
+  message,
+  confirmLabel = 'Confirmar',
+  cancelLabel = 'Cancelar',
+  danger = false,
+} = {}) {
+  return new Promise((resolve) => {
+    let settled = false
+
+    const content = document.createElement('div')
+    const confirmClass = danger
+      ? 'rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500'
+      : 'rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500'
+
+    const titleNode = document.createElement('p')
+    titleNode.className = 'text-sm text-slate-600'
+    titleNode.textContent = String(message ?? '')
+
+    const actions = document.createElement('div')
+    actions.className = 'mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end'
+    actions.innerHTML = `
+      <button type="button" data-action="cancel" data-autofocus class="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500">
+      </button>
+      <button type="button" data-action="confirm" class="${confirmClass}">
+      </button>
+    `
+    actions.querySelector('[data-action="cancel"]').textContent = cancelLabel
+    actions.querySelector('[data-action="confirm"]').textContent = confirmLabel
+    content.append(titleNode, actions)
+
+    const finish = (value) => {
+      if (settled) return
+      settled = true
+      modal.close({ force: true })
+      resolve(value)
+    }
+
+    const modal = openModal({
+      title,
+      content,
+      labelledBy: 'confirm-modal-title',
+      stacked: true,
+      closeOnBackdrop: false,
+      unsavedChanges: false,
+      onClose: () => {
+        if (!settled) resolve(false)
+      },
+    })
+
+    content.querySelector('[data-action="cancel"]')?.addEventListener('click', () => finish(false))
+    content.querySelector('[data-action="confirm"]')?.addEventListener('click', () => finish(true))
   })
 }

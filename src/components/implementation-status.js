@@ -5,7 +5,6 @@ const IMPLEMENTATION_ITEMS = [
   { label: 'Asignación por sucursal/departamento', status: 'api' },
   { label: 'Listado de usuarios del sistema', status: 'api' },
   { label: 'Departamentos', status: 'ui' },
-  { label: 'Agentes', status: 'ui' },
 ]
 
 export function createImplementationStatusSection() {

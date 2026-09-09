@@ -1,26 +1,47 @@
-import { createEmpresa, empresaDisplayName, getEmpresas } from '../api/empresas.js'
+import {
+  AGENTE_DESACTIVAR_CONFIRM,
+  AGENTE_DESACTIVAR_MESSAGE,
+  AGENTE_DESACTIVAR_TITLE,
+  AGENTE_ROTAR_CONFIRM,
+  AGENTE_ROTAR_MESSAGE,
+  AGENTE_ROTAR_TITLE,
+  AGENTE_SECRET_MODAL,
+  createAgente,
+  desactivarAgente,
+  discardAgenteSecret,
+  getAgentes,
+  getLoadedAgenteClientIds,
+  rotarSecretAgente,
+} from '../api/agentes.js'
 import { getCurrentUser } from '../api/auth.js'
+import { createEmpresa, empresaDisplayName, getEmpresas } from '../api/empresas.js'
 import { createSucursal, getSucursales, updateSucursal } from '../api/sucursales.js'
 import { createUsuario } from '../api/usuarios.js'
 import {
   API_ENABLEMENT_HINT,
   empresaIdDeTenant,
   puedeAbrirNuevoUsuario,
+  puedeAdministrarAgentes,
+  puedeCrearAgentes,
   puedeCrearEmpresas,
   puedeCrearSucursales,
+  puedeDesactivarAgente,
   puedeEditarSucursales,
   puedeListarUsuarios,
+  puedeRotarSecretAgente,
 } from '../config/administracion.js'
-import { featureStatusBadge } from '../components/badge.js'
+import { createAgenteForm } from '../components/agente-form.js'
+import { createAgenteSecretPanel } from '../components/agente-secret-panel.js'
+import { employeeStatusBadge, featureStatusBadge } from '../components/badge.js'
 import { createEmpresaForm } from '../components/empresa-form.js'
 import { createFeedbackState } from '../components/feedback-state.js'
+import { openConfirmModal, openFormModal } from '../components/modal.js'
 import { createSucursalForm } from '../components/sucursal-form.js'
-import { createUsuarioForm } from '../components/usuario-form.js'
-import { openFormModal } from '../components/modal.js'
 import { createTableSkeleton } from '../components/skeleton.js'
 import { showToast } from '../components/toast.js'
+import { createUsuarioForm } from '../components/usuario-form.js'
 import { isAdmin, isSuperadmin } from '../config/roles.js'
-import { displayValue, escapeHtml } from '../utils/format.js'
+import { displayValue, escapeHtml, formatDateTime } from '../utils/format.js'
 
 const CONTROL_CLASS =
   'w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none placeholder:text-slate-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20'
@@ -116,24 +137,41 @@ export async function renderAdministracion(container) {
   const tabButtons = [...view.querySelectorAll('[data-section]')]
   let section = SECTIONS.usuarios
   let selectedEmpresa = null
+  let selectedSucursal = null
   let empresas = []
   let sucursales = []
+  let agentes = []
   let empresasLoaded = false
   let empresasError = false
   let empresasErrorMessage = 'Ocurrió un error al consultar la API.'
   let sucursalesLoaded = false
   let sucursalesError = false
   let sucursalesErrorMessage = 'Ocurrió un error al consultar la API.'
+  let agentesLoaded = false
+  let agentesError = false
+  let agentesErrorMessage = 'Ocurrió un error al consultar la API.'
   let empresaQuery = ''
   let activeModalClose = null
+  let secretHolder = null
 
   function closeActiveModal(options) {
     activeModalClose?.(options)
   }
 
+  function clearSecretHolder() {
+    if (secretHolder) {
+      secretHolder.discard?.()
+      discardAgenteSecret(secretHolder)
+      secretHolder = null
+    }
+  }
+
   function setSection(next) {
     section = next
-    if (next !== SECTIONS.empresas) selectedEmpresa = null
+    if (next !== SECTIONS.empresas) {
+      selectedEmpresa = null
+      selectedSucursal = null
+    }
     tabButtons.forEach((button) => {
       const active = button.dataset.section === section
       button.className = `rounded-lg border px-4 py-2 text-sm font-medium ${active ? TAB_ACTIVE : TAB_IDLE}`
@@ -148,6 +186,10 @@ export async function renderAdministracion(container) {
   function renderPanel() {
     if (section === SECTIONS.usuarios) {
       renderUsuarios()
+      return
+    }
+    if (selectedSucursal) {
+      renderAgentesAdmin()
       return
     }
     if (selectedEmpresa) {
@@ -384,6 +426,7 @@ export async function renderAdministracion(container) {
     `
     panel.querySelector('#admin-empresa-back')?.addEventListener('click', () => {
       selectedEmpresa = null
+      selectedSucursal = null
       renderPanel()
     })
     if (canCreateHere) {
@@ -396,10 +439,12 @@ export async function renderAdministracion(container) {
     const results = panel.querySelector('#admin-sucursales-results')
     if (!results) return
     const canEditHere = puedeEditarSucursales(user, selectedEmpresa?.id)
+    const canManageAgentesHere = puedeAdministrarAgentes(user, selectedEmpresa?.id)
+    const showActions = canEditHere || canManageAgentesHere
 
     if (!sucursalesLoaded) {
       results.replaceChildren(
-        createTableSkeleton({ rows: 5, columns: canEditHere ? 4 : 3, label: 'Cargando sucursales' }),
+        createTableSkeleton({ rows: 5, columns: showActions ? 4 : 3, label: 'Cargando sucursales' }),
       )
       return
     }
@@ -440,7 +485,7 @@ export async function renderAdministracion(container) {
               <th scope="col" class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Serial del lector</th>
               <th scope="col" class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">ID</th>
               ${
-                canEditHere
+                showActions
                   ? '<th scope="col" class="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wide text-slate-500">Acciones</th>'
                   : ''
               }
@@ -452,26 +497,38 @@ export async function renderAdministracion(container) {
                 const sameEmpresa = Number(sucursal.empresaId) === Number(selectedEmpresa?.id)
                 const canEditSucursal =
                   sameEmpresa && puedeEditarSucursales(user, sucursal.empresaId)
+                const canManageSucursalAgentes =
+                  sameEmpresa && puedeAdministrarAgentes(user, sucursal.empresaId)
+                const actions = []
+                if (canEditSucursal) {
+                  actions.push(`<button
+                    type="button"
+                    data-action="edit-sucursal"
+                    data-id="${Number(sucursal.id)}"
+                    class="rounded-lg px-2.5 py-1.5 text-sm font-medium text-blue-700 hover:bg-blue-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+                  >
+                    Editar sucursal
+                  </button>`)
+                }
+                if (canManageSucursalAgentes) {
+                  actions.push(`<button
+                    type="button"
+                    data-action="manage-agentes"
+                    data-id="${Number(sucursal.id)}"
+                    class="rounded-lg px-2.5 py-1.5 text-sm font-medium text-blue-700 hover:bg-blue-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+                  >
+                    Administrar agentes
+                  </button>`)
+                }
                 return `
                   <tr class="hover:bg-slate-50">
                     <td class="whitespace-nowrap px-4 py-3 text-sm font-medium text-slate-900">${displayValue(sucursal.nombre)}</td>
                     <td class="whitespace-nowrap px-4 py-3 text-sm text-slate-600">${displayValue(sucursal.serialLector)}</td>
                     <td class="whitespace-nowrap px-4 py-3 text-sm text-slate-600">${displayValue(sucursal.id)}</td>
                     ${
-                      canEditHere
+                      showActions
                         ? `<td class="whitespace-nowrap px-4 py-3 text-right">
-                            ${
-                              canEditSucursal
-                                ? `<button
-                                    type="button"
-                                    data-action="edit-sucursal"
-                                    data-id="${Number(sucursal.id)}"
-                                    class="rounded-lg px-2.5 py-1.5 text-sm font-medium text-blue-700 hover:bg-blue-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
-                                  >
-                                    Editar
-                                  </button>`
-                                : ''
-                            }
+                            <div class="flex flex-wrap justify-end gap-1">${actions.join('')}</div>
                           </td>`
                         : ''
                     }
@@ -488,6 +545,13 @@ export async function renderAdministracion(container) {
         const id = Number(button.dataset.id)
         const sucursal = sucursales.find((item) => Number(item.id) === id)
         if (sucursal) openSucursalEdit(sucursal)
+      })
+    })
+    sectionEl.querySelectorAll('[data-action="manage-agentes"]').forEach((button) => {
+      button.addEventListener('click', () => {
+        const id = Number(button.dataset.id)
+        const sucursal = sucursales.find((item) => Number(item.id) === id)
+        if (sucursal) openAgentesAdmin(sucursal)
       })
     })
     results.replaceChildren(sectionEl)
@@ -570,6 +634,330 @@ export async function renderAdministracion(container) {
     activeModalClose = modal.close
   }
 
+  function formatUltimoAcceso(value) {
+    if (!value) return '—'
+    try {
+      return escapeHtml(formatDateTime(value))
+    } catch {
+      return '—'
+    }
+  }
+
+  function openAgentesAdmin(sucursal) {
+    const sucursalId = Number(sucursal?.id)
+    const empresaId = Number(sucursal?.empresaId ?? selectedEmpresa?.id)
+
+    if (
+      !Number.isFinite(sucursalId) ||
+      sucursalId <= 0 ||
+      empresaId !== Number(selectedEmpresa?.id) ||
+      !puedeAdministrarAgentes(user, empresaId)
+    ) {
+      showToast({ message: 'No tenés permiso para administrar agentes de esta sucursal.', tone: 'error' })
+      return
+    }
+
+    selectedSucursal = sucursal
+    agentes = []
+    agentesLoaded = false
+    agentesError = false
+    renderPanel()
+    void loadAgentes()
+  }
+
+  function renderAgentesAdmin() {
+    const empresaNombre = empresaDisplayName(selectedEmpresa)
+    const sucursalNombre = String(selectedSucursal?.nombre ?? '').trim()
+    const canCreate = puedeCrearAgentes(user, selectedEmpresa?.id)
+
+    panel.innerHTML = `
+      <div class="space-y-4">
+        <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <button type="button" id="admin-agentes-back" class="text-sm font-medium text-blue-700 hover:text-blue-600">
+              ← Volver a sucursales
+            </button>
+            <h3 class="mt-2 text-lg font-semibold text-slate-900">Agentes de la sucursal</h3>
+            <p class="mt-1 text-sm text-slate-500">
+              Empresa ${escapeHtml(empresaNombre)} · Sucursal ${escapeHtml(sucursalNombre)}
+            </p>
+            <p class="mt-1 text-xs text-slate-500">
+              Credenciales del programa instalado. El serial del lector se edita en “Editar sucursal”.
+            </p>
+          </div>
+          ${
+            canCreate
+              ? createActionControl({ id: 'admin-agente-new', label: 'Agregar agente', enabled: true })
+              : ''
+          }
+        </div>
+        <div id="admin-agentes-results"></div>
+      </div>
+    `
+    panel.querySelector('#admin-agentes-back')?.addEventListener('click', () => {
+      closeActiveModal({ force: true })
+      selectedSucursal = null
+      agentes = []
+      clearSecretHolder()
+      renderPanel()
+    })
+    if (canCreate) {
+      panel.querySelector('#admin-agente-new')?.addEventListener('click', openAgenteCreate)
+    }
+    paintAgentesResults()
+  }
+
+  function paintAgentesResults() {
+    const results = panel.querySelector('#admin-agentes-results')
+    if (!results) return
+
+    const canCreate = puedeCrearAgentes(user, selectedEmpresa?.id)
+    const canRotate = puedeRotarSecretAgente(user, selectedEmpresa?.id)
+    const canDeactivate = puedeDesactivarAgente(user, selectedEmpresa?.id)
+
+    if (!agentesLoaded) {
+      results.replaceChildren(createTableSkeleton({ rows: 4, columns: 5, label: 'Cargando agentes' }))
+      return
+    }
+
+    if (agentesError) {
+      results.replaceChildren(
+        createFeedbackState({
+          title: 'No se pudieron cargar los agentes',
+          message: agentesErrorMessage,
+          tone: 'error',
+          actionLabel: 'Reintentar',
+          onAction: () => loadAgentes(),
+        }),
+      )
+      return
+    }
+
+    if (agentes.length === 0) {
+      results.replaceChildren(
+        createFeedbackState({
+          title: 'No hay agentes en esta sucursal',
+          message: canCreate
+            ? 'Esta sucursal todavía no tiene un agente instalado. Agregá el primero.'
+            : 'Esta sucursal todavía no tiene agentes.',
+        }),
+      )
+      return
+    }
+
+    const sectionEl = document.createElement('section')
+    sectionEl.className = 'overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm'
+    sectionEl.innerHTML = `
+      <div class="max-h-[65vh] overflow-auto">
+        <table class="min-w-full divide-y divide-slate-200">
+          <thead class="sticky top-0 z-10 bg-slate-50">
+            <tr>
+              <th scope="col" class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Nombre</th>
+              <th scope="col" class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Client ID</th>
+              <th scope="col" class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Estado</th>
+              <th scope="col" class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Último acceso</th>
+              ${
+                canRotate || canDeactivate
+                  ? '<th scope="col" class="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wide text-slate-500">Acciones</th>'
+                  : ''
+              }
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-slate-100">
+            ${agentes
+              .map((agente) => {
+                const actions = []
+                if (canRotate) {
+                  actions.push(`<button
+                    type="button"
+                    data-action="rotar-secret"
+                    data-id="${Number(agente.id)}"
+                    class="rounded-lg px-2.5 py-1.5 text-sm font-medium text-blue-700 hover:bg-blue-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+                  >
+                    Rotar secreto
+                  </button>`)
+                }
+                if (canDeactivate && agente.activo) {
+                  actions.push(`<button
+                    type="button"
+                    data-action="desactivar"
+                    data-id="${Number(agente.id)}"
+                    class="rounded-lg px-2.5 py-1.5 text-sm font-medium text-red-700 hover:bg-red-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500"
+                  >
+                    Desactivar
+                  </button>`)
+                }
+                return `
+                  <tr class="hover:bg-slate-50">
+                    <td class="whitespace-nowrap px-4 py-3 text-sm font-medium text-slate-900">${displayValue(agente.nombre)}</td>
+                    <td class="whitespace-nowrap px-4 py-3 text-sm text-slate-600">${displayValue(agente.clientId)}</td>
+                    <td class="whitespace-nowrap px-4 py-3 text-sm">${employeeStatusBadge(agente.activo)}</td>
+                    <td class="whitespace-nowrap px-4 py-3 text-sm text-slate-600">${formatUltimoAcceso(agente.ultimoAcceso)}</td>
+                    ${
+                      canRotate || canDeactivate
+                        ? `<td class="whitespace-nowrap px-4 py-3 text-right">
+                            <div class="flex flex-wrap justify-end gap-1">${actions.join('')}</div>
+                          </td>`
+                        : ''
+                    }
+                  </tr>
+                `
+              })
+              .join('')}
+          </tbody>
+        </table>
+      </div>
+    `
+    sectionEl.querySelectorAll('[data-action="rotar-secret"]').forEach((button) => {
+      button.addEventListener('click', () => {
+        const id = Number(button.dataset.id)
+        const agente = agentes.find((item) => Number(item.id) === id)
+        if (agente) void confirmRotarSecret(agente)
+      })
+    })
+    sectionEl.querySelectorAll('[data-action="desactivar"]').forEach((button) => {
+      button.addEventListener('click', () => {
+        const id = Number(button.dataset.id)
+        const agente = agentes.find((item) => Number(item.id) === id)
+        if (agente) void confirmDesactivarAgente(agente)
+      })
+    })
+    results.replaceChildren(sectionEl)
+  }
+
+  function openAgenteCreate() {
+    if (!selectedSucursal?.id || !selectedEmpresa?.id) return
+    if (!puedeCrearAgentes(user, selectedEmpresa.id)) return
+
+    const sucursalId = Number(selectedSucursal.id)
+    const empresaId = Number(selectedEmpresa.id)
+    const existingClientIds = getLoadedAgenteClientIds()
+
+    const form = createAgenteForm({
+      empresaNombre: empresaDisplayName(selectedEmpresa),
+      sucursalNombre: selectedSucursal.nombre,
+      sucursalId,
+      existingClientIds,
+      onCancel: () => closeActiveModal(),
+      onSubmit: async (dto) => {
+        const created = await createAgente({
+          sucursalId,
+          empresaId,
+          nombre: dto.nombre,
+          clientId: dto.clientId,
+        })
+        closeActiveModal({ force: true })
+        showToast({ message: 'Agente creado. Guardá el secreto ahora.', tone: 'success' })
+        await loadAgentes()
+        openAgenteSecretModal(created)
+      },
+    })
+    const modal = openFormModal({
+      title: 'Agregar agente',
+      content: form,
+      labelledBy: 'agente-create-title',
+      onClose: () => {
+        activeModalClose = null
+      },
+    })
+    activeModalClose = modal.close
+  }
+
+  function openAgenteSecretModal(created) {
+    clearSecretHolder()
+    const panelSecret = createAgenteSecretPanel({
+      clientId: created?.clientId,
+      clientSecret: created?.clientSecret,
+      onClose: () => closeActiveModal({ force: true }),
+    })
+    secretHolder = created
+    const modal = openFormModal({
+      title: 'Secreto del agente',
+      content: panelSecret.element,
+      labelledBy: 'agente-secret-title',
+      ...AGENTE_SECRET_MODAL,
+      onClose: () => {
+        panelSecret.discard()
+        discardAgenteSecret(created)
+        clearSecretHolder()
+        activeModalClose = null
+      },
+    })
+    activeModalClose = modal.close
+  }
+
+  async function confirmRotarSecret(agente) {
+    const confirmed = await openConfirmModal({
+      title: AGENTE_ROTAR_TITLE,
+      message: AGENTE_ROTAR_MESSAGE,
+      confirmLabel: AGENTE_ROTAR_CONFIRM,
+      cancelLabel: 'Cancelar',
+      danger: true,
+    })
+    if (!confirmed) return
+
+    try {
+      const created = await rotarSecretAgente({
+        id: agente.id,
+        empresaId: Number(selectedEmpresa.id),
+      })
+      showToast({ message: 'Secreto regenerado. Guardalo ahora.', tone: 'success' })
+      openAgenteSecretModal(created)
+    } catch (error) {
+      if (error.message === 'Sesión expirada o no autorizada.') return
+      showToast({ message: error.message || 'No se pudo regenerar el secreto.', tone: 'error' })
+    }
+  }
+
+  async function confirmDesactivarAgente(agente) {
+    const confirmed = await openConfirmModal({
+      title: AGENTE_DESACTIVAR_TITLE,
+      message: AGENTE_DESACTIVAR_MESSAGE,
+      confirmLabel: AGENTE_DESACTIVAR_CONFIRM,
+      cancelLabel: 'Cancelar',
+      danger: true,
+    })
+    if (!confirmed) return
+
+    try {
+      await desactivarAgente({
+        id: agente.id,
+        empresaId: Number(selectedEmpresa.id),
+      })
+      showToast({ message: 'Agente desactivado.', tone: 'success' })
+      await loadAgentes()
+    } catch (error) {
+      if (error.message === 'Sesión expirada o no autorizada.') return
+      showToast({ message: error.message || 'No se pudo desactivar el agente.', tone: 'error' })
+    }
+  }
+
+  async function loadAgentes() {
+    if (!selectedSucursal?.id || !selectedEmpresa?.id) return
+    agentesLoaded = false
+    agentesError = false
+    paintAgentesResults()
+    try {
+      agentes = await getAgentes({
+        sucursalId: selectedSucursal.id,
+        empresaId: selectedEmpresa.id,
+      })
+      agentesLoaded = true
+      agentesError = false
+    } catch (error) {
+      if (error.message === 'Sesión expirada o no autorizada.') return
+      agentes = []
+      agentesLoaded = true
+      agentesError = true
+      agentesErrorMessage = error.message || 'No se pudieron cargar los agentes.'
+      showToast({
+        message: error.message || 'No se pudieron cargar los agentes.',
+        tone: 'error',
+      })
+    }
+    paintAgentesResults()
+  }
+
   async function loadEmpresas() {
     empresasLoaded = false
     empresasError = false
@@ -622,5 +1010,8 @@ export async function renderAdministracion(container) {
   container.replaceChildren(view)
   setSection(SECTIONS.usuarios)
 
-  return () => closeActiveModal({ force: true })
+  return () => {
+    clearSecretHolder()
+    closeActiveModal({ force: true })
+  }
 }
