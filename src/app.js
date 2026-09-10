@@ -4,6 +4,8 @@ import { EMPRESA_CONTEXTO_EVENT } from './api/empresa-context.js'
 import { createLayout } from './components/layout.js'
 import { setSidebarOpen } from './components/sidebar.js'
 import { createFeedbackState } from './components/feedback-state.js'
+import { enhanceSelectsIn, destroyDisconnectedSelects, closeOpenDropdown } from './components/dropdown.js'
+import { hideTooltip } from './components/tooltip.js'
 import { createViewSkeleton } from './components/skeleton.js'
 import { renderAdministracion } from './views/administracion.js'
 import { renderDashboard } from './views/dashboard.js'
@@ -24,6 +26,8 @@ const views = {
 let activeViewCleanup = null
 
 function clearActiveView() {
+  closeOpenDropdown()
+  hideTooltip()
   activeViewCleanup?.()
   activeViewCleanup = null
 }
@@ -139,6 +143,8 @@ async function renderView(main, viewId, extras = {}) {
   }
 
   main.replaceChildren(createViewSkeleton())
+  destroyDisconnectedSelects()
   const cleanup = await render(main, extras)
+  enhanceSelectsIn(main)
   if (typeof cleanup === 'function') activeViewCleanup = cleanup
 }

@@ -1,3 +1,6 @@
+import { enhanceSelectsIn, destroyDisconnectedSelects } from './dropdown.js'
+import { BTN_SECONDARY_CLASS } from './button-styles.js'
+
 export const DISCARD_UNSAVED_TITLE = '¿Descartar los cambios?'
 export const DISCARD_UNSAVED_MESSAGE = 'Los datos ingresados todavía no fueron guardados.'
 export const DISCARD_UNSAVED_CONTINUE = 'Seguir editando'
@@ -38,7 +41,7 @@ function promptDiscardUnsaved() {
     content.innerHTML = `
       <p class="text-sm text-slate-600">${DISCARD_UNSAVED_MESSAGE}</p>
       <div class="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-        <button type="button" data-action="continue" data-autofocus class="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500">
+        <button type="button" data-action="continue" data-autofocus class="${BTN_SECONDARY_CLASS}">
           ${DISCARD_UNSAVED_CONTINUE}
         </button>
         <button type="button" data-action="discard" class="rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500">
@@ -147,6 +150,7 @@ export function openModal({
     overlay.removeEventListener('input', onFieldChange)
     overlay.removeEventListener('change', onFieldChange)
     overlay.remove()
+    destroyDisconnectedSelects()
     if (previousFocus instanceof HTMLElement && previousFocus.isConnected) previousFocus.focus()
     onClose?.()
   }
@@ -213,6 +217,7 @@ export function openModal({
 
   const host = document.getElementById('app') ?? document.body
   host.append(overlay)
+  enhanceSelectsIn(overlay)
   queueMicrotask(() => {
     const preferredFocus = dialog.querySelector('[data-autofocus]')
     if (preferredFocus) preferredFocus.focus()
@@ -256,7 +261,7 @@ export function openConfirmModal({
     const actions = document.createElement('div')
     actions.className = 'mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end'
     actions.innerHTML = `
-      <button type="button" data-action="cancel" data-autofocus class="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500">
+      <button type="button" data-action="cancel" data-autofocus class="${BTN_SECONDARY_CLASS}">
       </button>
       <button type="button" data-action="confirm" class="${confirmClass}">
       </button>

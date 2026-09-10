@@ -1,5 +1,6 @@
 import { escapeHtml } from '../utils/format.js'
 import { showToast } from './toast.js'
+import { BTN_SECONDARY_CLASS } from './button-styles.js'
 import {
   fieldIds,
   formFieldMarkup,
@@ -65,7 +66,7 @@ export function createSucursalForm({
         helpText: 'Ingresá exactamente el identificador informado por el dispositivo biométrico.',
       })}
       <div class="flex flex-col-reverse gap-2 border-t border-slate-100 pt-4 sm:flex-row sm:justify-end">
-        <button type="button" id="sucursal-form-cancel" class="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100">
+        <button type="button" id="sucursal-form-cancel" class="${BTN_SECONDARY_CLASS}">
           Cancelar
         </button>
         <button type="submit" id="sucursal-form-submit" class="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-60">

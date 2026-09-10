@@ -4,11 +4,27 @@ function rowHtml(cells) {
   return `<tr>${cells.map((cell) => `<td>${escapeHtml(cell)}</td>`).join('')}</tr>`
 }
 
-export function printReport({ title, empresa, generatedAt, filters, totals, columns, rows, notes }) {
+export function printReport({
+  title,
+  empresa,
+  generatedAt,
+  filters,
+  totals,
+  columns,
+  rows,
+  notes,
+  summaryLines,
+}) {
   const empresaLine = empresa ? `<p><strong>Empresa:</strong> ${escapeHtml(empresa)}</p>` : ''
   const notesHtml = notes?.length
     ? `<ul class="notes">${notes.map((note) => `<li>${escapeHtml(note)}</li>`).join('')}</ul>`
     : ''
+  const lines = Array.isArray(summaryLines) && summaryLines.length
+    ? summaryLines
+    : [
+        `<p><strong>Cantidad total:</strong> ${escapeHtml(String(totals?.total ?? 0))}</p>`,
+        `<p><strong>Entradas:</strong> ${escapeHtml(String(totals?.entradas ?? 0))} · <strong>Salidas:</strong> ${escapeHtml(String(totals?.salidas ?? 0))}</p>`,
+      ]
 
   const html = `<!DOCTYPE html>
 <html lang="es">
@@ -33,8 +49,7 @@ export function printReport({ title, empresa, generatedAt, filters, totals, colu
     ${empresaLine}
     <p><strong>Generado:</strong> ${escapeHtml(generatedAt)}</p>
     <p><strong>Filtros:</strong> ${escapeHtml(filters)}</p>
-    <p><strong>Cantidad total:</strong> ${escapeHtml(String(totals.total))}</p>
-    <p><strong>Entradas:</strong> ${escapeHtml(String(totals.entradas))} · <strong>Salidas:</strong> ${escapeHtml(String(totals.salidas))}</p>
+    ${lines.join('\n    ')}
   </div>
   ${notesHtml}
   <table>

@@ -177,6 +177,8 @@ export function formFieldMarkup({
   label,
   required = false,
   helpText = '',
+  extraHelpText = '',
+  placeholder = '',
   type = 'text',
   tag = 'input',
   maxLength,
@@ -187,18 +189,20 @@ export function formFieldMarkup({
   disabled = false,
 }) {
   const { helpId, errorId } = fieldIds(id)
-  const describedBy = fieldDescribedBy(helpId, errorId, false)
+  const extraHelpId = extraHelpText ? `${id}-help-format` : ''
+  const describedBy = [helpId, extraHelpId, errorId].filter(Boolean).join(' ')
   const requiredAttr = required ? 'required' : ''
   const disabledAttr = disabled ? 'disabled' : ''
   const maxAttr = maxLength ? `maxlength="${Number(maxLength)}"` : ''
   const autoAttr = autocomplete ? `autocomplete="${escapeHtml(autocomplete)}"` : ''
   const modeAttr = inputMode ? `inputmode="${escapeHtml(inputMode)}"` : ''
+  const placeholderAttr = placeholder ? `placeholder="${escapeHtml(placeholder)}"` : ''
   const inputClass = `${FORM_INPUT_CLASS} ${extraInputClass}`.trim()
 
   const control =
     tag === 'select'
       ? `<select id="${escapeHtml(id)}" name="${escapeHtml(name)}" ${requiredAttr} ${disabledAttr} aria-describedby="${describedBy}" class="${inputClass}">${optionsHtml}</select>`
-      : `<input id="${escapeHtml(id)}" name="${escapeHtml(name)}" type="${escapeHtml(type)}" ${maxAttr} ${autoAttr} ${modeAttr} ${requiredAttr} ${disabledAttr} aria-describedby="${describedBy}" class="${inputClass}" />`
+      : `<input id="${escapeHtml(id)}" name="${escapeHtml(name)}" type="${escapeHtml(type)}" ${maxAttr} ${autoAttr} ${modeAttr} ${placeholderAttr} ${requiredAttr} ${disabledAttr} aria-describedby="${describedBy}" class="${inputClass}" />`
 
   return `
     <div data-form-field="${escapeHtml(name)}">
@@ -207,6 +211,7 @@ export function formFieldMarkup({
       </label>
       ${control}
       ${helpText ? `<p id="${helpId}" class="${FORM_HELP_CLASS}">${escapeHtml(helpText)}</p>` : ''}
+      ${extraHelpText ? `<p id="${extraHelpId}" class="${FORM_HELP_CLASS}">${escapeHtml(extraHelpText)}</p>` : ''}
       <p id="${errorId}" class="${FORM_ERROR_CLASS} hidden" aria-live="polite"></p>
     </div>
   `
@@ -418,6 +423,7 @@ export function applyFieldPresentation({
   reveal,
   focused = false,
   silent = false,
+  keepHelpVisible = false,
 }) {
   const invalid = Boolean(reveal && error)
   const describedBy = [extraDescribedBy, fieldDescribedBy(helpId, errorId, invalid && !silent)]
@@ -431,7 +437,7 @@ export function applyFieldPresentation({
   })
 
   if (helpEl) {
-    helpEl.classList.toggle('hidden', invalid || !helpEl.textContent)
+    helpEl.classList.toggle('hidden', (!keepHelpVisible && invalid) || !helpEl.textContent)
     toggleClassTokens(helpEl, FORM_HELP_FOCUS_CLASS, Boolean(focused) && !invalid)
   }
 
@@ -487,6 +493,7 @@ export function wireFormFields(form, fieldConfigs, { onAfterChange } = {}) {
         reveal,
         focused,
         silent: config.silent === true,
+        keepHelpVisible: config.keepHelpVisible === true,
       })
     }
     return { name: config.name, error, reveal, control: controlsOf(config).find((item) => item.type !== 'hidden') ?? controlsOf(config)[0] }
@@ -517,6 +524,7 @@ export function wireFormFields(form, fieldConfigs, { onAfterChange } = {}) {
           error: '',
           reveal: false,
           focused: true,
+          keepHelpVisible: config.keepHelpVisible === true,
         })
         onAfterChange?.(config.name)
       })

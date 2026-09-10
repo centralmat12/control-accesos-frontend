@@ -18,6 +18,10 @@ function mapFichada(item) {
     fechaHora: pick(item, 'fechaHora', 'FechaHora'),
     tipo: pick(item, 'tipo', 'tipoMovimiento', 'Tipo', 'TipoMovimiento'),
     metodo: pick(item, 'metodo', 'metodoRegistro', 'Metodo', 'MetodoRegistro'),
+    sucursalId: pick(item, 'sucursalId', 'SucursalId'),
+    sucursal: pick(item, 'sucursal', 'Sucursal'),
+    dispositivoId: pick(item, 'dispositivoId', 'DispositivoId'),
+    dispositivo: pick(item, 'dispositivo', 'Dispositivo'),
   }
 }
 

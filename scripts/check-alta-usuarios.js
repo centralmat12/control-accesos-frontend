@@ -13,6 +13,7 @@ import {
   discardUsuarioCreateSecrets,
   USUARIO_ALTA_FIELDS,
   validateUsuarioAlta,
+  validateUsuarioNombre,
 } from '../src/api/usuarios.js'
 
 const SESSION_TOKEN = 'session-jwt'
@@ -43,7 +44,7 @@ function writeSession(user, token = SESSION_TOKEN) {
 
 function altaDto(overrides = {}) {
   return {
-    nombreUsuario: 'Ana Perez',
+    nombreUsuario: 'martin.eloy',
     email: 'ana@example.com',
     password: 'secreto12',
     rol: 'ADMIN',
@@ -126,7 +127,7 @@ await check('SuperAdmin envía header y body con el mismo ID', async () => {
   assert.equal(body.empresaId, 4)
   assert.equal(String(options.headers['X-Empresa-Id']), String(body.empresaId))
   assert.deepEqual(Object.keys(body).sort(), [...USUARIO_ALTA_FIELDS].sort())
-  assert.equal(body.nombreUsuario, 'Ana Perez')
+  assert.equal(body.nombreUsuario, 'martin.eloy')
   assert.equal(body.email, 'ana@example.com')
   assert.equal(body.password, 'secreto12')
   assert.equal(body.rol, 'ADMIN')
@@ -236,9 +237,9 @@ await check('El doble clic no duplica solicitudes', async () => {
 })
 
 await check('El body del alta no incluye campos adicionales', () => {
-  const dto = buildUsuarioRegistroDto(altaDto({ nombreUsuario: '  Ana  ', email: '  ana@example.com  ' }))
+  const dto = buildUsuarioRegistroDto(altaDto({ nombreUsuario: 'martin.eloy', email: '  ana@example.com  ' }))
   assert.deepEqual(Object.keys(dto), ['empresaId', 'nombreUsuario', 'email', 'password', 'rol'])
-  assert.equal(dto.nombreUsuario, 'Ana')
+  assert.equal(dto.nombreUsuario, 'martin.eloy')
   assert.equal(dto.email, 'ana@example.com')
 })
 
@@ -255,6 +256,33 @@ await check('Descarta token y PasswordHash de la respuesta', () => {
   assert.equal(payload.Token, undefined)
   assert.equal(payload.passwordHash, undefined)
   assert.equal(payload.PasswordHash, undefined)
+})
+
+await check('Nombre de usuario: formatos válidos e inválidos', () => {
+  for (const value of ['martin', 'martin.eloy', 'martin_eloy', 'martin-eloy', 'martin2026', 'rrhh.central']) {
+    assert.equal(validateUsuarioNombre(value), '', value)
+  }
+  assert.match(validateUsuarioNombre('martin!!!'), /Solo se permiten letras/)
+  assert.equal(validateUsuarioNombre('martin eloy'), 'El nombre de usuario no puede contener espacios.')
+  assert.equal(validateUsuarioNombre('martin..eloy'), 'No utilices puntos, guiones o guiones bajos consecutivos.')
+  assert.equal(validateUsuarioNombre('martin__eloy'), 'No utilices puntos, guiones o guiones bajos consecutivos.')
+  assert.equal(validateUsuarioNombre('martin--eloy'), 'No utilices puntos, guiones o guiones bajos consecutivos.')
+  assert.equal(validateUsuarioNombre('ma'), 'El nombre de usuario debe tener entre 3 y 50 caracteres.')
+  assert.equal(validateUsuarioNombre('a'.repeat(51)), 'El nombre de usuario debe tener entre 3 y 50 caracteres.')
+  assert.equal(validateUsuarioNombre('.martin'), 'El nombre de usuario debe comenzar con una letra.')
+  assert.equal(validateUsuarioNombre('martin.'), 'El nombre de usuario debe terminar con una letra o un número.')
+  assert.match(validateUsuarioNombre('martin@empresa'), /Solo se permiten letras/)
+  assert.equal(validateUsuarioNombre(''), 'Ingresá un nombre de usuario.')
+})
+
+await check('El formulario inválido no ejecuta POST', async () => {
+  writeSession(admin(4))
+  installFetch(async () => jsonResponse(201, { token: 'nuevo-jwt' }))
+  await assert.rejects(() => createUsuario(altaDto({ nombreUsuario: 'martin!!!' })), (error) => {
+    assert.equal(error.status, 400)
+    return true
+  })
+  assert.equal(fetchCalls.length, 0)
 })
 
 console.log(`${passed} passed, ${failed} failed`)

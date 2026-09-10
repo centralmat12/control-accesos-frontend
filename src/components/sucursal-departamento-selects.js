@@ -1,14 +1,19 @@
-import { getDepartamentosBySucursal } from '../api/departamentos.js'
+import { departamentoOptionLabel, getDepartamentosBySucursal, uniqueDepartamentosById } from '../api/departamentos.js'
+import { refreshEnhancedSelect } from './dropdown.js'
 
 export const SUCURSAL_ALL = 'todos'
 export const DEPARTAMENTO_ALL = 'todos'
-export const HINT_SELECT_SUCURSAL = 'Seleccione una sucursal'
+export const HINT_SELECT_SUCURSAL = 'Seleccioná una sucursal'
 
 function addOption(select, value, label) {
   const option = document.createElement('option')
   option.value = value
   option.textContent = label
   select.append(option)
+}
+
+function syncSelect(select) {
+  refreshEnhancedSelect(select)
 }
 
 function sortByNombre(items) {
@@ -43,15 +48,21 @@ export function fillSucursalOptions(
 
   const valid = wanted && [...select.options].some((option) => option.value === wanted)
   select.value = valid ? wanted : includeAll ? SUCURSAL_ALL : ''
+  syncSelect(select)
 }
 
-export function setDepartamentoIdle(select, hintEl, { includeAll = false } = {}) {
+export function setDepartamentoIdle(
+  select,
+  hintEl,
+  { includeAll = false, message = HINT_SELECT_SUCURSAL } = {},
+) {
   select.disabled = true
   select.replaceChildren()
   addOption(select, includeAll ? DEPARTAMENTO_ALL : '', HINT_SELECT_SUCURSAL)
   select.value = includeAll ? DEPARTAMENTO_ALL : ''
+  syncSelect(select)
   if (hintEl) {
-    hintEl.textContent = HINT_SELECT_SUCURSAL
+    hintEl.textContent = message || HINT_SELECT_SUCURSAL
     hintEl.classList.remove('hidden')
   }
 }
@@ -61,18 +72,28 @@ function setDepartamentoLoading(select, hintEl) {
   select.replaceChildren()
   addOption(select, '', 'Cargando...')
   select.value = ''
+  syncSelect(select)
   if (hintEl) {
     hintEl.textContent = ''
     hintEl.classList.add('hidden')
   }
 }
 
-function fillDepartamentoOptions(
+export function fillDepartamentoOptions(
   select,
   departamentos,
   hintEl,
-  { includeAll = false, currentId = null } = {},
+  { includeAll = false, currentId = null, sucursalNames } = {},
 ) {
+  const unique = uniqueDepartamentosById(departamentos)
+  const nameCounts = new Map()
+  unique.forEach((item) => {
+    const key = String(item.nombre ?? '')
+      .trim()
+      .toLowerCase()
+    nameCounts.set(key, (nameCounts.get(key) || 0) + 1)
+  })
+
   const wanted = currentId != null ? String(currentId) : null
   select.disabled = false
   select.replaceChildren()
@@ -80,12 +101,23 @@ function fillDepartamentoOptions(
   if (includeAll) addOption(select, DEPARTAMENTO_ALL, 'Todos')
   else addOption(select, '', 'Seleccionar...')
 
-  sortByNombre(departamentos).forEach((item) =>
-    addOption(select, String(item.id), item.nombre || `Departamento ${item.id}`),
-  )
+  unique.forEach((item) => {
+    const key = String(item.nombre ?? '')
+      .trim()
+      .toLowerCase()
+    addOption(
+      select,
+      String(item.id),
+      departamentoOptionLabel(item, {
+        sucursalNames,
+        duplicateName: (nameCounts.get(key) || 0) > 1,
+      }),
+    )
+  })
 
   const valid = wanted && [...select.options].some((option) => option.value === wanted)
   select.value = valid ? wanted : includeAll ? DEPARTAMENTO_ALL : ''
+  syncSelect(select)
 
   if (hintEl) {
     hintEl.textContent = ''
@@ -98,6 +130,7 @@ function clearDepartamentoAfterError(select, hintEl, { includeAll = false, messa
   select.replaceChildren()
   addOption(select, includeAll ? DEPARTAMENTO_ALL : '', HINT_SELECT_SUCURSAL)
   select.value = includeAll ? DEPARTAMENTO_ALL : ''
+  syncSelect(select)
   if (hintEl) {
     hintEl.textContent = message || 'No se pudieron cargar los departamentos.'
     hintEl.classList.remove('hidden')
