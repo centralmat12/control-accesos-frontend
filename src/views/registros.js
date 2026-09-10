@@ -1,4 +1,5 @@
 import { badgeHtml } from '../components/badge.js'
+import { BTN_SECONDARY_CLASS } from '../components/button-styles.js'
 import { createFeedbackState } from '../components/feedback-state.js'
 import { showToast } from '../components/toast.js'
 import {
@@ -40,7 +41,7 @@ export function renderRegistros(container) {
       <button
         type="button"
         id="registros-clear"
-        class="inline-flex items-center justify-center rounded-lg border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+        class="${BTN_SECONDARY_CLASS}"
       >
         Limpiar registros
       </button>

@@ -18,6 +18,7 @@ import {
   setDepartamentoIdle,
 } from './sucursal-departamento-selects.js'
 import { showToast } from './toast.js'
+import { BTN_SECONDARY_CLASS } from './button-styles.js'
 import {
   FORM_HELP_CLASS,
   FORM_INPUT_CLASS,
@@ -290,7 +291,7 @@ export function createEmpleadoForm({
           tag: 'select',
           disabled: true,
           helpText: 'Seleccioná el departamento correspondiente.',
-          optionsHtml: '<option value="">Seleccione una sucursal</option>',
+          optionsHtml: '<option value="">Seleccioná una sucursal</option>',
         })}
         <div class="sm:col-span-2" data-form-field="horario">
           <p class="${FORM_LABEL_CLASS}" id="empleado-horario-label">Horario</p>
@@ -328,7 +329,7 @@ export function createEmpleadoForm({
         <button
           type="button"
           id="empleado-form-cancel"
-          class="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100"
+          class="${BTN_SECONDARY_CLASS}"
         >
           Cancelar
         </button>
@@ -611,7 +612,7 @@ function promptEmpleadoChangesConfirm(changes) {
           .join('')}
       </div>
       <div class="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-        <button type="button" data-action="cancel" data-autofocus class="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500">
+        <button type="button" data-action="cancel" data-autofocus class="${BTN_SECONDARY_CLASS}">
           Cancelar
         </button>
         <button type="button" data-action="confirm" class="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-500">
@@ -658,7 +659,7 @@ export function createEmpleadoRecord({ empleado, empresaLabel = '', persistUpdat
       <button
         type="button"
         id="empleado-edit"
-        class="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100"
+        class="${BTN_SECONDARY_CLASS} gap-2"
       >
         ${iconPencil()}
         Editar datos
@@ -723,7 +724,7 @@ export function createDeactivateConfirm({ empleado, onCancel, onConfirm }) {
         type="button"
         id="empleado-deactivate-cancel"
         data-autofocus
-        class="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+        class="${BTN_SECONDARY_CLASS}"
       >
         Cancelar
       </button>

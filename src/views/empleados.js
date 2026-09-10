@@ -13,7 +13,9 @@ import {
 import { createEmpleadosTable, fullName } from '../components/empleados-table.js'
 import { createFeedbackState, createSelectEmpresaState } from '../components/feedback-state.js'
 import { createPagination } from '../components/pagination.js'
+import { BTN_SECONDARY_CLASS } from '../components/button-styles.js'
 import { openFormModal, openModal } from '../components/modal.js'
+import { refreshEnhancedSelect } from '../components/dropdown.js'
 import { createDetailSkeleton, createTableSkeleton } from '../components/skeleton.js'
 import { DEPARTAMENTO_ALL, fillDepartamentoOptions, parseEntityId, setDepartamentoIdle } from '../components/sucursal-departamento-selects.js'
 import { createSucursalMultiSelect } from '../components/sucursal-multi-select.js'
@@ -113,7 +115,7 @@ export async function renderEmpleados(container, { initialQuery } = {}) {
           </select>
         </div>
         <div class="min-w-0 sm:col-span-2 xl:col-span-4 flex items-end">
-          <button type="button" id="empleados-clear-filters" class="rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
+          <button type="button" id="empleados-clear-filters" class="${BTN_SECONDARY_CLASS}">
             Limpiar filtros
           </button>
         </div>
@@ -281,6 +283,7 @@ export async function renderEmpleados(container, { initialQuery } = {}) {
       loading.textContent = 'Cargando...'
       departamentoSelect.append(loading)
       departamentoSelect.value = ''
+      refreshEnhancedSelect(departamentoSelect)
       if (departamentoHint) {
         departamentoHint.textContent = ''
         departamentoHint.classList.add('hidden')

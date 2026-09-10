@@ -185,6 +185,93 @@
   }
 }
 
+@layer components {
+  .btn-secondary {
+    display: inline-flex;
+    cursor: pointer;
+    align-items: center;
+    justify-content: center;
+    border-radius: 0.5rem;
+    border-width: 1px;
+    border-style: solid;
+    border-color: var(--color-slate-300);
+    background-color: var(--color-white, #fff);
+    padding: 0.5rem 1rem;
+    font-size: 0.875rem;
+    line-height: 1.25rem;
+    font-weight: 500;
+    color: var(--color-slate-700);
+    transition-property: background-color, border-color, color, transform, box-shadow;
+    transition-duration: 150ms;
+    transition-timing-function: ease;
+  }
+
+  html.dark .btn-secondary {
+    border-color: var(--color-slate-500);
+    background-color: var(--color-slate-800);
+    color: var(--color-slate-200);
+  }
+
+  .btn-secondary:hover:not(:disabled) {
+    border-color: var(--color-slate-400);
+    background-color: var(--color-slate-100);
+    color: var(--color-slate-900);
+  }
+
+  html.dark .btn-secondary:hover:not(:disabled) {
+    border-color: var(--color-slate-400);
+    background-color: var(--color-slate-700);
+    color: var(--color-slate-50);
+  }
+
+  .btn-secondary:active:not(:disabled) {
+    transform: translateY(1px);
+  }
+
+  .btn-secondary:focus {
+    outline: none;
+  }
+
+  .btn-secondary:focus-visible {
+    outline: 2px solid var(--color-blue-500);
+    outline-offset: 2px;
+  }
+
+  html.dark .btn-secondary:focus-visible {
+    outline-color: var(--color-blue-400);
+  }
+
+  .btn-secondary:disabled {
+    cursor: not-allowed;
+    opacity: 0.5;
+  }
+
+  .btn-secondary:disabled:hover,
+  .btn-secondary:disabled:active {
+    border-color: var(--color-slate-300);
+    background-color: var(--color-white, #fff);
+    color: var(--color-slate-700);
+    transform: none;
+  }
+
+  html.dark .btn-secondary:disabled:hover,
+  html.dark .btn-secondary:disabled:active {
+    border-color: var(--color-slate-500);
+    background-color: var(--color-slate-800);
+    color: var(--color-slate-200);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .btn-secondary {
+      transition: none;
+    }
+
+    .btn-secondary:active:not(:disabled) {
+      transform: none;
+    }
+  }
+}
+
 body {
   margin: 0;
 }

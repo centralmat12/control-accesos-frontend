@@ -16,6 +16,7 @@ import { setSidebarOpen } from './sidebar.js'
 import { createThemeToggle } from './theme-toggle.js'
 import { escapeHtml } from '../utils/format.js'
 import { logInfo } from '../utils/activity-log.js'
+import { enhanceSelect, refreshEnhancedSelect } from './dropdown.js'
 
 function initials(nombre) {
   return nombre
@@ -59,7 +60,7 @@ export function createHeader({ currentView, user, onLogout }) {
       </div>
     </div>
     <div class="flex min-w-0 shrink-0 items-center gap-1.5 sm:gap-3">
-      ${superadmin ? '<div id="header-empresa" class="relative min-w-0 overflow-visible"></div>' : ''}
+      ${superadmin ? '<div id="header-empresa" class="relative w-[min(16rem,42vw)] min-w-[10rem] max-w-[16rem] shrink-0 overflow-visible"></div>' : ''}
       <div class="hidden min-w-0 text-right sm:block">
         <p class="truncate text-sm font-medium text-slate-800 dark:text-slate-200">${escapeHtml(user.nombre)}</p>
         <p class="truncate text-xs text-slate-500 dark:text-slate-400">${escapeHtml(user.rol)}</p>
@@ -144,8 +145,13 @@ async function renderSuperadminSelector(slot) {
   wrap.append(select, tooltip)
   slot.replaceChildren(wrap)
   bindSelectorTooltip(wrap, tooltip)
+  enhanceSelect(select, {
+    wrapClass: 'relative w-full min-w-0 overflow-visible',
+  })
+  refreshEnhancedSelect(select)
 
   fillDisabledOption(select, 'Cargando empresas...')
+  refreshEnhancedSelect(select)
   setSelectorTooltip(wrap, tooltip, '')
   setEmpresasCatalogState({ status: EMPRESAS_CATALOG_STATUS.loading })
 
@@ -157,6 +163,7 @@ async function renderSuperadminSelector(slot) {
 
     if (empresas.length === 0) {
       fillDisabledOption(select, 'No hay empresas disponibles')
+      refreshEnhancedSelect(select)
       setSelectorTooltip(wrap, tooltip, '')
       if (getEmpresaContexto()) clearEmpresaContexto()
       setEmpresasCatalogState({ status: EMPRESAS_CATALOG_STATUS.empty })
@@ -172,6 +179,7 @@ async function renderSuperadminSelector(slot) {
       select.append(new Option(label, String(empresa.id)))
     })
     select.value = empresas.some((empresa) => String(empresa.id) === selectedId) ? selectedId : ''
+    refreshEnhancedSelect(select)
     if (selectedId && select.value !== selectedId) {
       clearEmpresaContexto()
     }
@@ -182,6 +190,7 @@ async function renderSuperadminSelector(slot) {
 
     const isForbidden = Number(error.status) === 403
     fillDisabledOption(select, 'Empresas no disponibles')
+    refreshEnhancedSelect(select)
     setSelectorTooltip(
       wrap,
       tooltip,

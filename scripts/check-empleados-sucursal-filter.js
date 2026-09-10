@@ -179,7 +179,7 @@ check('La vista usa IDs, checkbox accesible, limpiar y destroy', () => {
   assert.match(view, /filterDepartamentosForSucursalSelection/)
   assert.equal(/Disponible al elegir una sola sucursal/.test(view), false)
   assert.match(multi, /input\.type = 'checkbox'/)
-  assert.match(multi, /AbortController/)
+  assert.match(read('src/components/dropdown.js'), /AbortController/)
   assert.match(multi, /Sin sucursal asignada/)
   assert.equal(SUCURSAL_UNASSIGNED, '__unassigned__')
   assert.equal(/empleados-sucursal"/.test(view), false)

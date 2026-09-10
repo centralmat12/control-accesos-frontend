@@ -1,4 +1,6 @@
 import { escapeHtml, normalizarFiltro } from '../utils/format.js'
+import { claimOpenDropdown, positionDropdownPanel, releaseOpenDropdown } from './dropdown.js'
+import { DROPDOWN_PANEL_CLASS, DROPDOWN_OPTION_CLASS, DROPDOWN_OPTION_ACTIVE_CLASS } from './dropdown-styles.js'
 
 const TODOS_VALUE = ''
 const TODOS_LABEL = 'Todos los empleados'
@@ -46,9 +48,15 @@ export function createEmpleadoCombobox({ id = 'fichadas-empleado', onChange } = 
 
   const root = document.createElement('div')
   root.className = 'relative min-w-0'
+  const abort = new AbortController()
+  const overlayApi = {
+    close() {
+      setOpen(false)
+    },
+  }
 
   root.innerHTML = `
-    <label for="${id}" class="mb-1.5 block text-sm font-medium text-slate-700">Empleado</label>
+    <label for="${id}" class="mb-1.5 block text-sm font-medium text-slate-700 dark:text-slate-200">Empleado</label>
     <input
       id="${id}"
       type="text"
@@ -59,18 +67,17 @@ export function createEmpleadoCombobox({ id = 'fichadas-empleado', onChange } = 
       aria-expanded="false"
       aria-controls="${listId}"
       placeholder="${TODOS_LABEL}"
-      class="${CONTROL_CLASS}"
+      class="${CONTROL_CLASS} min-h-11 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"
     />
-    <ul
-      id="${listId}"
-      role="listbox"
-      hidden
-      class="absolute z-20 mt-1 max-h-60 w-full overflow-auto rounded-lg border border-slate-200 bg-white py-1 shadow-lg"
-    ></ul>
   `
 
   const input = root.querySelector('input')
-  const list = root.querySelector('ul')
+  const list = document.createElement('ul')
+  list.id = listId
+  list.setAttribute('role', 'listbox')
+  list.hidden = true
+  list.className = DROPDOWN_PANEL_CLASS
+  document.body.append(list)
 
   function selectedLabel() {
     if (!selectedId) return TODOS_LABEL
@@ -89,8 +96,8 @@ export function createEmpleadoCombobox({ id = 'fichadas-empleado', onChange } = 
 
   function optionClass(active) {
     return active
-      ? 'cursor-pointer px-3 py-2 text-sm bg-blue-50 text-slate-900'
-      : 'cursor-pointer px-3 py-2 text-sm text-slate-700 hover:bg-slate-50'
+      ? `${DROPDOWN_OPTION_CLASS} ${DROPDOWN_OPTION_ACTIVE_CLASS}`
+      : DROPDOWN_OPTION_CLASS
   }
 
   function renderList() {
@@ -126,27 +133,35 @@ export function createEmpleadoCombobox({ id = 'fichadas-empleado', onChange } = 
   }
 
   function setOpen(nextOpen) {
+    if (open === nextOpen) {
+      if (nextOpen) positionDropdownPanel(input, list)
+      return
+    }
     open = nextOpen
     list.hidden = !open
     input.setAttribute('aria-expanded', String(open))
     if (open) {
+      claimOpenDropdown(overlayApi)
       renderList()
-      document.addEventListener('mousedown', onDocumentMouseDown)
+      positionDropdownPanel(input, list)
     } else {
+      releaseOpenDropdown(overlayApi)
       input.removeAttribute('aria-activedescendant')
-      document.removeEventListener('mousedown', onDocumentMouseDown)
     }
   }
 
-  function onDocumentMouseDown(event) {
-    if (!root.isConnected) {
-      document.removeEventListener('mousedown', onDocumentMouseDown)
-      return
-    }
-    if (!root.contains(event.target)) {
-      cancelPending()
-    }
-  }
+  document.addEventListener('mousedown', (event) => {
+    if (!open) return
+    if (root.contains(event.target) || list.contains(event.target)) return
+    cancelPending()
+  }, { signal: abort.signal })
+
+  window.addEventListener('resize', () => {
+    if (open) positionDropdownPanel(input, list)
+  }, { signal: abort.signal })
+  window.addEventListener('scroll', () => {
+    if (open) positionDropdownPanel(input, list)
+  }, { capture: true, signal: abort.signal })
 
   function choose(idValue, { silent = false } = {}) {
     const previous = selectedId
@@ -204,6 +219,7 @@ export function createEmpleadoCombobox({ id = 'fichadas-empleado', onChange } = 
 
     if (event.key === 'Escape') {
       event.preventDefault()
+      event.stopPropagation()
       cancelPending()
       return
     }
@@ -237,6 +253,11 @@ export function createEmpleadoCombobox({ id = 'fichadas-empleado', onChange } = 
     },
     reset() {
       choose(TODOS_VALUE, { silent: true })
+    },
+    destroy() {
+      setOpen(false)
+      abort.abort()
+      list.remove()
     },
   }
 }

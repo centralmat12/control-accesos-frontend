@@ -1,14 +1,19 @@
 import { departamentoOptionLabel, getDepartamentosBySucursal, uniqueDepartamentosById } from '../api/departamentos.js'
+import { refreshEnhancedSelect } from './dropdown.js'
 
 export const SUCURSAL_ALL = 'todos'
 export const DEPARTAMENTO_ALL = 'todos'
-export const HINT_SELECT_SUCURSAL = 'Seleccione una sucursal'
+export const HINT_SELECT_SUCURSAL = 'Seleccioná una sucursal'
 
 function addOption(select, value, label) {
   const option = document.createElement('option')
   option.value = value
   option.textContent = label
   select.append(option)
+}
+
+function syncSelect(select) {
+  refreshEnhancedSelect(select)
 }
 
 function sortByNombre(items) {
@@ -43,6 +48,7 @@ export function fillSucursalOptions(
 
   const valid = wanted && [...select.options].some((option) => option.value === wanted)
   select.value = valid ? wanted : includeAll ? SUCURSAL_ALL : ''
+  syncSelect(select)
 }
 
 export function setDepartamentoIdle(
@@ -54,6 +60,7 @@ export function setDepartamentoIdle(
   select.replaceChildren()
   addOption(select, includeAll ? DEPARTAMENTO_ALL : '', HINT_SELECT_SUCURSAL)
   select.value = includeAll ? DEPARTAMENTO_ALL : ''
+  syncSelect(select)
   if (hintEl) {
     hintEl.textContent = message || HINT_SELECT_SUCURSAL
     hintEl.classList.remove('hidden')
@@ -65,6 +72,7 @@ function setDepartamentoLoading(select, hintEl) {
   select.replaceChildren()
   addOption(select, '', 'Cargando...')
   select.value = ''
+  syncSelect(select)
   if (hintEl) {
     hintEl.textContent = ''
     hintEl.classList.add('hidden')
@@ -109,6 +117,7 @@ export function fillDepartamentoOptions(
 
   const valid = wanted && [...select.options].some((option) => option.value === wanted)
   select.value = valid ? wanted : includeAll ? DEPARTAMENTO_ALL : ''
+  syncSelect(select)
 
   if (hintEl) {
     hintEl.textContent = ''
@@ -121,6 +130,7 @@ function clearDepartamentoAfterError(select, hintEl, { includeAll = false, messa
   select.replaceChildren()
   addOption(select, includeAll ? DEPARTAMENTO_ALL : '', HINT_SELECT_SUCURSAL)
   select.value = includeAll ? DEPARTAMENTO_ALL : ''
+  syncSelect(select)
   if (hintEl) {
     hintEl.textContent = message || 'No se pudieron cargar los departamentos.'
     hintEl.classList.remove('hidden')

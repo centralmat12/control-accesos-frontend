@@ -5,11 +5,17 @@
  * significa que altas de usuarios, empresas y sucursales salen de esta UI.
  *
  * Contratos (inspección, sin modificar backend):
- * - GET  /api/usuarios  → no existe (confirmado en el commit actual de la API)
+ * - GET  /api/usuarios  → Policy PuedeCrearUsuarios (SuperAdmin | ADMIN), RRHH 403
+ *   SuperAdmin: listado global o filtrado por query empresaId
+ *   ADMIN: la API fuerza el empresa_id del claim e ignora la query
+ *   Devuelve UsuarioListItemDto: id, empresaId, nombreUsuario, correo, rol, activo,
+ *   requiereCambioPassword. Sin hash, contraseña temporal ni token.
  * - POST /api/usuarios  → Policy PuedeCrearUsuarios (SuperAdmin | ADMIN)
  *   SuperAdmin: X-Empresa-Id + body.empresaId coincidentes (JWT sin empresa_id)
  *   ADMIN: JWT empresa_id, sin X-Empresa-Id
- * - Restablecer / cambiar / desbloquear contraseña → no existen
+ * - Restablecer / desbloquear / cambiar contraseña de otro usuario → existen en la API,
+ *   pero todavía no validan la empresa del usuario objetivo. Quedan deshabilitados
+ *   en el panel hasta que la API resuelva ese aislamiento.
  * - GET  /api/empresas  → SuperAdmin: todas. ADMIN/RRHH: solo Id == empresa_id
  * - POST /api/empresas  → SoloSuperadmin
  * - POST /api/sucursales → SoloSuperadmin + X-Empresa-Id
@@ -23,10 +29,16 @@
  */
 import { isAdmin, isRrhh, isSuperadmin, normalizeRole } from './roles.js'
 
-export const API_ENABLEMENT_HINT = 'Requiere habilitación en API'
+export const API_ENABLEMENT_HINT = 'Esta acción todavía no está disponible.'
+
+export const USUARIO_ACCIONES_SENSIBLES_HINT =
+  'El restablecimiento de contraseña y el desbloqueo de cuentas quedan deshabilitados hasta que la API valide la empresa del usuario en esas operaciones.'
 
 export const API_ADMIN_ENDPOINTS = Object.freeze({
-  listarUsuarios: false,
+  listarUsuarios: true,
+  restablecerPasswordUsuario: false,
+  desbloquearUsuario: false,
+  cambiarPasswordDeOtroUsuario: false,
   crearUsuariosComoAdmin: true,
   crearUsuariosComoSuperadmin: true,
   crearEmpresasComoAdmin: false,
@@ -54,8 +66,23 @@ export function puedeAccederAdministracion(user) {
   return isSuperadmin(user) || isAdmin(user)
 }
 
-export function puedeListarUsuarios() {
-  return API_ADMIN_ENDPOINTS.listarUsuarios === true
+export function puedeListarUsuarios(user) {
+  if (API_ADMIN_ENDPOINTS.listarUsuarios !== true) return false
+  if (isRrhh(user) || normalizeRole(user) === 'AGENTE_SUCURSAL') return false
+  if (isSuperadmin(user)) return true
+  return isAdmin(user) && Boolean(empresaIdDeTenant(user))
+}
+
+export function puedeRestablecerPasswordUsuario() {
+  return API_ADMIN_ENDPOINTS.restablecerPasswordUsuario === true
+}
+
+export function puedeDesbloquearUsuario() {
+  return API_ADMIN_ENDPOINTS.desbloquearUsuario === true
+}
+
+export function puedeCambiarPasswordDeOtroUsuario() {
+  return API_ADMIN_ENDPOINTS.cambiarPasswordDeOtroUsuario === true
 }
 
 export function empresaIdDeTenant(user) {

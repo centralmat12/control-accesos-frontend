@@ -14,11 +14,18 @@ import {
   rotarSecretAgente,
 } from '../api/agentes.js'
 import { getCurrentUser } from '../api/auth.js'
-import { createEmpresa, empresaDisplayName, getEmpresas } from '../api/empresas.js'
+import { getEmpresaContexto } from '../api/empresa-context.js'
+import {
+  createEmpresa,
+  empresaDisplayName,
+  getCachedEmpresaNombre,
+  getEmpresas,
+} from '../api/empresas.js'
 import { createSucursal, getSucursales, updateSucursal } from '../api/sucursales.js'
-import { createUsuario } from '../api/usuarios.js'
+import { createUsuario, getUsuarios } from '../api/usuarios.js'
 import {
   API_ENABLEMENT_HINT,
+  USUARIO_ACCIONES_SENSIBLES_HINT,
   empresaIdDeTenant,
   puedeAbrirNuevoUsuario,
   puedeAdministrarAgentes,
@@ -32,7 +39,7 @@ import {
 } from '../config/administracion.js'
 import { createAgenteForm } from '../components/agente-form.js'
 import { createAgenteSecretPanel } from '../components/agente-secret-panel.js'
-import { employeeStatusBadge, featureStatusBadge } from '../components/badge.js'
+import { badgeHtml, employeeStatusBadge, featureStatusBadge } from '../components/badge.js'
 import { createEmpresaForm } from '../components/empresa-form.js'
 import { createFeedbackState } from '../components/feedback-state.js'
 import { openConfirmModal, openFormModal } from '../components/modal.js'
@@ -101,7 +108,7 @@ export async function renderAdministracion(container) {
   const user = getCurrentUser()
   const canCreateUsuarios = puedeAbrirNuevoUsuario(user)
   const canCreateEmpresas = puedeCrearEmpresas(user)
-  const canListUsuarios = puedeListarUsuarios()
+  const canListUsuarios = puedeListarUsuarios(user)
   const tenantEmpresaId = empresaIdDeTenant(user)
   const usuarioDisabledMessage =
     isAdmin(user) && !tenantEmpresaId
@@ -141,6 +148,10 @@ export async function renderAdministracion(container) {
   let empresas = []
   let sucursales = []
   let agentes = []
+  let usuarios = []
+  let usuariosLoaded = false
+  let usuariosError = false
+  let usuariosErrorMessage = 'Ocurrió un error al consultar la API.'
   let empresasLoaded = false
   let empresasError = false
   let empresasErrorMessage = 'Ocurrió un error al consultar la API.'
@@ -178,6 +189,11 @@ export async function renderAdministracion(container) {
       button.setAttribute('aria-selected', String(active))
     })
     renderPanel()
+    if (section === SECTIONS.usuarios && canListUsuarios) {
+      if (!usuariosLoaded) void loadUsuarios()
+      // Nombres de empresa para el listado global de SuperAdmin.
+      if (isSuperadmin(user) && !empresasLoaded) void loadEmpresas({ silent: true })
+    }
     if (section === SECTIONS.empresas && !selectedEmpresa && !empresasLoaded) {
       void loadEmpresas()
     }
@@ -199,11 +215,49 @@ export async function renderAdministracion(container) {
     renderEmpresasList()
   }
 
+  function empresaSeleccionadaId() {
+    if (isSuperadmin(user)) return getEmpresaContexto()?.id ?? null
+    return tenantEmpresaId
+  }
+
+  function empresaLabel(empresaId) {
+    const id = Number(empresaId)
+    if (!Number.isFinite(id) || id <= 0) return '—'
+
+    const conocida = empresas.find((empresa) => Number(empresa.id) === id)
+    const nombreConocido = conocida ? empresaDisplayName(conocida) : ''
+    if (nombreConocido) return nombreConocido
+
+    const contexto = getEmpresaContexto()
+    if (contexto && Number(contexto.id) === id && contexto.nombre) return contexto.nombre
+
+    if (!isSuperadmin(user) && id === tenantEmpresaId) {
+      const cache = getCachedEmpresaNombre(user)
+      if (cache) return cache
+    }
+
+    return `ID ${id}`
+  }
+
+  function usuariosScopeHint() {
+    if (!canListUsuarios) return ''
+    if (isSuperadmin(user)) {
+      return empresaSeleccionadaId()
+        ? 'Usuarios de la empresa seleccionada en el encabezado.'
+        : 'Sin empresa seleccionada se listan los usuarios de todas las empresas.'
+    }
+    return 'La API limita el listado a los usuarios de tu empresa.'
+  }
+
   function renderUsuarios() {
+    const scopeHint = usuariosScopeHint()
     panel.innerHTML = `
       <div class="space-y-4">
         <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <p class="text-sm text-slate-500">Usuarios del panel web.</p>
+          <div class="min-w-0">
+            <p class="text-sm text-slate-500">Usuarios del panel web.</p>
+            ${scopeHint ? `<p class="mt-1 text-xs text-slate-500">${escapeHtml(scopeHint)}</p>` : ''}
+          </div>
           ${createActionControl({
             id: 'admin-usuario-new',
             label: 'Nuevo usuario',
@@ -212,21 +266,127 @@ export async function renderAdministracion(container) {
           })}
         </div>
         <div id="admin-usuarios-state"></div>
+        ${
+          canListUsuarios
+            ? `<p class="text-xs text-slate-500">${escapeHtml(USUARIO_ACCIONES_SENSIBLES_HINT)}</p>`
+            : ''
+        }
       </div>
     `
-    const usuariosState = panel.querySelector('#admin-usuarios-state')
-    if (!canListUsuarios) {
-      usuariosState.replaceChildren(
-        createFeedbackState({
-          title: 'Consulta de usuarios no disponible',
-          message:
-            'El alta (POST /api/usuarios) y la consulta son operaciones independientes. La API actual no expone GET /api/usuarios, por eso no se muestra un listado. Tampoco hay restablecimiento de contraseña ni bloqueo por intentos fallidos.',
-        }),
-      )
-    }
     if (canCreateUsuarios) {
       panel.querySelector('#admin-usuario-new')?.addEventListener('click', openUsuarioCreate)
     }
+    paintUsuariosResults()
+  }
+
+  function paintUsuariosResults() {
+    const results = panel.querySelector('#admin-usuarios-state')
+    if (!results) return
+
+    if (!canListUsuarios) {
+      results.replaceChildren(
+        createFeedbackState({
+          title: 'Sin permisos para ver usuarios',
+          message: 'Tu sesión no tiene permisos para consultar los usuarios del panel.',
+        }),
+      )
+      return
+    }
+
+    if (!usuariosLoaded) {
+      results.replaceChildren(createTableSkeleton({ rows: 5, columns: 6, label: 'Cargando usuarios' }))
+      return
+    }
+
+    if (usuariosError) {
+      results.replaceChildren(
+        createFeedbackState({
+          title: 'No se pudieron cargar los usuarios',
+          message: usuariosErrorMessage,
+          tone: 'error',
+          actionLabel: 'Reintentar',
+          onAction: () => loadUsuarios(),
+        }),
+      )
+      return
+    }
+
+    if (usuarios.length === 0) {
+      results.replaceChildren(
+        createFeedbackState({
+          title: 'No hay usuarios',
+          message: canCreateUsuarios
+            ? 'Todavía no hay usuarios en este contexto. Creá el primero con “Nuevo usuario”.'
+            : 'Todavía no hay usuarios en este contexto.',
+        }),
+      )
+      return
+    }
+
+    const sectionEl = document.createElement('section')
+    sectionEl.className = 'overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm'
+    sectionEl.innerHTML = `
+      <div class="max-h-[65vh] overflow-auto">
+        <table class="min-w-full divide-y divide-slate-200">
+          <thead class="sticky top-0 z-10 bg-slate-50">
+            <tr>
+              <th scope="col" class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Usuario</th>
+              <th scope="col" class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Correo</th>
+              <th scope="col" class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Rol</th>
+              <th scope="col" class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Empresa</th>
+              <th scope="col" class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Estado</th>
+              <th scope="col" class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Contraseña</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-slate-100">
+            ${usuarios
+              .map(
+                (usuario) => `
+                  <tr class="hover:bg-slate-50">
+                    <td class="whitespace-nowrap px-4 py-3 text-sm font-medium text-slate-900">${displayValue(usuario.nombreUsuario)}</td>
+                    <td class="whitespace-nowrap px-4 py-3 text-sm text-slate-600">${displayValue(usuario.correo)}</td>
+                    <td class="whitespace-nowrap px-4 py-3 text-sm text-slate-600">${displayValue(usuario.rol)}</td>
+                    <td class="whitespace-nowrap px-4 py-3 text-sm text-slate-600">${displayValue(empresaLabel(usuario.empresaId))}</td>
+                    <td class="whitespace-nowrap px-4 py-3 text-sm">${employeeStatusBadge(usuario.activo)}</td>
+                    <td class="whitespace-nowrap px-4 py-3 text-sm">
+                      ${
+                        usuario.requiereCambioPassword
+                          ? badgeHtml('Cambio requerido', 'warning')
+                          : '<span class="text-slate-500">—</span>'
+                      }
+                    </td>
+                  </tr>
+                `,
+              )
+              .join('')}
+          </tbody>
+        </table>
+      </div>
+    `
+    results.replaceChildren(sectionEl)
+  }
+
+  async function loadUsuarios() {
+    if (!canListUsuarios) return
+    usuariosLoaded = false
+    usuariosError = false
+    paintUsuariosResults()
+    try {
+      usuarios = await getUsuarios({ empresaId: empresaSeleccionadaId() })
+      usuariosLoaded = true
+      usuariosError = false
+    } catch (error) {
+      if (error.message === 'Sesión expirada o no autorizada.') return
+      usuarios = []
+      usuariosLoaded = true
+      usuariosError = true
+      usuariosErrorMessage =
+        error.status === 403
+          ? 'No tenés permisos para consultar usuarios.'
+          : error.message || 'No se pudieron cargar los usuarios.'
+      showToast({ message: usuariosErrorMessage, tone: 'error' })
+    }
+    paintUsuariosResults()
   }
 
   function openUsuarioCreate() {
@@ -508,7 +668,7 @@ export async function renderAdministracion(container) {
                     data-id="${Number(sucursal.id)}"
                     class="rounded-lg px-2.5 py-1.5 text-sm font-medium text-blue-700 hover:bg-blue-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
                   >
-                    Editar sucursal
+                    Editar
                   </button>`)
                 }
                 if (canManageSucursalAgentes) {
@@ -959,7 +1119,7 @@ export async function renderAdministracion(container) {
     paintAgentesResults()
   }
 
-  async function loadEmpresas() {
+  async function loadEmpresas({ silent = false } = {}) {
     empresasLoaded = false
     empresasError = false
     paintEmpresasResults()
@@ -973,12 +1133,16 @@ export async function renderAdministracion(container) {
       empresasLoaded = true
       empresasError = true
       empresasErrorMessage = error.message || 'No se pudieron cargar las empresas.'
-      showToast({
-        message: error.message || 'No se pudieron cargar las empresas.',
-        tone: 'error',
-      })
+      if (!silent) {
+        showToast({
+          message: error.message || 'No se pudieron cargar las empresas.',
+          tone: 'error',
+        })
+      }
     }
     paintEmpresasResults()
+    // El listado de usuarios resuelve nombres de empresa con este catálogo.
+    paintUsuariosResults()
   }
 
   async function loadSucursales() {

@@ -9,6 +9,7 @@ import { getDashboardData } from '../api/dashboard.js'
 import { FICHADAS_LIMITE } from '../api/fichadas.js'
 import { isSuperadmin } from '../config/roles.js'
 import { createDashboardAlerts } from '../components/dashboard-alerts.js'
+import { BTN_SECONDARY_CLASS } from '../components/button-styles.js'
 import { createFeedbackState, createSelectEmpresaState } from '../components/feedback-state.js'
 import { createImplementationStatusSection } from '../components/implementation-status.js'
 import { createRecentPunchesTable } from '../components/recent-punches-table.js'
@@ -34,7 +35,7 @@ export function renderDashboard(container, { onNavigate } = {}) {
         <button
           type="button"
           id="dashboard-refresh"
-          class="inline-flex items-center justify-center rounded-lg border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+          class="${BTN_SECONDARY_CLASS}"
         >
           Actualizar
         </button>

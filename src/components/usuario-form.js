@@ -6,6 +6,8 @@ import {
 import { USUARIO_ROLES_API } from '../config/roles.js'
 import { escapeHtml } from '../utils/format.js'
 import { showToast } from './toast.js'
+import { enhanceSelectsIn, refreshEnhancedSelect } from './dropdown.js'
+import { BTN_SECONDARY_CLASS } from './button-styles.js'
 import {
   applyPasswordConfirmPresentation,
   bindPasswordVisibilityToggle,
@@ -72,11 +74,13 @@ export function createUsuarioForm({
       ${formFieldMarkup({
         id: 'usuario-nombreUsuario',
         name: 'nombreUsuario',
-        label: 'Nombre del usuario',
+        label: 'Nombre de usuario',
         required: true,
         maxLength: 50,
-        autocomplete: 'name',
-        helpText: 'Ingresá el nombre y apellido de la persona que utilizará la cuenta.',
+        autocomplete: 'username',
+        placeholder: 'Ej.: martin.eloy',
+        helpText: 'Ingresá un nombre para identificar la cuenta dentro del panel. El inicio de sesión se realiza con el correo electrónico.',
+        extraHelpText: 'Usá entre 3 y 50 caracteres. Se permiten letras, números, punto (.), guion (-) y guion bajo (_), sin espacios.',
       })}
       ${formFieldMarkup({
         id: 'usuario-email',
@@ -118,7 +122,7 @@ export function createUsuarioForm({
         ).join('')}`,
       })}
       <div class="flex flex-col-reverse gap-2 border-t border-slate-100 pt-4 sm:flex-row sm:justify-end">
-        <button type="button" id="usuario-form-cancel" class="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100">
+        <button type="button" id="usuario-form-cancel" class="${BTN_SECONDARY_CLASS}">
           Cancelar
         </button>
         <button type="submit" id="usuario-form-submit" class="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-60">
@@ -164,7 +168,7 @@ export function createUsuarioForm({
 
   function readValues() {
     return {
-      nombreUsuario: String(form.querySelector('[name="nombreUsuario"]')?.value ?? '').trim(),
+      nombreUsuario: String(form.querySelector('[name="nombreUsuario"]')?.value ?? ''),
       email: String(form.querySelector('[name="email"]')?.value ?? '').trim(),
       password: String(passwordInput?.value ?? ''),
       passwordConfirm: String(passwordConfirmInput?.value ?? ''),
@@ -178,7 +182,8 @@ export function createUsuarioForm({
       name: 'nombreUsuario',
       helpId: nombreIds.helpId,
       errorId: nombreIds.errorId,
-      normalizeOnBlur: (value) => String(value ?? '').trim(),
+      extraDescribedBy: 'usuario-nombreUsuario-help-format',
+      keepHelpVisible: true,
       getError: () => validateUsuarioAlta(readValues()).nombreUsuario,
     },
     {
@@ -303,6 +308,7 @@ export function createUsuarioForm({
   })
 
   queueMicrotask(() => form.querySelector('[name="nombreUsuario"]')?.focus())
+  enhanceSelectsIn(form)
 
   ;(async () => {
     try {
@@ -320,6 +326,7 @@ export function createUsuarioForm({
         }
         if (empresaSelect && empresaIdFija) {
           empresaSelect.value = String(empresaIdFija)
+          refreshEnhancedSelect(empresaSelect)
         }
         if (!empresaIdFija) {
           showFormError('La sesión ADMIN no incluye una empresa válida.')
@@ -337,6 +344,7 @@ export function createUsuarioForm({
           if (!label || !id) return
           empresaSelect.append(new Option(label, String(id)))
         })
+      refreshEnhancedSelect(empresaSelect)
 
       if (empresas.length === 0) {
         showFormError('No hay empresas disponibles para asignar.')
@@ -346,6 +354,7 @@ export function createUsuarioForm({
       if (!form.isConnected) return
       if (canChooseEmpresa) {
         empresaSelect.replaceChildren(new Option('Empresas no disponibles', ''))
+        refreshEnhancedSelect(empresaSelect)
       }
       const message = error.message || 'No se pudieron cargar las empresas.'
       showFormError(message)
