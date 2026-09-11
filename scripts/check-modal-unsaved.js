@@ -67,7 +67,8 @@ check('Formularios de administración usan openFormModal y force al guardar', ()
   assert.match(src, /openFormModal/)
   assert.equal((src.match(/openFormModal\(/g) || []).length, 6)
   assert.match(src, /closeActiveModal\(\{ force: true \}\)/)
-  assert.equal(src.includes('openModal('), false)
+  assert.match(src, /title: 'Contraseña temporal'/)
+  assert.match(src, /openModal\(/)
 })
 
 check('Alta de empleado usa openFormModal; detalle y baja no se tratan como el mismo caso', () => {

@@ -3,7 +3,6 @@ import { escapeHtml } from '../utils/format.js'
 
 const IMPLEMENTATION_ITEMS = [
   { label: 'Asignación por sucursal/departamento', status: 'api' },
-  { label: 'Restablecer contraseña y desbloquear usuarios', status: 'api' },
   { label: 'Departamentos', status: 'ui' },
 ]
 

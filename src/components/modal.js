@@ -1,4 +1,4 @@
-import { enhanceSelectsIn, destroyDisconnectedSelects } from './dropdown.js'
+import { closeOpenDropdown, enhanceSelectsIn, destroyDisconnectedSelects } from './dropdown.js'
 import { BTN_SECONDARY_CLASS } from './button-styles.js'
 
 export const DISCARD_UNSAVED_TITLE = '¿Descartar los cambios?'
@@ -33,22 +33,42 @@ function trapFocus(event, root) {
   }
 }
 
-function promptDiscardUnsaved() {
+function applyBackgroundInert(host, overlay) {
+  const locked = []
+  for (const child of [...host.children]) {
+    if (child === overlay || child.inert) continue
+    child.inert = true
+    locked.push(child)
+  }
+  return () => {
+    locked.forEach((element) => {
+      element.inert = false
+    })
+  }
+}
+
+function promptDiscardUnsaved(prompt = {}) {
   return new Promise((resolve) => {
     let settled = false
+    const title = prompt.title || DISCARD_UNSAVED_TITLE
+    const message = prompt.message || DISCARD_UNSAVED_MESSAGE
+    const continueLabel = prompt.continueLabel || DISCARD_UNSAVED_CONTINUE
+    const discardLabel = prompt.discardLabel || DISCARD_UNSAVED_DISCARD
 
     const content = document.createElement('div')
-    content.innerHTML = `
-      <p class="text-sm text-slate-600">${DISCARD_UNSAVED_MESSAGE}</p>
-      <div class="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-        <button type="button" data-action="continue" data-autofocus class="${BTN_SECONDARY_CLASS}">
-          ${DISCARD_UNSAVED_CONTINUE}
-        </button>
-        <button type="button" data-action="discard" class="rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500">
-          ${DISCARD_UNSAVED_DISCARD}
-        </button>
-      </div>
+    const messageNode = document.createElement('p')
+    messageNode.className = 'text-sm text-slate-600'
+    messageNode.textContent = message
+
+    const actions = document.createElement('div')
+    actions.className = 'mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end'
+    actions.innerHTML = `
+      <button type="button" data-action="continue" data-autofocus class="${BTN_SECONDARY_CLASS}"></button>
+      <button type="button" data-action="discard" class="rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500"></button>
     `
+    actions.querySelector('[data-action="continue"]').textContent = continueLabel
+    actions.querySelector('[data-action="discard"]').textContent = discardLabel
+    content.append(messageNode, actions)
 
     const finish = (value) => {
       if (settled) return
@@ -58,7 +78,7 @@ function promptDiscardUnsaved() {
     }
 
     const modal = openModal({
-      title: DISCARD_UNSAVED_TITLE,
+      title,
       content,
       labelledBy: 'discard-unsaved-title',
       stacked: true,
@@ -76,6 +96,7 @@ function promptDiscardUnsaved() {
 
 export function openModal({
   title,
+  subtitle = '',
   content,
   onClose,
   labelledBy = 'app-modal-title',
@@ -85,7 +106,11 @@ export function openModal({
   unsavedChanges = false,
   hideCloseButton = false,
   isDirty,
+  discardPrompt,
+  dialogClass = '',
 } = {}) {
+  closeOpenDropdown()
+
   const overlay = document.createElement('div')
   overlay.className = stacked
     ? 'fixed inset-0 z-[60] flex items-end justify-center bg-slate-950/50 p-4 sm:items-center'
@@ -95,18 +120,28 @@ export function openModal({
 
   const dialog = document.createElement('div')
   dialog.className =
-    'flex max-h-[90vh] w-full max-w-lg flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl'
+    `flex max-h-[90vh] w-full flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl dark:border-slate-700 dark:bg-slate-900 ${dialogClass || 'max-w-lg'}`.trim()
   dialog.setAttribute('role', 'dialog')
   dialog.setAttribute('aria-modal', 'true')
   dialog.setAttribute('aria-labelledby', labelledBy)
 
   const header = document.createElement('div')
-  header.className = 'flex items-start justify-between gap-4 border-b border-slate-200 px-5 py-4'
+  header.className = 'flex items-start justify-between gap-4 border-b border-slate-200 px-5 py-4 dark:border-slate-700'
+
+  const headingBlock = document.createElement('div')
+  headingBlock.className = 'min-w-0'
 
   const heading = document.createElement('h2')
   heading.id = labelledBy
-  heading.className = 'text-lg font-semibold text-slate-900'
+  heading.className = 'text-lg font-semibold text-slate-900 dark:text-slate-100'
   heading.textContent = title
+  headingBlock.append(heading)
+
+  const subtitleNode = document.createElement('p')
+  subtitleNode.className = 'mt-0.5 truncate text-sm text-slate-500 dark:text-slate-400'
+  subtitleNode.textContent = String(subtitle ?? '')
+  subtitleNode.hidden = !String(subtitle ?? '').trim()
+  headingBlock.append(subtitleNode)
 
   const closeButton = document.createElement('button')
   closeButton.type = 'button'
@@ -120,9 +155,9 @@ export function openModal({
   if (content) body.append(content)
 
   if (hideCloseButton) {
-    header.append(heading)
+    header.append(headingBlock)
   } else {
-    header.append(heading, closeButton)
+    header.append(headingBlock, closeButton)
   }
   dialog.append(header, body)
   overlay.append(dialog)
@@ -130,6 +165,7 @@ export function openModal({
   let closed = false
   let confirming = false
   let dirty = false
+  let restoreInert = () => {}
   const previousFocus = document.activeElement
 
   function readDirty() {
@@ -149,6 +185,7 @@ export function openModal({
     document.removeEventListener('keydown', onKeyDown)
     overlay.removeEventListener('input', onFieldChange)
     overlay.removeEventListener('change', onFieldChange)
+    restoreInert()
     overlay.remove()
     destroyDisconnectedSelects()
     if (previousFocus instanceof HTMLElement && previousFocus.isConnected) previousFocus.focus()
@@ -169,7 +206,7 @@ export function openModal({
       confirming = true
       let discard = false
       try {
-        discard = await promptDiscardUnsaved()
+        discard = await promptDiscardUnsaved(discardPrompt)
       } finally {
         confirming = false
       }
@@ -217,6 +254,7 @@ export function openModal({
 
   const host = document.getElementById('app') ?? document.body
   host.append(overlay)
+  restoreInert = applyBackgroundInert(host, overlay)
   enhanceSelectsIn(overlay)
   queueMicrotask(() => {
     const preferredFocus = dialog.querySelector('[data-autofocus]')
@@ -227,7 +265,16 @@ export function openModal({
     }
   })
 
-  return { overlay, dialog, close }
+  return {
+    overlay,
+    dialog,
+    close,
+    setSubtitle(text) {
+      const value = String(text ?? '')
+      subtitleNode.textContent = value
+      subtitleNode.hidden = !value.trim()
+    },
+  }
 }
 
 export function openFormModal(options = {}) {

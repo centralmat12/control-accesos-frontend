@@ -187,6 +187,7 @@ export function formFieldMarkup({
   extraInputClass = '',
   optionsHtml = '',
   disabled = false,
+  value,
 }) {
   const { helpId, errorId } = fieldIds(id)
   const extraHelpId = extraHelpText ? `${id}-help-format` : ''
@@ -197,12 +198,13 @@ export function formFieldMarkup({
   const autoAttr = autocomplete ? `autocomplete="${escapeHtml(autocomplete)}"` : ''
   const modeAttr = inputMode ? `inputmode="${escapeHtml(inputMode)}"` : ''
   const placeholderAttr = placeholder ? `placeholder="${escapeHtml(placeholder)}"` : ''
+  const valueAttr = tag !== 'select' && value != null ? `value="${escapeHtml(String(value))}"` : ''
   const inputClass = `${FORM_INPUT_CLASS} ${extraInputClass}`.trim()
 
   const control =
     tag === 'select'
       ? `<select id="${escapeHtml(id)}" name="${escapeHtml(name)}" ${requiredAttr} ${disabledAttr} aria-describedby="${describedBy}" class="${inputClass}">${optionsHtml}</select>`
-      : `<input id="${escapeHtml(id)}" name="${escapeHtml(name)}" type="${escapeHtml(type)}" ${maxAttr} ${autoAttr} ${modeAttr} ${placeholderAttr} ${requiredAttr} ${disabledAttr} aria-describedby="${describedBy}" class="${inputClass}" />`
+      : `<input id="${escapeHtml(id)}" name="${escapeHtml(name)}" type="${escapeHtml(type)}" ${maxAttr} ${autoAttr} ${modeAttr} ${placeholderAttr} ${valueAttr} ${requiredAttr} ${disabledAttr} aria-describedby="${describedBy}" class="${inputClass}" />`
 
   return `
     <div data-form-field="${escapeHtml(name)}">
@@ -242,11 +244,12 @@ export function formPasswordFieldMarkup({
   autocomplete = 'new-password',
   helpText = '',
   describedBy = '',
+  extraInputClass = '',
 }) {
   const { helpId, errorId } = fieldIds(id)
   const described = [describedBy, helpText ? helpId : '', errorId].filter(Boolean).join(' ')
   const maxAttr = maxLength ? `maxlength="${Number(maxLength)}"` : ''
-  const inputClass = `${FORM_INPUT_CLASS} pr-11`
+  const inputClass = `${FORM_INPUT_CLASS} pr-11 ${extraInputClass}`.trim()
 
   return `
     <div data-form-field="${escapeHtml(name)}">

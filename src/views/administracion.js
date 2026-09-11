@@ -13,7 +13,7 @@ import {
   getLoadedAgenteClientIds,
   rotarSecretAgente,
 } from '../api/agentes.js'
-import { getCurrentUser } from '../api/auth.js'
+import { getCurrentUser, isPasswordChangeRequiredError, isSessionExpiredError } from '../api/auth.js'
 import { getEmpresaContexto } from '../api/empresa-context.js'
 import {
   createEmpresa,
@@ -22,10 +22,23 @@ import {
   getEmpresas,
 } from '../api/empresas.js'
 import { createSucursal, getSucursales, updateSucursal } from '../api/sucursales.js'
-import { createUsuario, getUsuarios } from '../api/usuarios.js'
+import {
+  actualizarIdentidadUsuario,
+  cambiarEstadoUsuario,
+  cambiarRolUsuario,
+  completeUsuarioResetReveal,
+  desbloquearUsuario,
+  estadoCuentaUsuario,
+  estadoPasswordUsuario,
+  getUsuarios,
+  restablecerPasswordUsuario,
+  createUsuario,
+  USUARIO_IDENTIDAD_CORREO_CONFIRM,
+} from '../api/usuarios.js'
 import {
   API_ENABLEMENT_HINT,
-  USUARIO_ACCIONES_SENSIBLES_HINT,
+  USUARIO_ACCION_FUERA_DE_ALCANCE,
+  USUARIOS_TABLE_COLUMNS,
   empresaIdDeTenant,
   puedeAbrirNuevoUsuario,
   puedeAdministrarAgentes,
@@ -34,6 +47,7 @@ import {
   puedeCrearSucursales,
   puedeDesactivarAgente,
   puedeEditarSucursales,
+  puedeEditarUsuarioObjetivo,
   puedeListarUsuarios,
   puedeRotarSecretAgente,
 } from '../config/administracion.js'
@@ -42,13 +56,46 @@ import { createAgenteSecretPanel } from '../components/agente-secret-panel.js'
 import { badgeHtml, employeeStatusBadge, featureStatusBadge } from '../components/badge.js'
 import { createEmpresaForm } from '../components/empresa-form.js'
 import { createFeedbackState } from '../components/feedback-state.js'
-import { openConfirmModal, openFormModal } from '../components/modal.js'
+import { openConfirmModal, openFormModal, openModal } from '../components/modal.js'
 import { createSucursalForm } from '../components/sucursal-form.js'
 import { createTableSkeleton } from '../components/skeleton.js'
 import { showToast } from '../components/toast.js'
+import {
+  PASSWORD_TEMPORAL_DISCARD_PROMPT,
+  PASSWORD_TEMPORAL_MODAL,
+  createPasswordTemporalPanel,
+} from '../components/password-temporal-panel.js'
+import {
+  createUsuarioEditPanel,
+  rolCambioConfirmMessage,
+  usuarioEstadoConfirmMessage,
+} from '../components/usuario-edit-panel.js'
 import { createUsuarioForm } from '../components/usuario-form.js'
-import { isAdmin, isSuperadmin } from '../config/roles.js'
-import { displayValue, escapeHtml, formatDateTime } from '../utils/format.js'
+import { isAdmin, isSuperadmin, rolesAsignablesParaAlta, usuarioRolLabel } from '../config/roles.js'
+import { displayValue, escapeHtml, formatApiDateTime, formatDateTime } from '../utils/format.js'
+import { createKeyedLock, createViewLifecycle, runLockedConfirmAction } from '../utils/view-guard.js'
+
+export function usuariosTableHeadMarkup(columns = USUARIOS_TABLE_COLUMNS) {
+  return columns
+    .map(
+      (label) =>
+        `<th scope="col" class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">${escapeHtml(label)}</th>`,
+    )
+    .join('')
+}
+
+const USUARIO_FILA_ACCION_CLASS =
+  'inline-flex items-center justify-center rounded-lg px-2.5 py-1.5 text-xs font-semibold text-blue-700 hover:bg-blue-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 disabled:cursor-not-allowed disabled:opacity-60 dark:text-blue-300 dark:hover:bg-slate-800'
+
+export function usuarioFilaAccionesMarkup(operador, usuario) {
+  if (!puedeEditarUsuarioObjetivo(operador, usuario)) {
+    return '<span class="text-sm text-slate-400">—</span>'
+  }
+
+  return `<div class="flex flex-col items-stretch gap-1.5 sm:items-start">
+      <button type="button" class="${USUARIO_FILA_ACCION_CLASS}" data-usuario-accion="editar" data-usuario-id="${usuario.id}" aria-label="Editar usuario">Editar usuario</button>
+    </div>`
+}
 
 const CONTROL_CLASS =
   'w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none placeholder:text-slate-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20'
@@ -164,6 +211,22 @@ export async function renderAdministracion(container) {
   let empresaQuery = ''
   let activeModalClose = null
   let secretHolder = null
+  let passwordTemporalOpen = false
+  let usuarioEditPanel = null
+  let usuarioEditSetSubtitle = null
+  let usuariosRequestId = 0
+  const life = createViewLifecycle()
+  const usuarioAccionLock = createKeyedLock()
+  const listenerAbort = new AbortController()
+
+  function isViewAlive() {
+    return life.isAlive()
+  }
+
+  function viewToast(options) {
+    if (!isViewAlive()) return
+    showToast(options)
+  }
 
   function closeActiveModal(options) {
     activeModalClose?.(options)
@@ -175,9 +238,11 @@ export async function renderAdministracion(container) {
       discardAgenteSecret(secretHolder)
       secretHolder = null
     }
+    passwordTemporalOpen = false
   }
 
   function setSection(next) {
+    if (!isViewAlive()) return
     section = next
     if (next !== SECTIONS.empresas) {
       selectedEmpresa = null
@@ -266,20 +331,57 @@ export async function renderAdministracion(container) {
           })}
         </div>
         <div id="admin-usuarios-state"></div>
+      </div>
+    `
+    if (canCreateUsuarios) {
+      panel.querySelector('#admin-usuario-new')?.addEventListener('click', openUsuarioCreate, {
+        signal: listenerAbort.signal,
+      })
+    }
+    panel.querySelector('#admin-usuarios-state')?.addEventListener('click', onUsuarioAccionClick, {
+      signal: listenerAbort.signal,
+    })
+    paintUsuariosResults()
+  }
+
+  function cuentaEstadoMarkup(usuario) {
+    const estado = estadoCuentaUsuario(usuario)
+    const hasta = formatApiDateTime(usuario.bloqueadoHasta)
+    const badge =
+      estado === 'Bloqueado'
+        ? badgeHtml('Bloqueado', 'danger')
+        : estado === 'Inactivo'
+          ? badgeHtml('Inactivo', 'danger')
+          : badgeHtml('Activo', 'success')
+
+    return `
+      <div class="flex flex-col gap-1">
+        ${badge}
         ${
-          canListUsuarios
-            ? `<p class="text-xs text-slate-500">${escapeHtml(USUARIO_ACCIONES_SENSIBLES_HINT)}</p>`
+          estado === 'Bloqueado' && hasta
+            ? `<p class="text-xs text-slate-500 dark:text-slate-400">Hasta ${escapeHtml(hasta)}</p>`
             : ''
         }
       </div>
     `
-    if (canCreateUsuarios) {
-      panel.querySelector('#admin-usuario-new')?.addEventListener('click', openUsuarioCreate)
-    }
-    paintUsuariosResults()
+  }
+
+  function passwordEstadoMarkup(usuario) {
+    return estadoPasswordUsuario(usuario) === 'Cambio requerido'
+      ? badgeHtml('Cambio requerido', 'warning')
+      : badgeHtml('Normal', 'neutral')
+  }
+
+  function usuarioAccionesMarkup(usuario) {
+    return usuarioFilaAccionesMarkup(user, usuario)
+  }
+
+  function ignoreClosedSession(error) {
+    return isSessionExpiredError(error) || isPasswordChangeRequiredError(error)
   }
 
   function paintUsuariosResults() {
+    if (!isViewAlive() || passwordTemporalOpen) return
     const results = panel.querySelector('#admin-usuarios-state')
     if (!results) return
 
@@ -294,7 +396,13 @@ export async function renderAdministracion(container) {
     }
 
     if (!usuariosLoaded) {
-      results.replaceChildren(createTableSkeleton({ rows: 5, columns: 6, label: 'Cargando usuarios' }))
+      results.replaceChildren(
+        createTableSkeleton({
+          rows: 5,
+          columns: USUARIOS_TABLE_COLUMNS.length,
+          label: 'Cargando usuarios',
+        }),
+      )
       return
     }
 
@@ -330,31 +438,21 @@ export async function renderAdministracion(container) {
         <table class="min-w-full divide-y divide-slate-200">
           <thead class="sticky top-0 z-10 bg-slate-50">
             <tr>
-              <th scope="col" class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Usuario</th>
-              <th scope="col" class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Correo</th>
-              <th scope="col" class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Rol</th>
-              <th scope="col" class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Empresa</th>
-              <th scope="col" class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Estado</th>
-              <th scope="col" class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Contraseña</th>
+              ${usuariosTableHeadMarkup()}
             </tr>
           </thead>
           <tbody class="divide-y divide-slate-100">
             ${usuarios
               .map(
                 (usuario) => `
-                  <tr class="hover:bg-slate-50">
-                    <td class="whitespace-nowrap px-4 py-3 text-sm font-medium text-slate-900">${displayValue(usuario.nombreUsuario)}</td>
-                    <td class="whitespace-nowrap px-4 py-3 text-sm text-slate-600">${displayValue(usuario.correo)}</td>
-                    <td class="whitespace-nowrap px-4 py-3 text-sm text-slate-600">${displayValue(usuario.rol)}</td>
-                    <td class="whitespace-nowrap px-4 py-3 text-sm text-slate-600">${displayValue(empresaLabel(usuario.empresaId))}</td>
-                    <td class="whitespace-nowrap px-4 py-3 text-sm">${employeeStatusBadge(usuario.activo)}</td>
-                    <td class="whitespace-nowrap px-4 py-3 text-sm">
-                      ${
-                        usuario.requiereCambioPassword
-                          ? badgeHtml('Cambio requerido', 'warning')
-                          : '<span class="text-slate-500">—</span>'
-                      }
-                    </td>
+                  <tr class="hover:bg-slate-50 dark:hover:bg-slate-800/60">
+                    <td class="whitespace-nowrap px-4 py-3 text-sm font-medium text-slate-900 dark:text-slate-100">${displayValue(usuario.nombreUsuario)}</td>
+                    <td class="whitespace-nowrap px-4 py-3 text-sm text-slate-600 dark:text-slate-300">${displayValue(usuario.correo)}</td>
+                    <td class="whitespace-nowrap px-4 py-3 text-sm text-slate-600 dark:text-slate-300">${escapeHtml(usuarioRolLabel(usuario.rol))}</td>
+                    <td class="whitespace-nowrap px-4 py-3 text-sm text-slate-600 dark:text-slate-300">${displayValue(empresaLabel(usuario.empresaId))}</td>
+                    <td class="whitespace-nowrap px-4 py-3 text-sm">${cuentaEstadoMarkup(usuario)}</td>
+                    <td class="whitespace-nowrap px-4 py-3 text-sm">${passwordEstadoMarkup(usuario)}</td>
+                    <td class="px-4 py-3 text-sm">${usuarioAccionesMarkup(usuario)}</td>
                   </tr>
                 `,
               )
@@ -364,19 +462,24 @@ export async function renderAdministracion(container) {
       </div>
     `
     results.replaceChildren(sectionEl)
+    applyUsuarioAccionBusy()
   }
 
   async function loadUsuarios() {
-    if (!canListUsuarios) return
+    if (!canListUsuarios || !isViewAlive() || passwordTemporalOpen) return
+    const requestId = ++usuariosRequestId
     usuariosLoaded = false
     usuariosError = false
     paintUsuariosResults()
     try {
-      usuarios = await getUsuarios({ empresaId: empresaSeleccionadaId() })
+      const resultado = await getUsuarios({ empresaId: empresaSeleccionadaId() })
+      if (!isViewAlive() || requestId !== usuariosRequestId || passwordTemporalOpen) return
+      usuarios = resultado
       usuariosLoaded = true
       usuariosError = false
     } catch (error) {
-      if (error.message === 'Sesión expirada o no autorizada.') return
+      if (!isViewAlive() || requestId !== usuariosRequestId) return
+      if (ignoreClosedSession(error)) return
       usuarios = []
       usuariosLoaded = true
       usuariosError = true
@@ -384,21 +487,362 @@ export async function renderAdministracion(container) {
         error.status === 403
           ? 'No tenés permisos para consultar usuarios.'
           : error.message || 'No se pudieron cargar los usuarios.'
-      showToast({ message: usuariosErrorMessage, tone: 'error' })
+      viewToast({ message: usuariosErrorMessage, tone: 'error' })
     }
+    if (!isViewAlive() || passwordTemporalOpen) return
     paintUsuariosResults()
+    syncUsuarioEditPanel()
+  }
+
+  function applyUsuarioAccionBusy() {
+    if (!isViewAlive()) return
+    const roots = [panel.querySelector('#admin-usuarios-state'), usuarioEditPanel?.element].filter(Boolean)
+    roots.forEach((root) => {
+      root.querySelectorAll('[data-usuario-accion][data-usuario-id]').forEach((button) => {
+        const key = usuarioAccionLock.key(button.dataset.usuarioAccion, button.dataset.usuarioId)
+        button.disabled = usuarioAccionLock.has(key)
+      })
+    })
+    usuarioEditPanel?.syncSaveButtons?.()
+    roots.forEach((root) => {
+      root.querySelectorAll('[data-usuario-accion][data-usuario-id]').forEach((button) => {
+        const key = usuarioAccionLock.key(button.dataset.usuarioAccion, button.dataset.usuarioId)
+        if (usuarioAccionLock.has(key)) button.disabled = true
+      })
+    })
+  }
+
+  function syncUsuarioEditPanel() {
+    if (!isViewAlive() || !usuarioEditPanel) return
+    const actual = usuarioEditPanel.getUsuario()
+    const next = usuarios.find((item) => Number(item.id) === Number(actual?.id))
+    if (!next) {
+      closeActiveModal({ force: true })
+      return
+    }
+    usuarioEditPanel.update(next)
+    usuarioEditSetSubtitle?.(next.nombreUsuario || next.correo)
+    applyUsuarioAccionBusy()
+  }
+
+  function showPasswordTemporalPanel({ nombreUsuario, passwordTemporal, venceEn }) {
+    return new Promise((resolve) => {
+      if (!isViewAlive()) {
+        resolve()
+        return
+      }
+
+      clearSecretHolder()
+      const panelSecret = createPasswordTemporalPanel({
+        nombreUsuario,
+        passwordTemporal,
+        venceEn,
+        onClose: () => closeActiveModal({ force: true }),
+      })
+      secretHolder = panelSecret
+      passwordTemporalOpen = true
+      const modal = openModal({
+        title: 'Contraseña temporal',
+        content: panelSecret.element,
+        labelledBy: 'usuario-password-temporal-title',
+        ...PASSWORD_TEMPORAL_MODAL,
+        isDirty: () => panelSecret.hasVisibleSecret(),
+        discardPrompt: PASSWORD_TEMPORAL_DISCARD_PROMPT,
+        onClose: () => {
+          panelSecret.discard()
+          if (secretHolder === panelSecret) secretHolder = null
+          passwordTemporalOpen = false
+          activeModalClose = null
+          resolve()
+        },
+      })
+      activeModalClose = modal.close
+    })
+  }
+
+  async function confirmarRestablecer(usuario) {
+    const key = usuarioAccionLock.key('restablecer', usuario.id)
+    const outcome = await runLockedConfirmAction({
+      lock: usuarioAccionLock,
+      key,
+      isAlive: isViewAlive,
+      onLockChange: () => applyUsuarioAccionBusy(),
+      confirm: () =>
+        openConfirmModal({
+          title: 'Restablecer contraseña',
+          message: `Se generará una contraseña temporal para ${usuario.nombreUsuario}. Las sesiones anteriores quedarán invalidadas y deberá cambiar la contraseña en el próximo ingreso.`,
+          confirmLabel: 'Restablecer',
+        }),
+      execute: () =>
+        restablecerPasswordUsuario(usuario.id, {
+          empresaId: empresaSeleccionadaId(),
+        }),
+    })
+
+    if (outcome.status === 'busy' || outcome.status === 'cancelled' || outcome.status === 'confirm-error') {
+      return
+    }
+
+    if (outcome.status === 'error') {
+      if (!isViewAlive()) return
+      if (ignoreClosedSession(outcome.error)) return
+      viewToast({
+        message:
+          outcome.error?.status === 404 || outcome.error?.status === 403
+            ? USUARIO_ACCION_FUERA_DE_ALCANCE
+            : outcome.error?.message || 'No se pudo restablecer la contraseña.',
+        tone: 'error',
+      })
+      return
+    }
+
+    await completeUsuarioResetReveal({
+      result: outcome.result,
+      isAlive: isViewAlive,
+      reveal: async (taken) => {
+        if (usuarioEditPanel) closeActiveModal({ force: true })
+        if (!isViewAlive()) return
+        await showPasswordTemporalPanel({
+          nombreUsuario: usuario.nombreUsuario,
+          passwordTemporal: taken.passwordTemporal,
+          venceEn: taken.venceEn,
+        })
+      },
+      refresh: loadUsuarios,
+    })
+  }
+
+  async function confirmarDesbloquear(usuario) {
+    const key = usuarioAccionLock.key('desbloquear', usuario.id)
+    const outcome = await runLockedConfirmAction({
+      lock: usuarioAccionLock,
+      key,
+      isAlive: isViewAlive,
+      onLockChange: () => applyUsuarioAccionBusy(),
+      confirm: () =>
+        openConfirmModal({
+          title: 'Desbloquear cuenta',
+          message: `Se desbloqueará a ${usuario.nombreUsuario}. Esta acción no cambia la contraseña.`,
+          confirmLabel: 'Desbloquear',
+        }),
+      execute: () => desbloquearUsuario(usuario.id, { empresaId: empresaSeleccionadaId() }),
+    })
+
+    if (outcome.status === 'busy' || outcome.status === 'cancelled' || outcome.status === 'confirm-error') {
+      return
+    }
+
+    if (outcome.status === 'error') {
+      if (!isViewAlive()) return
+      if (ignoreClosedSession(outcome.error)) return
+      viewToast({
+        message:
+          outcome.error?.status === 404 || outcome.error?.status === 403
+            ? USUARIO_ACCION_FUERA_DE_ALCANCE
+            : outcome.error?.message || 'No se pudo desbloquear la cuenta.',
+        tone: 'error',
+      })
+      return
+    }
+
+    if (outcome.status !== 'ok' || !isViewAlive()) return
+    viewToast({ message: 'Cuenta desbloqueada.', tone: 'success' })
+    await loadUsuarios()
+  }
+
+  function handleUsuarioAccionError(error, fallback) {
+    if (!isViewAlive()) return
+    if (ignoreClosedSession(error)) return
+    viewToast({
+      message:
+        error?.status === 404 || error?.status === 403
+          ? USUARIO_ACCION_FUERA_DE_ALCANCE
+          : error?.message || fallback,
+      tone: 'error',
+    })
+  }
+
+  async function confirmarCambioEstado(usuario, activo) {
+    const key = usuarioAccionLock.key('estado', usuario.id)
+    const outcome = await runLockedConfirmAction({
+      lock: usuarioAccionLock,
+      key,
+      isAlive: isViewAlive,
+      onLockChange: () => applyUsuarioAccionBusy(),
+      confirm: () =>
+        openConfirmModal({
+          title: activo ? 'Reactivar usuario' : 'Desactivar usuario',
+          message: usuarioEstadoConfirmMessage(activo),
+          confirmLabel: activo ? 'Reactivar usuario' : 'Desactivar usuario',
+        }),
+      execute: () => cambiarEstadoUsuario(usuario.id, activo, { empresaId: empresaSeleccionadaId() }),
+    })
+
+    if (outcome.status === 'busy' || outcome.status === 'cancelled' || outcome.status === 'confirm-error') {
+      return
+    }
+
+    if (outcome.status === 'error') {
+      handleUsuarioAccionError(outcome.error, 'No se pudo actualizar el estado del usuario.')
+      return
+    }
+
+    if (outcome.status !== 'ok' || !isViewAlive()) return
+    viewToast({ message: outcome.result?.mensaje || 'Usuario actualizado correctamente.', tone: 'success' })
+    await loadUsuarios()
+  }
+
+  async function confirmarCambioRol(usuario, rol) {
+    if (String(rol) === String(usuario?.rol ?? '')) return
+
+    const key = usuarioAccionLock.key('rol', usuario.id)
+    const outcome = await runLockedConfirmAction({
+      lock: usuarioAccionLock,
+      key,
+      isAlive: isViewAlive,
+      onLockChange: () => applyUsuarioAccionBusy(),
+      confirm: () =>
+        openConfirmModal({
+          title: 'Cambiar rol',
+          message: rolCambioConfirmMessage(usuario.rol, rol),
+          confirmLabel: 'Cambiar rol',
+        }),
+      execute: () => cambiarRolUsuario(usuario.id, rol, { empresaId: empresaSeleccionadaId() }),
+    })
+
+    if (outcome.status === 'busy' || outcome.status === 'cancelled' || outcome.status === 'confirm-error') {
+      return
+    }
+
+    if (outcome.status === 'error') {
+      handleUsuarioAccionError(outcome.error, 'No se pudo actualizar el rol del usuario.')
+      return
+    }
+
+    if (outcome.status !== 'ok' || !isViewAlive()) return
+    viewToast({ message: outcome.result?.mensaje || 'Usuario actualizado correctamente.', tone: 'success' })
+    await loadUsuarios()
+  }
+
+  async function confirmarCambioIdentidad(usuario, { nombreUsuario, correo }) {
+    const correoActual = String(usuario?.correo ?? '').trim()
+    const correoNuevo = String(correo ?? '').trim()
+    const correoCambia = correoActual !== correoNuevo
+    const key = usuarioAccionLock.key('identidad', usuario.id)
+    const outcome = await runLockedConfirmAction({
+      lock: usuarioAccionLock,
+      key,
+      isAlive: isViewAlive,
+      onLockChange: () => applyUsuarioAccionBusy(),
+      confirm: () =>
+        correoCambia
+          ? openConfirmModal({
+              title: 'Actualizar correo',
+              message: USUARIO_IDENTIDAD_CORREO_CONFIRM,
+              confirmLabel: 'Guardar información',
+            })
+          : Promise.resolve(true),
+      execute: () =>
+        actualizarIdentidadUsuario(
+          usuario.id,
+          { nombreUsuario, correo },
+          { empresaId: empresaSeleccionadaId() },
+        ),
+    })
+
+    if (outcome.status === 'busy' || outcome.status === 'cancelled' || outcome.status === 'confirm-error') {
+      return outcome
+    }
+
+    if (outcome.status === 'error') {
+      if (outcome.error?.status !== 409) {
+        handleUsuarioAccionError(outcome.error, 'No se pudieron actualizar los datos del usuario.')
+      }
+      return outcome
+    }
+
+    if (outcome.status !== 'ok' || !isViewAlive()) return outcome
+    viewToast({
+      message: outcome.result?.mensaje || 'Datos del usuario actualizados correctamente.',
+      tone: 'success',
+    })
+    await loadUsuarios()
+    return outcome
+  }
+
+  function openUsuarioEdit(usuario) {
+    if (!isViewAlive() || passwordTemporalOpen) return
+    if (!puedeEditarUsuarioObjetivo(user, usuario)) return
+
+    closeActiveModal({ force: true })
+    const panelEdit = createUsuarioEditPanel({
+      usuario,
+      operador: user,
+      empresaLabel: empresaLabel(usuario.empresaId),
+      onRequestIdentidad: (payload) => {
+        const actual = panelEdit.getUsuario()
+        return confirmarCambioIdentidad(actual, payload)
+      },
+      onRequestRol: (rol) => {
+        const actual = panelEdit.getUsuario()
+        void confirmarCambioRol(actual, rol)
+      },
+      onRequestEstado: (activo) => {
+        const actual = panelEdit.getUsuario()
+        void confirmarCambioEstado(actual, activo)
+      },
+      onRequestRestablecer: () => {
+        const actual = panelEdit.getUsuario()
+        void confirmarRestablecer(actual)
+      },
+      onRequestDesbloquear: () => {
+        const actual = panelEdit.getUsuario()
+        void confirmarDesbloquear(actual)
+      },
+    })
+    usuarioEditPanel = panelEdit
+    const modal = openModal({
+      title: 'Editar usuario',
+      subtitle: usuario.nombreUsuario || usuario.correo || '',
+      dialogClass: 'max-w-2xl',
+      content: panelEdit.element,
+      labelledBy: 'usuario-edit-title',
+      unsavedChanges: true,
+      closeOnBackdrop: false,
+      isDirty: () => panelEdit.isDirty(),
+      onClose: () => {
+        if (usuarioEditPanel === panelEdit) usuarioEditPanel = null
+        usuarioEditSetSubtitle = null
+        if (activeModalClose === modal.close) activeModalClose = null
+      },
+    })
+    usuarioEditSetSubtitle = modal.setSubtitle
+    activeModalClose = modal.close
+    applyUsuarioAccionBusy()
+  }
+
+  function onUsuarioAccionClick(event) {
+    if (!isViewAlive()) return
+    const button = event.target.closest('[data-usuario-accion]')
+    if (!button || button.disabled) return
+    const usuario = usuarios.find((item) => Number(item.id) === Number(button.dataset.usuarioId))
+    if (!usuario) return
+    if (button.dataset.usuarioAccion === 'editar') {
+      openUsuarioEdit(usuario)
+    }
   }
 
   function openUsuarioCreate() {
-    if (!canCreateUsuarios) return
+    if (!canCreateUsuarios || !isViewAlive()) return
     const form = createUsuarioForm({
       empresaIdPermitida: tenantEmpresaId,
       permitirElegirEmpresa: isSuperadmin(user),
+      rolesPermitidos: rolesAsignablesParaAlta(user),
       onCancel: () => closeActiveModal(),
       onSubmit: async (dto) => {
         await createUsuario(dto)
         closeActiveModal({ force: true })
-        showToast({ message: 'Usuario creado correctamente.', tone: 'success' })
+        viewToast({ message: 'Usuario creado correctamente.', tone: 'success' })
       },
     })
     const modal = openFormModal({
@@ -545,7 +989,7 @@ export async function renderAdministracion(container) {
       onSubmit: async (dto) => {
         await createEmpresa(dto)
         closeActiveModal({ force: true })
-        showToast({ message: 'Empresa creada correctamente.', tone: 'success' })
+        viewToast({ message: 'Empresa creada correctamente.', tone: 'success' })
         await loadEmpresas()
       },
     })
@@ -720,7 +1164,7 @@ export async function renderAdministracion(container) {
 
   function openSucursalCreate() {
     if (!selectedEmpresa?.id) {
-      showToast({ message: 'No se puede crear una sucursal sin empresa.', tone: 'error' })
+      viewToast({ message: 'No se puede crear una sucursal sin empresa.', tone: 'error' })
       return
     }
 
@@ -735,7 +1179,7 @@ export async function renderAdministracion(container) {
           empresaId: Number(selectedEmpresa.id),
         })
         closeActiveModal({ force: true })
-        showToast({ message: 'Sucursal creada correctamente.', tone: 'success' })
+        viewToast({ message: 'Sucursal creada correctamente.', tone: 'success' })
         await loadSucursales()
       },
     })
@@ -763,7 +1207,7 @@ export async function renderAdministracion(container) {
       empresaId !== selectedEmpresaId ||
       !puedeEditarSucursales(user, empresaId)
     ) {
-      showToast({ message: 'No tenés permiso para editar esta sucursal.', tone: 'error' })
+      viewToast({ message: 'No tenés permiso para editar esta sucursal.', tone: 'error' })
       return
     }
 
@@ -780,7 +1224,7 @@ export async function renderAdministracion(container) {
           serialLector: dto.serialLector,
         })
         closeActiveModal({ force: true })
-        showToast({ message: 'Sucursal actualizada correctamente', tone: 'success' })
+        viewToast({ message: 'Sucursal actualizada correctamente', tone: 'success' })
         await loadSucursales()
       },
     })
@@ -814,7 +1258,7 @@ export async function renderAdministracion(container) {
       empresaId !== Number(selectedEmpresa?.id) ||
       !puedeAdministrarAgentes(user, empresaId)
     ) {
-      showToast({ message: 'No tenés permiso para administrar agentes de esta sucursal.', tone: 'error' })
+      viewToast({ message: 'No tenés permiso para administrar agentes de esta sucursal.', tone: 'error' })
       return
     }
 
@@ -1008,7 +1452,7 @@ export async function renderAdministracion(container) {
           clientId: dto.clientId,
         })
         closeActiveModal({ force: true })
-        showToast({ message: 'Agente creado. Guardá el secreto ahora.', tone: 'success' })
+        viewToast({ message: 'Agente creado. Guardá el secreto ahora.', tone: 'success' })
         await loadAgentes()
         openAgenteSecretModal(created)
       },
@@ -1062,11 +1506,11 @@ export async function renderAdministracion(container) {
         id: agente.id,
         empresaId: Number(selectedEmpresa.id),
       })
-      showToast({ message: 'Secreto regenerado. Guardalo ahora.', tone: 'success' })
+      viewToast({ message: 'Secreto regenerado. Guardalo ahora.', tone: 'success' })
       openAgenteSecretModal(created)
     } catch (error) {
-      if (error.message === 'Sesión expirada o no autorizada.') return
-      showToast({ message: error.message || 'No se pudo regenerar el secreto.', tone: 'error' })
+      if (ignoreClosedSession(error)) return
+      viewToast({ message: error.message || 'No se pudo regenerar el secreto.', tone: 'error' })
     }
   }
 
@@ -1085,11 +1529,11 @@ export async function renderAdministracion(container) {
         id: agente.id,
         empresaId: Number(selectedEmpresa.id),
       })
-      showToast({ message: 'Agente desactivado.', tone: 'success' })
+      viewToast({ message: 'Agente desactivado.', tone: 'success' })
       await loadAgentes()
     } catch (error) {
-      if (error.message === 'Sesión expirada o no autorizada.') return
-      showToast({ message: error.message || 'No se pudo desactivar el agente.', tone: 'error' })
+      if (ignoreClosedSession(error)) return
+      viewToast({ message: error.message || 'No se pudo desactivar el agente.', tone: 'error' })
     }
   }
 
@@ -1106,16 +1550,17 @@ export async function renderAdministracion(container) {
       agentesLoaded = true
       agentesError = false
     } catch (error) {
-      if (error.message === 'Sesión expirada o no autorizada.') return
+      if (!isViewAlive() || ignoreClosedSession(error)) return
       agentes = []
       agentesLoaded = true
       agentesError = true
       agentesErrorMessage = error.message || 'No se pudieron cargar los agentes.'
-      showToast({
+      viewToast({
         message: error.message || 'No se pudieron cargar los agentes.',
         tone: 'error',
       })
     }
+    if (!isViewAlive()) return
     paintAgentesResults()
   }
 
@@ -1128,18 +1573,19 @@ export async function renderAdministracion(container) {
       empresasLoaded = true
       empresasError = false
     } catch (error) {
-      if (error.message === 'Sesión expirada o no autorizada.') return
+      if (!isViewAlive() || ignoreClosedSession(error)) return
       empresas = []
       empresasLoaded = true
       empresasError = true
       empresasErrorMessage = error.message || 'No se pudieron cargar las empresas.'
       if (!silent) {
-        showToast({
+        viewToast({
           message: error.message || 'No se pudieron cargar las empresas.',
           tone: 'error',
         })
       }
     }
+    if (!isViewAlive()) return
     paintEmpresasResults()
     // El listado de usuarios resuelve nombres de empresa con este catálogo.
     paintUsuariosResults()
@@ -1155,28 +1601,34 @@ export async function renderAdministracion(container) {
       sucursalesLoaded = true
       sucursalesError = false
     } catch (error) {
-      if (error.message === 'Sesión expirada o no autorizada.') return
+      if (!isViewAlive() || ignoreClosedSession(error)) return
       sucursales = []
       sucursalesLoaded = true
       sucursalesError = true
       sucursalesErrorMessage = error.message || 'No se pudieron cargar las sucursales.'
-      showToast({
+      viewToast({
         message: error.message || 'No se pudieron cargar las sucursales.',
         tone: 'error',
       })
     }
+    if (!isViewAlive()) return
     paintSucursalesResults()
   }
 
   tabButtons.forEach((button) => {
-    button.addEventListener('click', () => setSection(button.dataset.section))
+    button.addEventListener('click', () => setSection(button.dataset.section), {
+      signal: listenerAbort.signal,
+    })
   })
 
   container.replaceChildren(view)
   setSection(SECTIONS.usuarios)
 
   return () => {
-    clearSecretHolder()
-    closeActiveModal({ force: true })
+    life.dispose(() => {
+      listenerAbort.abort()
+      clearSecretHolder()
+      closeActiveModal({ force: true })
+    })
   }
 }

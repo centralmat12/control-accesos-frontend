@@ -1,4 +1,4 @@
-import { login } from '../api/auth.js'
+import { consumeLoginNotice, login } from '../api/auth.js'
 import { APP_NAME } from '../config/navigation.js'
 import { createThemeToggle } from '../components/theme-toggle.js'
 import {
@@ -52,6 +52,7 @@ export function renderLogin(container, { onSuccess }) {
           })}
         </div>
 
+        <p id="login-notice" class="mt-4 hidden rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-200" role="status"></p>
         <p id="login-error" class="mt-4 hidden rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-300" role="alert"></p>
 
         <button
@@ -68,8 +69,14 @@ export function renderLogin(container, { onSuccess }) {
   view.querySelector('#login-theme-toggle')?.replaceChildren(createThemeToggle())
 
   const form = view.querySelector('#login-form')
+  const noticeEl = view.querySelector('#login-notice')
   const errorEl = view.querySelector('#login-error')
   const submitBtn = view.querySelector('#login-submit')
+  const loginNotice = consumeLoginNotice()
+  if (loginNotice && noticeEl) {
+    noticeEl.textContent = loginNotice
+    noticeEl.classList.remove('hidden')
+  }
   const emailInput = form.querySelector('[name="email"]')
   const passwordInput = form.querySelector('[name="password"]')
 

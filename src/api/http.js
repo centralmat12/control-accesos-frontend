@@ -1,13 +1,18 @@
 import { apiUrl } from '../config/api.js'
 import { isSuperadmin } from '../config/roles.js'
 import { logApiNetworkError, logApiResponse } from '../utils/activity-log.js'
-import { getCurrentUser, getToken, logout } from './auth.js'
+import {
+  AUTH_CAMBIAR_PASSWORD_PATH,
+  getCurrentUser,
+  getToken,
+  notifyPasswordChangeRequired,
+  notifyUnauthorized,
+  PASSWORD_CHANGE_REQUIRED_API_MESSAGE,
+  PASSWORD_CHANGE_REQUIRED_CODE,
+  requiresPasswordChange,
+  SESSION_EXPIRED_CATCH_MESSAGE,
+} from './auth.js'
 import { getEmpresaContexto } from './empresa-context.js'
-
-function notifyUnauthorized() {
-  logout()
-  window.dispatchEvent(new CustomEvent('ca:unauthorized'))
-}
 
 export async function readErrorMessage(response, fallback) {
   const text = (await response.text()).trim()
@@ -27,10 +32,25 @@ export async function readErrorMessage(response, fallback) {
   return text
 }
 
-export function createApiError(message, status) {
+export function createApiError(message, status, code) {
   const error = new Error(message)
   error.status = Number(status) || 0
+  if (code) error.code = code
   return error
+}
+
+function isCambiarPasswordPath(path) {
+  return String(path ?? '').split('?')[0].toLowerCase() === AUTH_CAMBIAR_PASSWORD_PATH.toLowerCase()
+}
+
+async function isPasswordChangeRequiredResponse(response) {
+  if (requiresPasswordChange()) return true
+  try {
+    const message = await readErrorMessage(response.clone(), '')
+    return message === PASSWORD_CHANGE_REQUIRED_API_MESSAGE
+  } catch {
+    return false
+  }
 }
 
 function parseEmpresaId(value) {
@@ -94,7 +114,19 @@ export async function apiFetch(path, options = {}) {
 
   if (response.status === 401) {
     notifyUnauthorized()
-    throw new Error('Sesión expirada o no autorizada.')
+    throw createApiError(SESSION_EXPIRED_CATCH_MESSAGE, 401, 'UNAUTHORIZED')
+  }
+
+  if (response.status === 403 && !isCambiarPasswordPath(path)) {
+    const restricted = await isPasswordChangeRequiredResponse(response)
+    if (restricted) {
+      notifyPasswordChangeRequired()
+      throw createApiError(
+        PASSWORD_CHANGE_REQUIRED_API_MESSAGE,
+        403,
+        PASSWORD_CHANGE_REQUIRED_CODE,
+      )
+    }
   }
 
   return { url, response }

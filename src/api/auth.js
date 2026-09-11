@@ -1,10 +1,23 @@
 import { apiUrl } from '../config/api.js'
 import { isSuperadmin } from '../config/roles.js'
+import { showToast } from '../components/toast.js'
 import { logApiNetworkError, logApiResponse, logInfo } from '../utils/activity-log.js'
 import { clearEmpresaContexto } from './empresa-context.js'
 
 const SESSION_KEY = 'ca.auth.user'
 const TOKEN_KEY = 'ca.auth.token'
+const LOGIN_NOTICE_KEY = 'ca.auth.notice'
+
+export const SESSION_EXPIRED_CATCH_MESSAGE = 'Sesión expirada o no autorizada.'
+export const SESSION_EXPIRED_USER_MESSAGE = 'Tu sesión ya no es válida. Iniciá sesión nuevamente.'
+export const PASSWORD_CHANGE_REQUIRED_API_MESSAGE = 'Debés cambiar tu contraseña antes de continuar.'
+export const PASSWORD_CHANGED_LOGIN_MESSAGE =
+  'Contraseña actualizada. Iniciá sesión nuevamente con tu nueva contraseña.'
+export const PASSWORD_CHANGE_REQUIRED_CODE = 'PASSWORD_CHANGE_REQUIRED'
+export const AUTH_CAMBIAR_PASSWORD_PATH = '/api/Auth/cambiar-password'
+
+let unauthorizedNotified = false
+let passwordChangeNotified = false
 
 function readSession() {
   const raw = sessionStorage.getItem(SESSION_KEY)
@@ -41,6 +54,60 @@ export function getCurrentUser() {
 
 export function isAuthenticated() {
   return Boolean(getToken())
+}
+
+export function requiresPasswordChange(user = getCurrentUser()) {
+  return Boolean(user?.requiereCambioPassword) && isAuthenticated()
+}
+
+export function isSessionExpiredError(error) {
+  return error?.code === 'UNAUTHORIZED' || error?.message === SESSION_EXPIRED_CATCH_MESSAGE
+}
+
+export function isPasswordChangeRequiredError(error) {
+  return error?.code === PASSWORD_CHANGE_REQUIRED_CODE
+}
+
+export function setLoginNotice(message) {
+  const text = String(message ?? '').trim()
+  if (text) sessionStorage.setItem(LOGIN_NOTICE_KEY, text)
+}
+
+export function consumeLoginNotice() {
+  const text = sessionStorage.getItem(LOGIN_NOTICE_KEY)
+  sessionStorage.removeItem(LOGIN_NOTICE_KEY)
+  return text
+}
+
+export function resetSessionGuards() {
+  unauthorizedNotified = false
+  passwordChangeNotified = false
+}
+
+export function notifyUnauthorized() {
+  if (unauthorizedNotified) return
+  unauthorizedNotified = true
+  logout()
+  try {
+    showToast({ message: SESSION_EXPIRED_USER_MESSAGE, tone: 'error' })
+  } catch {
+    /* El toast requiere DOM; las pruebas de Node no lo montan. */
+  }
+  window.dispatchEvent(new CustomEvent('ca:unauthorized'))
+}
+
+export function markPasswordChangeRequired() {
+  const user = getCurrentUser()
+  if (user && !user.requiereCambioPassword) {
+    writeSession({ ...user, requiereCambioPassword: true })
+  }
+}
+
+export function notifyPasswordChangeRequired() {
+  markPasswordChangeRequired()
+  if (passwordChangeNotified) return
+  passwordChangeNotified = true
+  window.dispatchEvent(new CustomEvent('ca:password-change-required'))
 }
 
 function decodeJwtPayload(token) {
@@ -98,10 +165,21 @@ function userFromToken(token, fallbackEmail) {
     ) || 'Usuario'
   const empresaIdRaw = readClaim(payload, 'empresa_id', 'empresaId', 'EmpresaId')
   const empresaId = Number(empresaIdRaw)
+  const userIdRaw = readClaim(
+    payload,
+    'http://schemas.xmlsoap.org/ws/2005/05/identity/claims/nameidentifier',
+    'nameid',
+    'sub',
+  )
+  const userId = Number(userIdRaw)
   const user = {
     nombre,
     email,
     rol: rol || 'Usuario',
+  }
+
+  if (Number.isFinite(userId) && userId > 0) {
+    user.id = userId
   }
 
   if (Number.isFinite(empresaId) && empresaId > 0) {
@@ -181,15 +259,90 @@ export async function login({ email, password }) {
   writeToken(token)
 
   const user = userFromToken(token, normalizedEmail)
+  user.requiereCambioPassword = Boolean(
+    payload?.requiereCambioPassword ?? payload?.RequiereCambioPassword,
+  )
   if (!isSuperadmin(user)) {
     clearEmpresaContexto({ silent: true })
   }
+  resetSessionGuards()
   writeSession(user)
   return user
 }
 
+export async function cambiarPassword({ passwordActual, nuevaPassword, confirmarPassword }) {
+  const token = getToken()
+  if (!token) {
+    throw new Error('No hay sesión activa. Iniciá sesión para cambiar la contraseña.')
+  }
+
+  const path = AUTH_CAMBIAR_PASSWORD_PATH
+  const url = apiUrl(path)
+  let response
+
+  try {
+    response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        passwordActual,
+        nuevaPassword,
+        confirmarPassword,
+      }),
+    })
+  } catch (error) {
+    logApiNetworkError('POST', path)
+    console.error('Cambio de contraseña: error de red o CORS', { url, error })
+    throw new Error(
+      `No se pudo conectar con la API (${url}). Si el servidor responde, suele ser CORS o que el navegador no llega a esa URL.`,
+    )
+  }
+
+  logApiResponse('POST', path, response.status)
+
+  if (response.status === 401) {
+    notifyUnauthorized()
+    const error = new Error(SESSION_EXPIRED_CATCH_MESSAGE)
+    error.status = 401
+    error.code = 'UNAUTHORIZED'
+    throw error
+  }
+
+  if (!response.ok) {
+    const fallback = 'No se pudo cambiar la contraseña.'
+    let message = fallback
+    try {
+      const text = (await response.text()).trim()
+      if (text) {
+        const parsed = JSON.parse(text)
+        const apiMessage = parsed?.mensaje ?? parsed?.message
+        if (typeof apiMessage === 'string' && apiMessage.trim() && apiMessage.length <= 280) {
+          message = apiMessage.trim()
+        }
+      }
+    } catch {
+      message = fallback
+    }
+
+    const error = new Error(message)
+    error.status = response.status
+    throw error
+  }
+
+  return { mensaje: PASSWORD_CHANGED_LOGIN_MESSAGE }
+}
+
+export function finishPasswordChange() {
+  setLoginNotice(PASSWORD_CHANGED_LOGIN_MESSAGE)
+  logout()
+}
+
 export function logout() {
   logInfo('Autenticación', 'Cierre de sesión.')
+  passwordChangeNotified = false
   clearEmpresaContexto({ silent: true })
   clearSession()
 }

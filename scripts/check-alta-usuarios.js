@@ -150,7 +150,7 @@ await check('ADMIN no envía X-Empresa-Id', async () => {
   setEmpresaContexto({ id: 2, nombre: 'No debe usarse' })
   installFetch(async () => jsonResponse(201, { token: 'nuevo-jwt' }))
 
-  await createUsuario(altaDto({ empresaId: 9 }))
+  await createUsuario(altaDto({ empresaId: 9, rol: 'RRHH' }))
   const headers = fetchCalls[0].options.headers
   assert.equal(headers['X-Empresa-Id'], undefined)
   assert.equal(headers['x-empresa-id'], undefined)
@@ -195,7 +195,7 @@ await check('La contraseña se limpia después del intento', async () => {
   installFetch(async () => jsonResponse(201, { token: 'nuevo-jwt' }))
 
   try {
-    await createUsuario(altaDto({ empresaId: 9 }))
+    await createUsuario(altaDto({ empresaId: 9, rol: 'RRHH' }))
   } finally {
     clearPasswordInput(input)
   }
@@ -204,7 +204,7 @@ await check('La contraseña se limpia después del intento', async () => {
   input.value = 'otra-clave'
   installFetch(async () => jsonResponse(409, { mensaje: 'El correo ya está registrado o la empresa no existe.' }))
   try {
-    await createUsuario(altaDto({ empresaId: 9, email: 'dup@example.com' }))
+    await createUsuario(altaDto({ empresaId: 9, email: 'dup@example.com', rol: 'RRHH' }))
   } catch {
     // el alta falló; la contraseña igual debe limpiarse
   } finally {

@@ -9,13 +9,21 @@
  *   SuperAdmin: listado global o filtrado por query empresaId
  *   ADMIN: la API fuerza el empresa_id del claim e ignora la query
  *   Devuelve UsuarioListItemDto: id, empresaId, nombreUsuario, correo, rol, activo,
- *   requiereCambioPassword. Sin hash, contraseña temporal ni token.
+ *   requiereCambioPassword, bloqueado, bloqueadoHasta. Sin hash, temporal ni token.
  * - POST /api/usuarios  → Policy PuedeCrearUsuarios (SuperAdmin | ADMIN)
  *   SuperAdmin: X-Empresa-Id + body.empresaId coincidentes (JWT sin empresa_id)
- *   ADMIN: JWT empresa_id, sin X-Empresa-Id
- * - Restablecer / desbloquear / cambiar contraseña de otro usuario → existen en la API,
- *   pero todavía no validan la empresa del usuario objetivo. Quedan deshabilitados
- *   en el panel hasta que la API resuelva ese aislamiento.
+ *   ADMIN: JWT empresa_id, sin X-Empresa-Id. El body.rol se fuerza a RRHH en la API.
+ * - PATCH /api/usuarios/{id}/identidad { nombreUsuario, correo }.
+ *   Misma matriz que estado/reset. 409 si el correo pertenece a otro usuario.
+ * - PATCH /api/usuarios/{id}/estado { activo } y PATCH /api/usuarios/{id}/rol { rol: ADMIN|RRHH }.
+ *   SuperAdmin: ADMIN y RRHH de cualquier empresa; no sí mismo ni SuperAdmin.
+ *   ADMIN: solo estado de RRHH de su empresa; no cambia roles.
+ *   Fuera de alcance: 404. ADMIN contra PATCH rol in-scope: 403.
+ * - POST /api/usuarios/{id}/restablecer-password y /desbloquear
+ *   SuperAdmin: ADMIN y RRHH de cualquier empresa; 404 sobre SuperAdmin o sí mismo.
+ *   ADMIN: solo RRHH de su empresa. RRHH: 403 por policy.
+ * - El cambio definitivo lo hace el propio usuario en POST /api/Auth/cambiar-password.
+ *   No hay cambio administrativo de la clave definitiva de otra persona.
  * - GET  /api/empresas  → SuperAdmin: todas. ADMIN/RRHH: solo Id == empresa_id
  * - POST /api/empresas  → SoloSuperadmin
  * - POST /api/sucursales → SoloSuperadmin + X-Empresa-Id
@@ -31,13 +39,26 @@ import { isAdmin, isRrhh, isSuperadmin, normalizeRole } from './roles.js'
 
 export const API_ENABLEMENT_HINT = 'Esta acción todavía no está disponible.'
 
-export const USUARIO_ACCIONES_SENSIBLES_HINT =
-  'El restablecimiento de contraseña y el desbloqueo de cuentas quedan deshabilitados hasta que la API valide la empresa del usuario en esas operaciones.'
+export const USUARIO_ACCION_FUERA_DE_ALCANCE =
+  'No se encontró el usuario o no tenés permiso para esta acción.'
+
+export const USUARIOS_TABLE_COLUMNS = Object.freeze([
+  'Usuario',
+  'Correo',
+  'Rol',
+  'Empresa',
+  'Estado',
+  'Contraseña',
+  'Acciones',
+])
 
 export const API_ADMIN_ENDPOINTS = Object.freeze({
   listarUsuarios: true,
-  restablecerPasswordUsuario: false,
-  desbloquearUsuario: false,
+  restablecerPasswordUsuario: true,
+  desbloquearUsuario: true,
+  cambiarEstadoUsuario: true,
+  cambiarRolUsuario: true,
+  actualizarIdentidadUsuario: true,
   cambiarPasswordDeOtroUsuario: false,
   crearUsuariosComoAdmin: true,
   crearUsuariosComoSuperadmin: true,
@@ -83,6 +104,99 @@ export function puedeDesbloquearUsuario() {
 
 export function puedeCambiarPasswordDeOtroUsuario() {
   return API_ADMIN_ENDPOINTS.cambiarPasswordDeOtroUsuario === true
+}
+
+export function puedeCambiarEstadoUsuario() {
+  return API_ADMIN_ENDPOINTS.cambiarEstadoUsuario === true
+}
+
+export function puedeCambiarRolUsuario() {
+  return API_ADMIN_ENDPOINTS.cambiarRolUsuario === true
+}
+
+export function puedeActualizarIdentidadUsuario() {
+  return API_ADMIN_ENDPOINTS.actualizarIdentidadUsuario === true
+}
+
+function parseUsuarioId(value) {
+  const id = Number(value)
+  return Number.isFinite(id) && id > 0 ? id : null
+}
+
+function emailIdentidad(value) {
+  return String(value ?? '').trim().toLowerCase()
+}
+
+export function puedeIdentificarOperador(operador) {
+  return Boolean(parseUsuarioId(operador?.id) || emailIdentidad(operador?.email))
+}
+
+export function esMismoUsuario(operador, objetivo) {
+  const operadorId = parseUsuarioId(operador?.id)
+  const objetivoId = parseUsuarioId(objetivo?.id)
+  if (operadorId) return Boolean(objetivoId) && operadorId === objetivoId
+
+  const operadorEmail = emailIdentidad(operador?.email)
+  const objetivoEmail = emailIdentidad(objetivo?.correo ?? objetivo?.email)
+  return Boolean(operadorEmail && objetivoEmail && operadorEmail === objetivoEmail)
+}
+
+function mismaEmpresa(operador, objetivo) {
+  const operadorEmpresa = parsePositiveId(operador?.empresaId)
+  const objetivoEmpresa = parsePositiveId(objetivo?.empresaId)
+  return Boolean(operadorEmpresa && objetivoEmpresa && operadorEmpresa === objetivoEmpresa)
+}
+
+function puedeAdministrarUsuarioObjetivo(operador, objetivo) {
+  if (!objetivo || !parseUsuarioId(objetivo.id)) return false
+  if (!puedeIdentificarOperador(operador)) return false
+  if (isSuperadmin(objetivo) || esMismoUsuario(operador, objetivo)) return false
+
+  if (isSuperadmin(operador)) {
+    return isAdmin(objetivo) || isRrhh(objetivo)
+  }
+
+  if (isAdmin(operador)) {
+    return isRrhh(objetivo) && mismaEmpresa(operador, objetivo)
+  }
+
+  return false
+}
+
+export function puedeRestablecerUsuarioObjetivo(operador, objetivo) {
+  if (!puedeRestablecerPasswordUsuario()) return false
+  if (!objetivo?.activo) return false
+  return puedeAdministrarUsuarioObjetivo(operador, objetivo)
+}
+
+export function puedeDesbloquearUsuarioObjetivo(operador, objetivo) {
+  if (!puedeDesbloquearUsuario()) return false
+  if (!objetivo?.activo) return false
+  if (!objetivo?.bloqueado) return false
+  return puedeAdministrarUsuarioObjetivo(operador, objetivo)
+}
+
+export function puedeEditarUsuarioObjetivo(operador, objetivo) {
+  if (!puedeCambiarEstadoUsuario() && !puedeCambiarRolUsuario() && !puedeActualizarIdentidadUsuario()) {
+    return puedeRestablecerUsuarioObjetivo(operador, objetivo) || puedeDesbloquearUsuarioObjetivo(operador, objetivo)
+  }
+  return puedeAdministrarUsuarioObjetivo(operador, objetivo)
+}
+
+export function puedeCambiarEstadoUsuarioObjetivo(operador, objetivo) {
+  if (!puedeCambiarEstadoUsuario()) return false
+  return puedeAdministrarUsuarioObjetivo(operador, objetivo)
+}
+
+export function puedeCambiarRolUsuarioObjetivo(operador, objetivo) {
+  if (!puedeCambiarRolUsuario()) return false
+  if (!isSuperadmin(operador)) return false
+  return puedeAdministrarUsuarioObjetivo(operador, objetivo)
+}
+
+export function puedeActualizarIdentidadUsuarioObjetivo(operador, objetivo) {
+  if (!puedeActualizarIdentidadUsuario()) return false
+  return puedeAdministrarUsuarioObjetivo(operador, objetivo)
 }
 
 export function empresaIdDeTenant(user) {
