@@ -15,8 +15,13 @@ export const ROLES = {
   Rrhh: 'RRHH',
 }
 
-/** Valores exactos que POST /api/usuarios acepta (ADMIN | RRHH). */
+/** Valores exactos que POST /api/usuarios y PATCH /rol aceptan (ADMIN | RRHH). */
 export const USUARIO_ROLES_API = Object.freeze([ROLES.Admin, ROLES.Rrhh])
+
+export const USUARIO_ROL_LABELS = Object.freeze({
+  [ROLES.Admin]: 'Administrador',
+  [ROLES.Rrhh]: 'Recursos Humanos',
+})
 
 export function normalizeRole(userOrRole) {
   const raw = typeof userOrRole === 'string' ? userOrRole : userOrRole?.rol
@@ -43,4 +48,15 @@ export function canAccessAdministracion(user) {
 
 export function isAssignableUsuarioRole(role) {
   return USUARIO_ROLES_API.includes(normalizeRole(role))
+}
+
+export function usuarioRolLabel(role) {
+  const normalized = normalizeRole(role)
+  return USUARIO_ROL_LABELS[normalized] ?? (String(role ?? '').trim() || '—')
+}
+
+export function rolesAsignablesParaAlta(operador) {
+  if (isSuperadmin(operador)) return [...USUARIO_ROLES_API]
+  if (isAdmin(operador)) return [ROLES.Rrhh]
+  return []
 }

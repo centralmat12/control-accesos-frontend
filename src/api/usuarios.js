@@ -6,7 +6,7 @@
  * SuperAdmin: sin empresaId lista todas las empresas; con empresaId filtra ese tenant.
  * ADMIN: la API fuerza el empresa_id del claim, así que el cliente no envía empresaId.
  * Respuesta 200: UsuarioListItemDto[] { id, empresaId, nombreUsuario, correo, rol, activo,
- * requiereCambioPassword }. No incluye hash, contraseña temporal ni token.
+ * requiereCambioPassword, bloqueado, bloqueadoHasta }. Sin hash, temporal ni token.
  *
  * POST /api/usuarios — UsuarioRegistroDto: empresaId, nombreUsuario, email, password, rol.
  * Policy PuedeCrearUsuarios: SuperAdmin | ADMIN.
@@ -14,21 +14,27 @@
  * ADMIN: JWT empresa_id, sin X-Empresa-Id.
  * Respuesta 201: AuthResponseDto { token, mensaje }. El token no se guarda ni se muestra.
  *
- * Auditado contra ControlFichajes.API 632d6d4:
- * - restablecer-password, desbloquear y cambiar-password de otro usuario existen,
- *   pero no verifican la empresa del usuario objetivo: el panel no los expone todavía.
- * - Login responde 401 también cuando la cuenta está bloqueada (no hay 423 ni 429).
+ * POST /api/usuarios/{id}/restablecer-password — sin body. 200 { mensaje, passwordTemporal, venceEn }.
+ * POST /api/usuarios/{id}/desbloquear — sin body. 200 { mensaje }.
+ * PATCH /api/usuarios/{id}/identidad — { nombreUsuario, correo }. 409 si el correo es de otro usuario.
+ * PATCH /api/usuarios/{id}/estado — { activo }. PATCH /api/usuarios/{id}/rol — { rol: ADMIN|RRHH }.
+ * Fuera de alcance o inexistente: 404. El cambio definitivo no es administrativo.
  */
 import {
   validateEmailValue,
   validatePasswordConfirm,
   validateUsuarioPasswordPolicy,
 } from '../components/form-field.js'
-import { puedeCrearUsuarios, puedeListarUsuarios } from '../config/administracion.js'
+import {
+  USUARIO_ACCION_FUERA_DE_ALCANCE,
+  puedeCrearUsuarios,
+  puedeListarUsuarios,
+} from '../config/administracion.js'
 import {
   isAssignableUsuarioRole,
   isSuperadmin,
   normalizeRole,
+  rolesAsignablesParaAlta,
   USUARIO_ROLES_API,
 } from '../config/roles.js'
 import { pick } from '../utils/pick.js'
@@ -39,9 +45,12 @@ import { apiFetch, createApiError, readErrorMessage } from './http.js'
 export const USUARIO_API_CAPABILITIES = Object.freeze({
   listar: true,
   obtenerPorId: false,
-  restablecerPassword: false,
+  restablecerPassword: true,
   cambiarPassword: false,
-  desbloquear: false,
+  desbloquear: true,
+  cambiarEstado: true,
+  cambiarRol: true,
+  actualizarIdentidad: true,
   requiereCambioPassword: true,
   bloqueoPorIntentos: true,
 })
@@ -49,6 +58,11 @@ export const USUARIO_API_CAPABILITIES = Object.freeze({
 export const USUARIO_API_PATHS = Object.freeze({
   listar: '/api/usuarios',
   crear: '/api/usuarios',
+  restablecerPassword: (id) => `/api/usuarios/${id}/restablecer-password`,
+  desbloquear: (id) => `/api/usuarios/${id}/desbloquear`,
+  estado: (id) => `/api/usuarios/${id}/estado`,
+  rol: (id) => `/api/usuarios/${id}/rol`,
+  identidad: (id) => `/api/usuarios/${id}/identidad`,
 })
 
 export const USUARIO_LIST_FIELDS = Object.freeze([
@@ -59,6 +73,8 @@ export const USUARIO_LIST_FIELDS = Object.freeze([
   'rol',
   'activo',
   'requiereCambioPassword',
+  'bloqueado',
+  'bloqueadoHasta',
 ])
 
 export const USUARIO_LIST_FILTERS = Object.freeze([
@@ -130,18 +146,24 @@ export function validateUsuarioEmpresa(empresaId) {
   return ''
 }
 
-export function validateUsuarioRol(rol) {
-  if (!USUARIO_ROLES_API.includes(String(rol ?? '').trim())) return 'Seleccioná un rol.'
+export function validateUsuarioRol(rol, allowed = USUARIO_ROLES_API) {
+  const value = String(rol ?? '').trim()
+  const permitidos = Array.isArray(allowed) && allowed.length ? allowed : USUARIO_ROLES_API
+  if (!permitidos.includes(value)) return 'Seleccioná un rol.'
   return ''
 }
 
-export function validateUsuarioAlta(values = {}) {
+export const USUARIO_CORREO_DUPLICADO = 'Ese correo ya está registrado.'
+export const USUARIO_IDENTIDAD_CORREO_CONFIRM =
+  'El usuario deberá iniciar sesión con el nuevo correo. Sus sesiones actuales quedarán invalidadas.'
+
+export function validateUsuarioAlta(values = {}, { rolesPermitidos = USUARIO_ROLES_API } = {}) {
   const errors = {
     nombreUsuario: validateUsuarioNombre(values.nombreUsuario),
     email: validateUsuarioEmail(values.email),
     password: validateUsuarioPassword(values.password),
     empresaId: validateUsuarioEmpresa(values.empresaId),
-    rol: validateUsuarioRol(values.rol),
+    rol: validateUsuarioRol(values.rol, rolesPermitidos),
   }
 
   if (Object.prototype.hasOwnProperty.call(values, 'passwordConfirm')) {
@@ -149,6 +171,13 @@ export function validateUsuarioAlta(values = {}) {
   }
 
   return errors
+}
+
+export function validateUsuarioIdentidad(values = {}) {
+  return {
+    nombreUsuario: validateUsuarioNombre(values.nombreUsuario),
+    correo: validateUsuarioEmail(values.correo ?? values.email),
+  }
 }
 
 export function clearPasswordInput(input) {
@@ -225,7 +254,49 @@ export function mapUsuario(item) {
     requiereCambioPassword: Boolean(
       pick(item, 'requiereCambioPassword', 'RequiereCambioPassword'),
     ),
+    bloqueado: Boolean(pick(item, 'bloqueado', 'Bloqueado')),
+    bloqueadoHasta: pick(item, 'bloqueadoHasta', 'BloqueadoHasta') ?? null,
   }
+}
+
+export function estadoCuentaUsuario(usuario) {
+  if (!usuario?.activo) return 'Inactivo'
+  if (usuario?.bloqueado) return 'Bloqueado'
+  return 'Activo'
+}
+
+export function estadoPasswordUsuario(usuario) {
+  return usuario?.requiereCambioPassword ? 'Cambio requerido' : 'Normal'
+}
+
+export function discardPasswordTemporal(payload) {
+  if (!payload || typeof payload !== 'object') return null
+  payload.passwordTemporal = ''
+  payload.PasswordTemporal = ''
+  return payload
+}
+
+export function takePasswordTemporal(payload) {
+  const taken = {
+    passwordTemporal: String(payload?.passwordTemporal ?? payload?.PasswordTemporal ?? ''),
+    venceEn: payload?.venceEn ?? payload?.VenceEn ?? null,
+  }
+  discardPasswordTemporal(payload)
+  return taken
+}
+
+export async function completeUsuarioResetReveal({ result, isAlive = () => true, reveal, refresh } = {}) {
+  const taken = takePasswordTemporal(result)
+  if (!isAlive()) {
+    taken.passwordTemporal = ''
+    return { refreshed: false }
+  }
+
+  await reveal?.(taken)
+  taken.passwordTemporal = ''
+  if (!isAlive()) return { refreshed: false }
+  await refresh?.()
+  return { refreshed: true }
 }
 
 function normalizeUsuarios(payload) {
@@ -309,6 +380,178 @@ export async function getUsuarios(filtros = {}) {
   return filterUsuariosByEmpresa(usuarios, empresaSeleccionada)
 }
 
+function parseUsuarioId(value) {
+  const id = Number(value)
+  return Number.isFinite(id) && id > 0 ? id : null
+}
+
+async function postUsuarioAccion(path, empresaId) {
+  const { url, response } = await jsonRequest(path, {
+    method: 'POST',
+    empresaId: empresaId ?? undefined,
+  })
+
+  if (response.status === 404 || response.status === 403) {
+    throw createApiError(USUARIO_ACCION_FUERA_DE_ALCANCE, response.status)
+  }
+
+  if (response.status >= 500) {
+    console.error('Usuarios: la API no pudo completar la operación', { url, status: response.status })
+    throw createApiError('La API no pudo completar la operación. Intentá nuevamente más tarde.', response.status)
+  }
+
+  if (!response.ok) {
+    throw createApiError(
+      await publicApiMessage(response, `No se pudo completar la operación (${response.status}).`),
+      response.status,
+    )
+  }
+
+  try {
+    return await response.json()
+  } catch {
+    return {}
+  }
+}
+
+export async function restablecerPasswordUsuario(usuarioId, { empresaId } = {}) {
+  const id = parseUsuarioId(usuarioId)
+  if (!id) throw createApiError(USUARIO_ACCION_FUERA_DE_ALCANCE, 404)
+
+  const payload = await postUsuarioAccion(USUARIO_API_PATHS.restablecerPassword(id), empresaId)
+  return {
+    mensaje: String(payload?.mensaje ?? payload?.Mensaje ?? 'Contraseña temporal creada y marcada para cambio obligatorio.'),
+    passwordTemporal: String(payload?.passwordTemporal ?? payload?.PasswordTemporal ?? ''),
+    venceEn: payload?.venceEn ?? payload?.VenceEn ?? null,
+  }
+}
+
+export async function desbloquearUsuario(usuarioId, { empresaId } = {}) {
+  const id = parseUsuarioId(usuarioId)
+  if (!id) throw createApiError(USUARIO_ACCION_FUERA_DE_ALCANCE, 404)
+
+  const payload = await postUsuarioAccion(USUARIO_API_PATHS.desbloquear(id), empresaId)
+  return {
+    mensaje: String(payload?.mensaje ?? payload?.Mensaje ?? 'Cuenta desbloqueada.'),
+  }
+}
+
+async function patchUsuarioAccion(path, body, empresaId) {
+  const { url, response } = await jsonRequest(path, {
+    method: 'PATCH',
+    body: JSON.stringify(body),
+    empresaId: empresaId ?? undefined,
+  })
+
+  if (response.status === 404 || response.status === 403) {
+    throw createApiError(USUARIO_ACCION_FUERA_DE_ALCANCE, response.status)
+  }
+
+  if (response.status === 400) {
+    throw createApiError(await publicApiMessage(response, 'Los datos enviados no son válidos.'), 400)
+  }
+
+  if (response.status >= 500) {
+    console.error('Usuarios: la API no pudo completar la operación', { url, status: response.status })
+    throw createApiError('La API no pudo completar la operación. Intentá nuevamente más tarde.', response.status)
+  }
+
+  if (!response.ok) {
+    throw createApiError(
+      await publicApiMessage(response, `No se pudo completar la operación (${response.status}).`),
+      response.status,
+    )
+  }
+
+  try {
+    return await response.json()
+  } catch {
+    return {}
+  }
+}
+
+function mapUsuarioActualizado(payload, fallbackMensaje) {
+  const usuario = mapUsuario(payload?.usuario ?? payload?.Usuario ?? {})
+  return {
+    mensaje: String(payload?.mensaje ?? payload?.Mensaje ?? fallbackMensaje),
+    usuario,
+  }
+}
+
+export async function cambiarEstadoUsuario(usuarioId, activo, { empresaId } = {}) {
+  const id = parseUsuarioId(usuarioId)
+  if (!id) throw createApiError(USUARIO_ACCION_FUERA_DE_ALCANCE, 404)
+
+  const payload = await patchUsuarioAccion(USUARIO_API_PATHS.estado(id), { activo: Boolean(activo) }, empresaId)
+  return mapUsuarioActualizado(payload, 'Usuario actualizado correctamente.')
+}
+
+export async function cambiarRolUsuario(usuarioId, rol, { empresaId } = {}) {
+  const id = parseUsuarioId(usuarioId)
+  if (!id) throw createApiError(USUARIO_ACCION_FUERA_DE_ALCANCE, 404)
+  if (!isAssignableUsuarioRole(rol)) {
+    throw createApiError('El rol debe ser ADMIN o RRHH.', 400)
+  }
+
+  const payload = await patchUsuarioAccion(USUARIO_API_PATHS.rol(id), { rol: normalizeRole(rol) }, empresaId)
+  return mapUsuarioActualizado(payload, 'Usuario actualizado correctamente.')
+}
+
+export async function actualizarIdentidadUsuario(usuarioId, { nombreUsuario, correo } = {}, { empresaId } = {}) {
+  const id = parseUsuarioId(usuarioId)
+  if (!id) throw createApiError(USUARIO_ACCION_FUERA_DE_ALCANCE, 404)
+
+  const nombreError = validateUsuarioNombre(nombreUsuario)
+  if (nombreError) throw createApiError(nombreError, 400)
+
+  const correoError = validateUsuarioEmail(correo)
+  if (correoError) throw createApiError(correoError, 400)
+
+  const body = {
+    nombreUsuario: String(nombreUsuario ?? ''),
+    correo: String(correo ?? ''),
+  }
+
+  const { url, response } = await jsonRequest(USUARIO_API_PATHS.identidad(id), {
+    method: 'PATCH',
+    body: JSON.stringify(body),
+    empresaId: empresaId ?? undefined,
+  })
+
+  if (response.status === 404 || response.status === 403) {
+    throw createApiError(USUARIO_ACCION_FUERA_DE_ALCANCE, response.status)
+  }
+
+  if (response.status === 409) {
+    throw createApiError(USUARIO_CORREO_DUPLICADO, 409)
+  }
+
+  if (response.status === 400) {
+    throw createApiError(await publicApiMessage(response, 'Los datos enviados no son válidos.'), 400)
+  }
+
+  if (response.status >= 500) {
+    console.error('Usuarios: la API no pudo actualizar la identidad', { url, status: response.status })
+    throw createApiError('La API no pudo completar la operación. Intentá nuevamente más tarde.', response.status)
+  }
+
+  if (!response.ok) {
+    throw createApiError(
+      await publicApiMessage(response, `No se pudo completar la operación (${response.status}).`),
+      response.status,
+    )
+  }
+
+  let payload = {}
+  try {
+    payload = await response.json()
+  } catch {
+    payload = {}
+  }
+
+  return mapUsuarioActualizado(payload, 'Datos del usuario actualizados correctamente.')
+}
+
 async function createUsuarioOnce({ nombreUsuario, email, password, rol, empresaId }) {
   const empresa = parseEmpresaId(empresaId)
   if (!puedeCrearUsuarios(getCurrentUser(), empresa)) {
@@ -323,8 +566,14 @@ async function createUsuarioOnce({ nombreUsuario, email, password, rol, empresaI
   if (nombreError) throw createApiError(nombreError, 400)
 
   const normalizedRol = normalizeRole(rol)
-  if (!isAssignableUsuarioRole(normalizedRol)) {
-    throw createApiError('El rol debe ser ADMIN o RRHH.', 400)
+  const rolesPermitidos = rolesAsignablesParaAlta(getCurrentUser())
+  if (!rolesPermitidos.includes(normalizedRol) || !isAssignableUsuarioRole(normalizedRol)) {
+    throw createApiError(
+      rolesPermitidos.length === 1 && rolesPermitidos[0] === 'RRHH'
+        ? 'El rol debe ser RRHH.'
+        : 'El rol debe ser ADMIN o RRHH.',
+      400,
+    )
   }
 
   const dto = buildUsuarioRegistroDto({

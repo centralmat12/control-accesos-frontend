@@ -604,7 +604,7 @@ await check('Ningún secreto aparece en logs, bitácora, toast ni URL', async ()
   assert.equal(String(fetchCalls[0].url).includes(ONE_TIME_SECRET), false)
   const adminSrc = readSrc('../src/views/administracion.js')
   const secretSrc = readSrc('../src/components/agente-secret-panel.js')
-  const toasts = [...adminSrc.matchAll(/showToast\(\{[\s\S]*?\}\)/g)].map((match) => match[0])
+  const toasts = [...adminSrc.matchAll(/(?:showToast|viewToast)\(\{[\s\S]*?\}\)/g)].map((match) => match[0])
   assert.ok(toasts.length > 0)
   toasts.forEach((toast) => {
     assert.equal(toast.includes('clientSecret'), false)

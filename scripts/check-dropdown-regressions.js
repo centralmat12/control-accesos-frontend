@@ -84,7 +84,7 @@ check('6. Cambio de pestaña reatacha un listener al botón Nuevo usuario', () =
   const admin = read('src/views/administracion.js')
   assert.match(admin, /function renderUsuarios/)
   assert.match(admin, /id: 'admin-usuario-new'/)
-  assert.equal((admin.match(/addEventListener\('click', openUsuarioCreate\)/g) || []).length, 1)
+  assert.equal((admin.match(/addEventListener\('click', openUsuarioCreate/g) || []).length, 1)
 })
 
 check('7. Un único dropdown abierto y AbortController por instancia', () => {

@@ -1,5 +1,10 @@
-import { DEFAULT_VIEW, NAV_ITEMS, canAccessView } from './config/navigation.js'
-import { getCurrentUser, isAuthenticated, logout } from './api/auth.js'
+import { DEFAULT_VIEW, NAV_ITEMS, canAccessView, resolveAccessibleView } from './config/navigation.js'
+import {
+  getCurrentUser,
+  isAuthenticated,
+  logout,
+  requiresPasswordChange,
+} from './api/auth.js'
 import { EMPRESA_CONTEXTO_EVENT } from './api/empresa-context.js'
 import { createLayout } from './components/layout.js'
 import { setSidebarOpen } from './components/sidebar.js'
@@ -11,6 +16,7 @@ import { renderAdministracion } from './views/administracion.js'
 import { renderDashboard } from './views/dashboard.js'
 import { renderEmpleados } from './views/empleados.js'
 import { renderFichadas } from './views/fichadas.js'
+import { renderCambioPasswordObligatorio } from './views/cambiar-password.js'
 import { renderLogin } from './views/login.js'
 import { renderRegistros } from './views/registros.js'
 import { logInfo } from './utils/activity-log.js'
@@ -24,6 +30,7 @@ const views = {
 }
 
 let activeViewCleanup = null
+let passwordChangeViewActive = false
 
 function clearActiveView() {
   closeOpenDropdown()
@@ -49,13 +56,45 @@ export function bootstrap(root) {
     if (!user || !isAuthenticated()) {
       clearActiveView()
       mainEl = null
+      passwordChangeViewActive = false
       renderLogin(root, { onSuccess: mount })
       return
     }
 
+    if (requiresPasswordChange(user)) {
+      clearActiveView()
+      mainEl = null
+      passwordChangeViewActive = true
+      renderCambioPasswordObligatorio(root, {
+        onLogout: () => {
+          currentView = DEFAULT_VIEW
+          pendingViewOptions = {}
+          mount()
+        },
+        onCompleted: () => {
+          currentView = DEFAULT_VIEW
+          pendingViewOptions = {}
+          mount()
+        },
+      })
+      return
+    }
+
+    passwordChangeViewActive = false
+
     const openingLayout = !mainEl
 
     const navigate = (viewId, options = {}) => {
+      const userNow = getCurrentUser()
+      const requested = viewId
+      viewId = resolveAccessibleView(userNow, viewId)
+      if (requested !== viewId && !canAccessView(userNow, requested)) {
+        if (viewId === currentView && Object.keys(options).length === 0) {
+          setSidebarOpen(false)
+          return
+        }
+      }
+
       const changed = viewId !== currentView || Object.keys(options).length > 0
       if (viewId === currentView && Object.keys(options).length === 0) {
         setSidebarOpen(false)
@@ -88,6 +127,7 @@ export function bootstrap(root) {
 
     root.replaceChildren(layout)
     mainEl = main
+    currentView = resolveAccessibleView(user, currentView)
     viewExtras = { onNavigate: navigate, ...pendingViewOptions }
     pendingViewOptions = {}
     if (openingLayout) {
@@ -98,6 +138,16 @@ export function bootstrap(root) {
   }
 
   window.addEventListener('ca:unauthorized', () => {
+    clearActiveView()
+    mainEl = null
+    passwordChangeViewActive = false
+    currentView = DEFAULT_VIEW
+    pendingViewOptions = {}
+    mount()
+  })
+
+  window.addEventListener('ca:password-change-required', () => {
+    if (passwordChangeViewActive) return
     clearActiveView()
     mainEl = null
     currentView = DEFAULT_VIEW
@@ -113,6 +163,7 @@ export function bootstrap(root) {
 async function renderView(main, viewId, extras = {}) {
   clearActiveView()
   const user = getCurrentUser()
+  viewId = resolveAccessibleView(user, viewId)
 
   if (!canAccessView(user, viewId)) {
     const message =

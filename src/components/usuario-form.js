@@ -3,7 +3,7 @@ import {
   clearPasswordInput,
   validateUsuarioAlta,
 } from '../api/usuarios.js'
-import { USUARIO_ROLES_API } from '../config/roles.js'
+import { USUARIO_ROLES_API, usuarioRolLabel } from '../config/roles.js'
 import { escapeHtml } from '../utils/format.js'
 import { showToast } from './toast.js'
 import { enhanceSelectsIn, refreshEnhancedSelect } from './dropdown.js'
@@ -52,15 +52,49 @@ function empresaFieldMarkup({ permitirElegirEmpresa, empresaIdFija }) {
   `
 }
 
+function rolFieldMarkup(rolesPermitidos) {
+  const roles = rolesPermitidos.length ? rolesPermitidos : USUARIO_ROLES_API
+  if (roles.length === 1) {
+    const rol = roles[0]
+    return `
+      ${formStaticFieldMarkup({
+        id: 'usuario-rol',
+        label: 'Rol de acceso',
+        required: true,
+        valueHtml: escapeHtml(usuarioRolLabel(rol)),
+        helpText: 'Tu sesión solo puede crear usuarios de Recursos Humanos.',
+      })}
+      <input id="usuario-rol-value" name="rol" type="hidden" value="${escapeHtml(rol)}" />
+    `
+  }
+
+  return formFieldMarkup({
+    id: 'usuario-rol',
+    name: 'rol',
+    label: 'Rol de acceso',
+    required: true,
+    tag: 'select',
+    helpText: 'Define las funciones disponibles. Solo se permiten Administrador y Recursos Humanos.',
+    optionsHtml: `<option value="">Seleccionar...</option>${roles
+      .map((rol) => `<option value="${escapeHtml(rol)}">${escapeHtml(usuarioRolLabel(rol))}</option>`)
+      .join('')}`,
+  })
+}
+
 export function createUsuarioForm({
   onCancel,
   onSubmit,
   empresaIdPermitida = null,
   permitirElegirEmpresa = empresaIdPermitida == null,
+  rolesPermitidos = USUARIO_ROLES_API,
 } = {}) {
   const wrapper = document.createElement('div')
   const empresaIdFija = parsePositiveId(empresaIdPermitida)
   const canChooseEmpresa = permitirElegirEmpresa === true
+  const roles = (Array.isArray(rolesPermitidos) && rolesPermitidos.length
+    ? rolesPermitidos
+    : USUARIO_ROLES_API
+  ).filter((rol) => USUARIO_ROLES_API.includes(rol))
   const nombreIds = fieldIds('usuario-nombreUsuario')
   const emailIds = fieldIds('usuario-email')
   const passwordIds = fieldIds('usuario-password')
@@ -110,17 +144,7 @@ export function createUsuarioForm({
         helpText: 'Volvé a ingresar la contraseña.',
       })}
       ${empresaFieldMarkup({ permitirElegirEmpresa: canChooseEmpresa, empresaIdFija })}
-      ${formFieldMarkup({
-        id: 'usuario-rol',
-        name: 'rol',
-        label: 'Rol de acceso',
-        required: true,
-        tag: 'select',
-        helpText: 'Define las funciones disponibles. Solo se permiten ADMIN y RRHH.',
-        optionsHtml: `<option value="">Seleccionar...</option>${USUARIO_ROLES_API.map(
-          (rol) => `<option value="${escapeHtml(rol)}">${escapeHtml(rol)}</option>`,
-        ).join('')}`,
-      })}
+      ${rolFieldMarkup(roles)}
       <div class="flex flex-col-reverse gap-2 border-t border-slate-100 pt-4 sm:flex-row sm:justify-end">
         <button type="button" id="usuario-form-cancel" class="${BTN_SECONDARY_CLASS}">
           Cancelar
@@ -233,7 +257,7 @@ export function createUsuarioForm({
       name: 'rol',
       helpId: rolIds.helpId,
       errorId: rolIds.errorId,
-      getError: () => validateUsuarioAlta(readValues()).rol,
+      getError: () => validateUsuarioAlta(readValues(), { rolesPermitidos: roles }).rol,
     },
   ]
 
@@ -259,7 +283,7 @@ export function createUsuarioForm({
 
     showFormError('')
     const values = readValues()
-    const altaErrors = validateUsuarioAlta(values)
+    const altaErrors = validateUsuarioAlta(values, { rolesPermitidos: roles })
     const result = fields.validateAll()
     const hasAltaErrors = Object.values(altaErrors).some(Boolean)
     if (result.hasErrors || hasAltaErrors) {

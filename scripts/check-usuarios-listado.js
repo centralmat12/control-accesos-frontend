@@ -99,16 +99,16 @@ async function check(name, fn) {
   }
 }
 
-await check('Capacidades reales: listado disponible, acciones sensibles pendientes', () => {
+await check('Capacidades reales: listado, restablecer y desbloquear', () => {
   assert.equal(USUARIO_API_CAPABILITIES.listar, true)
   assert.equal(USUARIO_API_CAPABILITIES.requiereCambioPassword, true)
   assert.equal(USUARIO_API_CAPABILITIES.bloqueoPorIntentos, true)
   assert.equal(USUARIO_API_CAPABILITIES.obtenerPorId, false)
-  assert.equal(USUARIO_API_CAPABILITIES.restablecerPassword, false)
+  assert.equal(USUARIO_API_CAPABILITIES.restablecerPassword, true)
   assert.equal(USUARIO_API_CAPABILITIES.cambiarPassword, false)
-  assert.equal(USUARIO_API_CAPABILITIES.desbloquear, false)
-  assert.equal(puedeRestablecerPasswordUsuario(), false)
-  assert.equal(puedeDesbloquearUsuario(), false)
+  assert.equal(USUARIO_API_CAPABILITIES.desbloquear, true)
+  assert.equal(puedeRestablecerPasswordUsuario(), true)
+  assert.equal(puedeDesbloquearUsuario(), true)
   assert.equal(puedeCambiarPasswordDeOtroUsuario(), false)
 })
 
@@ -203,8 +203,10 @@ await check('5. RRHH no accede y no genera solicitudes', async () => {
 
 await check('6. Estado de carga antes de la respuesta', () => {
   const adminView = read('src/views/administracion.js')
-  assert.match(adminView, /if \(!usuariosLoaded\) \{\s*results\.replaceChildren\(createTableSkeleton\(/)
+  assert.match(adminView, /if \(!usuariosLoaded\) \{/)
+  assert.match(adminView, /createTableSkeleton\(/)
   assert.match(adminView, /label: 'Cargando usuarios'/)
+  assert.match(adminView, /USUARIOS_TABLE_COLUMNS\.length/)
   assert.match(adminView, /usuariosLoaded = false\s*\n\s*usuariosError = false\s*\n\s*paintUsuariosResults\(\)/)
 })
 
@@ -262,7 +264,7 @@ await check('9. El listado no expone hashes ni contraseñas', async () => {
 
   const adminView = read('src/views/administracion.js')
   assert.equal(/passwordHash/i.test(adminView), false)
-  assert.equal(/passwordTemporal/i.test(adminView), false)
+  assert.match(adminView, /createPasswordTemporalPanel/)
   assert.equal(/eyJ[A-Za-z0-9_-]+\./.test(adminView), false)
   assert.equal(/localStorage/.test(adminView), false)
 })
@@ -281,8 +283,12 @@ await check('10. El listado no ejecuta POST, PUT, PATCH ni DELETE', async () => 
   )
 
   const usuariosApi = read('src/api/usuarios.js')
-  const escrituras = usuariosApi.match(/method: '(PUT|PATCH|DELETE)'/g) ?? []
-  assert.deepEqual(escrituras, [])
+  assert.equal((usuariosApi.match(/method: 'PUT'/g) || []).length, 0)
+  assert.equal((usuariosApi.match(/method: 'DELETE'/g) || []).length, 0)
+  assert.equal((usuariosApi.match(/method: 'PATCH'/g) || []).length, 2)
+  assert.match(usuariosApi, /USUARIO_API_PATHS\.estado/)
+  assert.match(usuariosApi, /USUARIO_API_PATHS\.rol/)
+  assert.match(usuariosApi, /USUARIO_API_PATHS\.identidad/)
 })
 
 await check('11. La vista no agrega listeners globales al cambiar de pestaña', () => {
@@ -291,7 +297,9 @@ await check('11. La vista no agrega listeners globales al cambiar de pestaña', 
   assert.equal(/EMPRESA_CONTEXTO_EVENT/.test(adminView), false)
   // Un solo binding del tab por render y limpieza al desmontar la vista.
   assert.equal((adminView.match(/tabButtons\.forEach/g) || []).length, 2)
-  assert.match(adminView, /return \(\) => \{\s*\n\s*clearSecretHolder\(\)/)
+  assert.match(adminView, /life\.dispose\(\(\) => \{/)
+  assert.match(adminView, /listenerAbort\.abort\(\)/)
+  assert.match(adminView, /clearSecretHolder\(\)/)
 
   const app = read('src/app.js')
   assert.match(app, /activeViewCleanup\?\.\(\)/)
@@ -315,7 +323,7 @@ await check('12. Nuevo usuario continúa funcionando', async () => {
   assert.equal(fetchCalls[0].options.headers['X-Empresa-Id'], '4')
 
   const adminView = read('src/views/administracion.js')
-  assert.match(adminView, /#admin-usuario-new'\)\?\.addEventListener\('click', openUsuarioCreate\)/)
+  assert.match(adminView, /#admin-usuario-new'\)\?\.addEventListener\('click', openUsuarioCreate/)
 })
 
 await check('La UI ya no muestra el bloqueo estático del listado', () => {
@@ -323,8 +331,9 @@ await check('La UI ya no muestra el bloqueo estático del listado', () => {
   assert.equal(adminView.includes('Consulta de usuarios no disponible'), false)
   assert.equal(adminView.includes('El listado de usuarios todavía no está disponible'), false)
   assert.match(adminView, /getUsuarios\(\{ empresaId: empresaSeleccionadaId\(\) \}\)/)
-  assert.match(adminView, /USUARIO_ACCIONES_SENSIBLES_HINT/)
-  assert.equal(/restablecer-password|desbloquear/.test(adminView), false)
+  assert.equal(adminView.includes('USUARIO_ACCIONES_SENSIBLES_HINT'), false)
+  assert.equal(adminView.includes('/api/usuarios/'), false)
+  assert.equal(adminView.includes('/cambiar-password'), false)
 })
 
 await check('401 de login no revela si el correo existe', async () => {

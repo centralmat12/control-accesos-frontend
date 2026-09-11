@@ -6,6 +6,7 @@ import {
   FORM_HELP_FOCUS_CLASS,
   classTokens,
   fieldDescribedBy,
+  formPasswordFieldMarkup,
   isValidCuitChecksum,
   passwordRuleStates,
   shouldRevealFieldError,
@@ -107,6 +108,17 @@ check('Login no usa la política de contraseña de alta', () => {
   const loginSrc = readFileSync(join(dirname(fileURLToPath(import.meta.url)), '../src/views/login.js'), 'utf8')
   assert.equal(loginSrc.includes('validateUsuarioPasswordPolicy'), false)
   assert.match(loginSrc, /Ingresá la contraseña\./)
+})
+
+check('extraInputClass se aplica al input de contraseña', () => {
+  const markup = formPasswordFieldMarkup({
+    id: 'cambio-nuevaPassword',
+    name: 'nuevaPassword',
+    label: 'Nueva contraseña',
+    extraInputClass: 'dark:placeholder:text-slate-500',
+  })
+  assert.match(markup, /dark:placeholder:text-slate-500/)
+  assert.equal(markup.includes('dark:placeholder:slate-500'), false)
 })
 
 check('Contraseña: lista dinámica y confirmación', () => {
