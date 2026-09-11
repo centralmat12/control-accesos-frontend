@@ -12,7 +12,7 @@ import {
   sucursalFilterSummary,
   uniqueSortedSucursales,
 } from '../src/components/sucursal-multi-select.js'
-import { filterEmpleados } from '../src/utils/empleado-list.js'
+import { empleadosFiltersArePristine, filterEmpleados } from '../src/utils/empleado-list.js'
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..')
 let passed = 0
@@ -183,6 +183,46 @@ check('La vista usa IDs, checkbox accesible, limpiar y destroy', () => {
   assert.match(multi, /Sin sucursal asignada/)
   assert.equal(SUCURSAL_UNASSIGNED, '__unassigned__')
   assert.equal(/empleados-sucursal"/.test(view), false)
+})
+
+check('Filtros de empleados en una línea compacta', () => {
+  const view = read('src/views/empleados.js')
+  assert.match(view, /sm:flex-row sm:items-end sm:justify-between/)
+  assert.match(view, /id="empleados-new"/)
+  assert.equal(view.includes('mb-4 flex justify-end'), false)
+  assert.match(view, /md:min-w-\[300px\]/)
+  assert.match(view, /md:min-w-\[180px\] md:max-w-\[220px\]/)
+  assert.match(view, /md:min-w-\[170px\] md:max-w-\[200px\]/)
+  assert.match(view, /md:items-end/)
+  assert.match(view, /xl:flex-nowrap/)
+  assert.match(view, /empleados-summary/)
+  assert.match(view, /aria-label="Limpiar filtros"/)
+  assert.match(view, /h-11/)
+})
+
+check('Limpiar filtros habilitado y deshabilitado', () => {
+  assert.equal(empleadosFiltersArePristine({}), true)
+  assert.equal(
+    empleadosFiltersArePristine({
+      query: '',
+      sucursalIds: [],
+      includeUnassigned: false,
+      departamentoId: 'todos',
+      estado: 'todos',
+    }),
+    true,
+  )
+  assert.equal(empleadosFiltersArePristine({ query: 'ana' }), false)
+  assert.equal(empleadosFiltersArePristine({ sucursalIds: [2] }), false)
+  assert.equal(empleadosFiltersArePristine({ includeUnassigned: true }), false)
+  assert.equal(empleadosFiltersArePristine({ departamentoId: '11' }), false)
+  assert.equal(empleadosFiltersArePristine({ estado: 'pendientes' }), false)
+  const view = read('src/views/empleados.js')
+  assert.match(view, /empleadosFiltersArePristine/)
+  assert.match(view, /clearFiltersButton.disabled = pristine/)
+  assert.match(view, /updateClearFiltersState/)
+  assert.match(view, /sucursalFilter\.clear\(\)/)
+  assert.match(view, /estadoSelect.value = 'todos'/)
 })
 
 if (failed) {

@@ -94,7 +94,7 @@ function updatedResponse(usuario) {
 }
 
 function sectionOrder(markup) {
-  return ['resumen', 'acceso', 'rol', 'seguridad', 'estado']
+  return ['acciones', 'resumen', 'acceso']
     .map((name) => markup.indexOf(`data-section="${name}"`))
     .filter((index) => index >= 0)
 }
@@ -168,15 +168,17 @@ await check('6. Correo duplicado usa el mensaje de conflicto', async () => {
   )
 })
 
-await check('7-8. Guardar información nace deshabilitado y el panel exige cambios sin error', () => {
+await check('7-8. Guardar cambios nace deshabilitado y el panel exige cambios sin error', () => {
   const markup = usuarioEditPanelMarkup({
     usuario: usuarioApi(),
     operador: superadmin(),
   })
-  assert.match(markup, /data-action="guardar-identidad"[^>]*disabled/)
+  assert.match(markup, /data-action="guardar-cambios"[^>]*disabled/)
   const panel = read('src/components/usuario-edit-panel.js')
-  assert.match(panel, /identidadBusy \|\| !identidadChanged\(\) \|\| hasIdentidadErrors\(\)/)
+  assert.match(panel, /saveBusy \|\| !hasFormChanges\(\) \|\| hasIdentidadErrors\(\)/)
   assert.match(panel, /validateUsuarioIdentidad/)
+  assert.equal(markup.includes('Guardar información'), false)
+  assert.equal(markup.includes('Guardar rol'), false)
 })
 
 await check('9-11. PATCH identidad con body mínimo y un solo envío', async () => {
@@ -260,7 +262,9 @@ await check('13-14. Refresh desde GET y unmount evita efectos tardíos', async (
   assert.match(adminSrc, /await loadUsuarios\(\)/)
   assert.match(adminSrc, /getUsuarios\(/)
   assert.match(adminSrc, /if \(outcome\.status !== 'ok' \|\| !isViewAlive\(\)\) return outcome/)
-  assert.match(adminSrc, /usuarioAccionLock\.key\('identidad'/)
+  assert.match(adminSrc, /usuarioAccionLock\.key\('guardar'/)
+  assert.match(adminSrc, /applyUsuarioEditSaves/)
+  assert.match(adminSrc, /cambiarRolUsuario/)
 
   const life = createViewLifecycle()
   const effects = { modal: 0, toast: 0, render: 0 }
@@ -307,9 +311,12 @@ await check('15-18. Matriz de identidad y rol editable solo para SuperAdmin', ()
   assert.equal(markupAdmin.includes('id="usuario-edit-rol"'), false)
   assert.equal(markupAdmin.includes('Guardar rol'), false)
   assert.match(markupAdmin, /name="nombreUsuario"/)
+  assert.match(markupSa, /Datos de acceso y permisos/)
+  assert.match(markupSa, /Guardar cambios/)
+  assert.match(markupAdmin, /Guardar cambios/)
 })
 
-await check('19-21. Seguridad alineada, zona sensible al final y sin Eliminar', () => {
+await check('19-21. Acciones superiores según estado y sin Eliminar', () => {
   const sa = superadmin()
   const activo = usuarioEditPanelMarkup({
     usuario: usuarioApi({ bloqueado: true }),
@@ -321,28 +328,30 @@ await check('19-21. Seguridad alineada, zona sensible al final y sin Eliminar', 
   })
 
   assert.match(activo, /btn-secondary/)
-  assert.match(activo, /sm:flex-row sm:items-center sm:justify-between/)
-  assert.match(activo, /w-full sm:w-auto/)
-  assert.match(activo, /Restablecer contraseña/)
-  assert.match(activo, /Desbloquear cuenta/)
-  assert.equal(inactivo.includes('Restablecer contraseña'), false)
-  assert.equal(inactivo.includes('Desbloquear cuenta'), false)
+  assert.match(activo, /sm:flex-row sm:items-center sm:justify-end/)
+  assert.match(activo, /w-full shrink-0/)
+  assert.match(activo, /sm:w-auto/)
+  assert.match(activo, /Restablecer clave/)
+  assert.match(activo, /Desbloquear/)
+  assert.match(activo, /data-tooltip="/)
+  assert.equal(inactivo.includes('Restablecer clave'), false)
+  assert.equal(inactivo.includes('Desbloquear'), false)
   assert.match(inactivo, /Reactivar cuenta/)
   assert.match(activo, /Desactivar cuenta/)
-  assert.match(activo, /Desactivar usuario/)
+  assert.equal(activo.includes('Desactivar usuario'), false)
+  assert.equal(activo.includes('Zona de peligro'), false)
+  assert.equal(activo.includes('Seguridad'), false)
   assert.equal(activo.includes('Eliminar usuario'), false)
   assert.equal(inactivo.includes('Eliminar usuario'), false)
 
   const orderActivo = sectionOrder(activo)
-  assert.equal(orderActivo.length >= 4, true)
+  assert.equal(orderActivo.length, 3)
   assert.deepEqual(
     orderActivo,
     [...orderActivo].sort((a, b) => a - b),
   )
-  assert.ok(activo.indexOf('data-section="estado"') > activo.indexOf('data-section="seguridad"'))
-  assert.ok(activo.indexOf('data-section="seguridad"') > activo.indexOf('data-section="rol"'))
-  assert.ok(activo.indexOf('data-section="rol"') > activo.indexOf('data-section="acceso"'))
   assert.ok(activo.indexOf('data-section="acceso"') > activo.indexOf('data-section="resumen"'))
+  assert.ok(activo.indexOf('data-section="resumen"') > activo.indexOf('data-section="acciones"'))
 })
 
 await check('22. No existe DELETE ni cambio directo de contraseña', () => {
@@ -373,8 +382,9 @@ await check('23-24. Tema y layout responsive verificables por clases', () => {
   assert.match(modalSrc, /dialogClass/)
   assert.match(modalSrc, /dark:border-slate-700 dark:bg-slate-900/)
   assert.match(viewSrc, /dialogClass: 'max-w-2xl'/)
-  assert.match(markup, /sm:grid-cols-2 lg:grid-cols-5/)
-  assert.match(markup, /w-full sm:w-auto/)
+  assert.match(markup, /min-\[28rem\]:grid-cols-2 lg:grid-cols-\[minmax\(0,1fr\)_minmax\(0,1.5fr\)_minmax\(0,1.2fr\)_minmax\(0,1.6fr\)\]/)
+  assert.match(markup, /w-full shrink-0/)
+  assert.match(markup, /sm:w-auto/)
 })
 
 await check('25-26. Regresión de rol, estado, reset, unlock, alta y superficies vecinas', () => {

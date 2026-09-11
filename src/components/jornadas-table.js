@@ -108,11 +108,6 @@ export function createJornadasTable(
           .join('')
 
   section.innerHTML = `
-    <div class="space-y-2 border-b border-slate-200 px-4 py-3 text-xs leading-5 text-slate-500 dark:border-slate-700 dark:text-slate-400">
-      <p>El ingreso y el egreso del resumen se calculan usando la primera y la última marcación válida del día. Los movimientos originales permanecen disponibles para auditoría.</p>
-      <p>El horario previsto es el horario actual del empleado, no un historial de la fecha de la fichada.</p>
-      <p>Las jornadas que atraviesan medianoche pueden requerir una regla adicional basada en el turno asignado.</p>
-    </div>
     <div class="max-h-[65vh] overflow-auto">
       <table class="w-full divide-y divide-slate-200 dark:divide-slate-700">
         <thead class="sticky top-0 z-10 bg-slate-50 shadow-[0_1px_0_0_var(--color-slate-200)] dark:bg-slate-800 dark:shadow-[0_1px_0_0_var(--color-slate-700)]">

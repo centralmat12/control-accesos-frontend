@@ -110,9 +110,6 @@ export function createFichadasTable(
           .join('')
 
   section.innerHTML = `
-    <p class="border-b border-slate-200 px-4 py-3 text-xs leading-5 text-slate-500 dark:border-slate-700 dark:text-slate-400">
-      Esta vista conserva las marcaciones originales informadas por el dispositivo. Consultá Resumen de jornadas para ver el ingreso y egreso calculados.
-    </p>
     <div class="max-h-[65vh] overflow-auto">
       <table class="w-full divide-y divide-slate-200 dark:divide-slate-700">
         <thead class="sticky top-0 z-10 bg-slate-50 shadow-[0_1px_0_0_var(--color-slate-200)] dark:bg-slate-800 dark:shadow-[0_1px_0_0_var(--color-slate-700)]">

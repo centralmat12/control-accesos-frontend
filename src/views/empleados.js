@@ -4,6 +4,7 @@ import { canLoadTenantData, getOperativeEmpresaId } from '../api/empresa-context
 import { empresaDisplayName, getEmpresaActual } from '../api/empresas.js'
 import { filterDepartamentosForSucursalSelection, getDepartamentos } from '../api/departamentos.js'
 import { getSucursales } from '../api/sucursales.js'
+import { pageHeadingMarkup } from '../components/page-heading.js'
 import { isSuperadmin } from '../config/roles.js'
 import {
   createDeactivateConfirm,
@@ -20,15 +21,12 @@ import { createDetailSkeleton, createTableSkeleton } from '../components/skeleto
 import { DEPARTAMENTO_ALL, fillDepartamentoOptions, parseEntityId, setDepartamentoIdle } from '../components/sucursal-departamento-selects.js'
 import { createSucursalMultiSelect } from '../components/sucursal-multi-select.js'
 import { showToast } from '../components/toast.js'
-import { filterEmpleados, sortEmpleados } from '../utils/empleado-list.js'
+import { empleadosFiltersArePristine, filterEmpleados, sortEmpleados } from '../utils/empleado-list.js'
 import { summarizeEmpleadoDatos } from '../utils/empleado-alerts.js'
 import { DEFAULT_PAGE_SIZE, PAGE_SIZE_OPTIONS, paginateItems } from '../utils/paginate.js'
 
 const CONTROL_CLASS =
-  'w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none placeholder:text-slate-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 disabled:cursor-not-allowed disabled:opacity-60'
-
-const ENROLLMENT_COPY =
-  'Alta, consulta y baja lógica de las personas que registran fichadas. El enrolamiento de huella se realiza desde la app de escritorio.'
+  'h-11 w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none placeholder:text-slate-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 disabled:cursor-not-allowed disabled:opacity-60'
 
 function sessionEmpresaId() {
   return getOperativeEmpresaId(getCurrentUser())
@@ -51,12 +49,10 @@ export async function renderEmpleados(container, { initialQuery } = {}) {
     const view = document.createElement('div')
     view.className = 'space-y-6'
     view.innerHTML = `
-      <section>
-        <h2 class="text-xl font-semibold tracking-tight text-slate-900"></h2>
-        <p class="mt-1 text-sm text-slate-500">
-          ${ENROLLMENT_COPY}
-        </p>
-      </section>
+      ${pageHeadingMarkup({
+        title: 'Gestioná los empleados',
+        description: 'Administrá sus datos laborales, asignaciones y estado.',
+      })}
     `
     view.append(createSelectEmpresaState())
     container.replaceChildren(view)
@@ -67,26 +63,26 @@ export async function renderEmpleados(container, { initialQuery } = {}) {
   view.className = 'space-y-6'
 
   view.innerHTML = `
-    <section class="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-      <div>
-        <h2 class="text-xl font-semibold tracking-tight text-slate-900">Empleados</h2>
-        <p class="mt-1 text-sm text-slate-500">
-          ${ENROLLMENT_COPY}
-        </p>
+    <div class="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+      <div class="min-w-0 flex-1">
+        ${pageHeadingMarkup({
+          title: 'Gestioná los empleados',
+          description: 'Administrá sus datos laborales, asignaciones y estado.',
+        })}
       </div>
       <button
         type="button"
         id="empleados-new"
-        class="inline-flex items-center justify-center rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-60"
+        class="inline-flex h-11 w-full shrink-0 items-center justify-center rounded-lg bg-blue-600 px-4 text-sm font-semibold text-white hover:bg-blue-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
       >
         Nuevo empleado
       </button>
-    </section>
+    </div>
     <div id="empleados-banner"></div>
     <div id="empleados-summary" class="grid gap-3 sm:grid-cols-3"></div>
-    <section class="rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
-      <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4 xl:items-end">
-        <div class="min-w-0 sm:col-span-2">
+    <section class="rounded-xl border border-slate-200 bg-white px-3 py-3 shadow-sm sm:px-4">
+      <div class="flex flex-col gap-3 md:flex-row md:flex-wrap md:items-end xl:flex-nowrap">
+        <div class="min-w-0 flex-1 md:min-w-[300px]">
           <label for="empleados-search" class="mb-1.5 block text-sm font-medium text-slate-700">Buscar</label>
           <input
             id="empleados-search"
@@ -95,18 +91,18 @@ export async function renderEmpleados(container, { initialQuery } = {}) {
             class="${CONTROL_CLASS}"
           />
         </div>
-        <div class="min-w-0">
+        <div class="w-full min-w-0 md:w-[200px] md:min-w-[180px] md:max-w-[220px]">
           <label id="empleados-sucursal-label" class="mb-1.5 block text-sm font-medium text-slate-700">Sucursal</label>
           <div id="empleados-sucursal-host"></div>
         </div>
-        <div class="min-w-0">
+        <div class="w-full min-w-0 md:w-[200px] md:min-w-[180px] md:max-w-[220px]">
           <label for="empleados-departamento" class="mb-1.5 block text-sm font-medium text-slate-700">Departamento</label>
           <select id="empleados-departamento" class="${CONTROL_CLASS}" disabled aria-describedby="empleados-departamento-hint">
             <option value="${DEPARTAMENTO_ALL}">Todos</option>
           </select>
-          <p id="empleados-departamento-hint" class="mt-1 text-xs text-slate-500">Según las sucursales seleccionadas</p>
+          <p id="empleados-departamento-hint" class="sr-only">Según las sucursales seleccionadas</p>
         </div>
-        <div class="min-w-0 sm:col-span-2 xl:col-span-1">
+        <div class="w-full min-w-0 md:w-[185px] md:min-w-[170px] md:max-w-[200px]">
           <label for="empleados-estado" class="mb-1.5 block text-sm font-medium text-slate-700">Estado de datos</label>
           <select id="empleados-estado" class="${CONTROL_CLASS}">
             <option value="todos">Todos</option>
@@ -114,8 +110,14 @@ export async function renderEmpleados(container, { initialQuery } = {}) {
             <option value="pendientes">Con pendientes</option>
           </select>
         </div>
-        <div class="min-w-0 sm:col-span-2 xl:col-span-4 flex items-end">
-          <button type="button" id="empleados-clear-filters" class="${BTN_SECONDARY_CLASS}">
+        <div class="flex w-full shrink-0 md:w-auto md:items-end">
+          <button
+            type="button"
+            id="empleados-clear-filters"
+            class="${BTN_SECONDARY_CLASS} h-11 w-full md:w-auto"
+            aria-label="Limpiar filtros"
+            disabled
+          >
             Limpiar filtros
           </button>
         </div>
@@ -200,6 +202,11 @@ export async function renderEmpleados(container, { initialQuery } = {}) {
         !departamentoSelect.disabled && departamentoId ? String(departamentoId) : DEPARTAMENTO_ALL,
       estado: estadoSelect.value,
     }
+  }
+
+  function updateClearFiltersState() {
+    const pristine = empleadosFiltersArePristine(getFilters())
+    clearFiltersButton.disabled = pristine
   }
 
   function resetPage() {
@@ -590,6 +597,7 @@ export async function renderEmpleados(container, { initialQuery } = {}) {
   function onFilterChange() {
     highlightId = null
     resetPage()
+    updateClearFiltersState()
     renderResults()
   }
 
@@ -615,6 +623,7 @@ export async function renderEmpleados(container, { initialQuery } = {}) {
   })
 
   container.replaceChildren(view)
+  updateClearFiltersState()
   setDepartamentoIdle(departamentoSelect, departamentoHint, {
     includeAll: true,
     message: 'Cargando departamentos...',

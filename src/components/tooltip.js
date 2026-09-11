@@ -81,6 +81,12 @@ function bindDocumentEscape() {
     event.stopPropagation()
     clearActiveTooltip()
   })
+  document.addEventListener('pointerdown', (event) => {
+    if (!activeTooltip) return
+    const { anchor, panel } = activeTooltip
+    if (anchor.contains(event.target) || panel.contains(event.target)) return
+    clearActiveTooltip()
+  })
 }
 
 export function bindTooltipRoot(root) {
@@ -102,10 +108,20 @@ export function bindTooltipRoot(root) {
   root.addEventListener(
     'pointerleave',
     (event) => {
+      if (event.pointerType === 'touch') return
       const target = event.target.closest('[data-tooltip]')
       if (!target) return
       if (event.relatedTarget && target.contains(event.relatedTarget)) return
       clearActiveTooltip()
+    },
+    { signal: abort.signal },
+  )
+  root.addEventListener(
+    'click',
+    (event) => {
+      const target = event.target.closest('[data-tooltip]')
+      if (!target || !root.contains(target)) return
+      showTooltip(target, target.getAttribute('data-tooltip'))
     },
     { signal: abort.signal },
   )

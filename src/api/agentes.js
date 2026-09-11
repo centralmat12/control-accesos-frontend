@@ -325,6 +325,42 @@ export async function getAgentes({ sucursalId, empresaId } = {}) {
   return filterAgentesBySucursal(agentes, { sucursalId: sucursal, empresaId: empresa })
 }
 
+/**
+ * GET /api/agentes sin filtrar por sucursal. Solo SuperAdmin.
+ * No guarda secretos: mapAgente omite clientSecret.
+ */
+export async function listAgentesCatalog({ empresaId } = {}) {
+  const empresa = parseId(empresaId)
+  if (!puedeListarAgentes(getCurrentUser(), empresa)) {
+    throw createApiError('No tenés permiso para consultar agentes.', 403)
+  }
+
+  const { response } = await apiFetch(AGENTE_API_PATHS.listar, {
+    empresaId: empresa,
+    missingAuthMessage: 'No hay sesión activa. Iniciá sesión para consultar agentes.',
+    logLabel: 'Agentes',
+  })
+
+  if (response.status === 403) {
+    throw createApiError('No tenés permiso para consultar agentes.', 403)
+  }
+
+  if (response.status >= 500) {
+    throw createApiError('La API no pudo listar los agentes. Intentá nuevamente más tarde.', response.status)
+  }
+
+  if (!response.ok) {
+    throw createApiError(
+      await publicApiMessage(response, `No se pudieron cargar los agentes (${response.status}).`),
+      response.status,
+    )
+  }
+
+  const agentes = normalizeAgentes(await response.json())
+  if (!empresa) return agentes
+  return agentes.filter((agente) => !agente.empresaId || Number(agente.empresaId) === empresa)
+}
+
 async function createAgenteOnce({ sucursalId, empresaId, clientId, nombre }) {
   const sucursal = parseId(sucursalId)
   const empresa = parseId(empresaId)

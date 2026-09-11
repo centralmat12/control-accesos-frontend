@@ -1,12 +1,14 @@
 import { escapeHtml } from '../utils/format.js'
+import { FICHADAS_EXPORT_TITLE } from '../utils/fichadas-export.js'
 
 function rowHtml(cells) {
   return `<tr>${cells.map((cell) => `<td>${escapeHtml(cell)}</td>`).join('')}</tr>`
 }
 
-export function printReport({
-  title,
+export function buildFichadasPrintDocument({
+  title = FICHADAS_EXPORT_TITLE,
   empresa,
+  periodo,
   generatedAt,
   filters,
   totals,
@@ -14,8 +16,10 @@ export function printReport({
   rows,
   notes,
   summaryLines,
-}) {
+  landscape = false,
+} = {}) {
   const empresaLine = empresa ? `<p><strong>Empresa:</strong> ${escapeHtml(empresa)}</p>` : ''
+  const periodoLine = periodo ? `<p><strong>Período consultado:</strong> ${escapeHtml(periodo)}</p>` : ''
   const notesHtml = notes?.length
     ? `<ul class="notes">${notes.map((note) => `<li>${escapeHtml(note)}</li>`).join('')}</ul>`
     : ''
@@ -25,20 +29,26 @@ export function printReport({
         `<p><strong>Cantidad total:</strong> ${escapeHtml(String(totals?.total ?? 0))}</p>`,
         `<p><strong>Entradas:</strong> ${escapeHtml(String(totals?.entradas ?? 0))} · <strong>Salidas:</strong> ${escapeHtml(String(totals?.salidas ?? 0))}</p>`,
       ]
+  const filtersLine = filters
+    ? `<p class="filters"><strong>Filtros activos:</strong> ${escapeHtml(filters)}</p>`
+    : ''
 
-  const html = `<!DOCTYPE html>
+  return `<!DOCTYPE html>
 <html lang="es">
 <head>
   <meta charset="utf-8" />
   <title>${escapeHtml(title)}</title>
   <style>
-    @page { size: A4; margin: 14mm; }
+    @page { size: A4 ${landscape ? 'landscape' : 'portrait'}; margin: 12mm; }
     body { font-family: Arial, sans-serif; color: #0f172a; font-size: 12px; }
     h1 { font-size: 18px; margin: 0 0 8px; }
     p, li { margin: 0 0 4px; }
     .meta { margin-bottom: 12px; }
+    .filters { color: #475569; font-size: 11px; }
     .notes { margin: 8px 0 14px; padding-left: 18px; color: #334155; }
     table { width: 100%; border-collapse: collapse; }
+    thead { display: table-header-group; }
+    tr { break-inside: avoid; page-break-inside: avoid; }
     th, td { border: 1px solid #cbd5e1; padding: 6px; text-align: left; }
     th { background: #f1f5f9; font-size: 11px; text-transform: uppercase; }
   </style>
@@ -47,22 +57,26 @@ export function printReport({
   <h1>${escapeHtml(title)}</h1>
   <div class="meta">
     ${empresaLine}
-    <p><strong>Generado:</strong> ${escapeHtml(generatedAt)}</p>
-    <p><strong>Filtros:</strong> ${escapeHtml(filters)}</p>
+    ${periodoLine}
+    <p><strong>Generado:</strong> ${escapeHtml(generatedAt ?? '')}</p>
+    ${filtersLine}
     ${lines.join('\n    ')}
   </div>
   ${notesHtml}
   <table>
     <thead>
-      <tr>${columns.map((column) => `<th>${escapeHtml(column)}</th>`).join('')}</tr>
+      <tr>${(columns ?? []).map((column) => `<th>${escapeHtml(column)}</th>`).join('')}</tr>
     </thead>
     <tbody>
-      ${rows.map((row) => rowHtml(row)).join('')}
+      ${(rows ?? []).map((row) => rowHtml(row)).join('')}
     </tbody>
   </table>
 </body>
 </html>`
+}
 
+export function printReport(options) {
+  const html = buildFichadasPrintDocument(options)
   const popup = window.open('', '_blank', 'width=900,height=700')
   if (!popup) {
     throw new Error('El navegador bloqueó la ventana de impresión. Permití ventanas emergentes e intentá de nuevo.')

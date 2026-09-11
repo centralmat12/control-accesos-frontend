@@ -108,6 +108,7 @@ export function openModal({
   isDirty,
   discardPrompt,
   dialogClass = '',
+  canClose,
 } = {}) {
   closeOpenDropdown()
 
@@ -179,6 +180,16 @@ export function openModal({
     return closeOnBackdrop !== false
   }
 
+  function allowsEscapeClose() {
+    if (typeof closeOnEscape === 'function') return Boolean(closeOnEscape())
+    return closeOnEscape !== false
+  }
+
+  function allowsUserClose() {
+    if (typeof canClose === 'function') return Boolean(canClose())
+    return true
+  }
+
   function finalizeClose() {
     if (closed) return
     closed = true
@@ -201,6 +212,7 @@ export function openModal({
   async function close(options = {}) {
     if (closed) return
     if (confirming) return
+    if (options.force !== true && !allowsUserClose()) return
 
     if (shouldAskUnsavedClose({ force: options.force === true, unsavedChanges, dirty: readDirty() })) {
       confirming = true
@@ -230,7 +242,7 @@ export function openModal({
       return
     }
 
-    if (event.key !== 'Escape' || closeOnEscape === false) return
+    if (event.key !== 'Escape' || !allowsEscapeClose()) return
     event.preventDefault()
     event.stopPropagation()
     void close()

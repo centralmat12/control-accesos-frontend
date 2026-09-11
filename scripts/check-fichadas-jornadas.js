@@ -3,6 +3,33 @@ import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { buildCsv } from '../src/utils/csv.js'
+import { paginateItems } from '../src/utils/paginate.js'
+import {
+  FICHADAS_CSV_EXPORT_LABEL,
+  FICHADAS_CSV_FULL_WARNING,
+  FICHADAS_CSV_GENERATING_LABEL,
+  FICHADAS_CSV_LARGE_THRESHOLD,
+  FICHADAS_CSV_MODAL_SUBTITLE,
+  FICHADAS_CSV_MODAL_TITLE,
+  FICHADAS_CSV_RECOMMENDED,
+  FICHADAS_CSV_VIEW_TITLE,
+  FICHADAS_EXPORT_EMPTY_MESSAGE,
+  FICHADAS_EXPORT_NO_COLUMNS_MESSAGE,
+  FICHADAS_EXPORT_TITLE,
+  FICHADAS_FORBIDDEN_EXPORT_FIELDS,
+  buildFichadasCompleteSelection,
+  buildFichadasCsvPayload,
+  buildFichadasExportSnapshot,
+  buildFichadasViewSelection,
+  csvExportSummaryLabel,
+  fichadasCompleteQuery,
+  hasFichadasServerFilters,
+  needsLargeCsvConfirm,
+  resolveFichadasCsvSnapshot,
+  runFichadasCsvExportAttempt,
+} from '../src/utils/fichadas-export.js'
+import { fichadasCsvExportMarkup } from '../src/components/fichadas-csv-export.js'
+import { buildFichadasPrintDocument } from '../src/components/fichadas-print.js'
 import { formatTime, toDateKey } from '../src/utils/format.js'
 import { buildJornadas, buildJornadasCsvRows, JORNADA_ESTADO, summarizeJornadasVista } from '../src/utils/jornadas.js'
 import {
@@ -405,8 +432,11 @@ check('Columnas 1. Mostrar y ocultar cada columna opcional', () => {
   }
   const picker = read('src/components/column-picker.js')
   assert.match(picker, /Columnas opcionales/)
-  assert.match(picker, /alwaysVisibleLegend/)
-  assert.equal(picker.includes('input.disabled = column.required'), false)
+  assert.match(picker, /iconLock/)
+  assert.match(picker, /input.disabled = true/)
+  assert.match(picker, /FICHADAS_COLUMNS_INFO_TOOLTIP/)
+  assert.equal(picker.includes('alwaysVisibleLegend'), false)
+  assert.equal(picker.includes('CSV completo'), false)
 })
 
 check('Columnas 2. Las columnas esenciales no se pueden ocultar', () => {
@@ -519,8 +549,9 @@ check('Columnas 12. Impresión completa con columnas ocultas', () => {
   assert.equal(JORNADAS_EXPORT_HEADERS.includes('Posibles duplicados'), true)
   assert.equal(compactColumnIds('jornadas').includes('horarioPrevisto'), false)
   const view = read('src/views/fichadas.js')
-  assert.match(view, /columns: MOVIMIENTOS_EXPORT_HEADERS/)
-  assert.match(view, /columns: JORNADAS_PRINT_HEADERS/)
+  assert.match(view, /buildFichadasExportSnapshot\(selection, \{ mode: 'view' \}\)/)
+  assert.match(view, /openFichadasCsvExportModal/)
+  assert.match(view, /landscape: snapshot.landscape/)
 })
 
 check('Columnas 13. Móvil sin preferencia guardada', () => {
@@ -606,15 +637,42 @@ check('Duplicados 20. No se ejecutan solicitudes de escritura', () => {
   assert.match(read('src/views/fichadas.js'), /columnPicker\.destroy\(\)/)
 })
 
-check('Columnas opcionales: el menú no lista obligatorias', () => {
+check('Columnas obligatorias: listadas, marcadas, con candado y tooltip', () => {
   const picker = read('src/components/column-picker.js')
-  assert.match(picker, /Columnas opcionales/)
-  assert.match(picker, /alwaysVisibleLegend/)
-  assert.equal(picker.includes('Empleado, Fecha y Hora'), false)
-  assert.match(read('src/utils/fichadas-columns.js'), /Siempre visibles: Empleado, Fecha y Hora/)
-  assert.match(read('src/utils/fichadas-columns.js'), /Siempre visibles: Empleado, Fecha, Ingreso y Estado/)
+  const columns = read('src/utils/fichadas-columns.js')
+  assert.match(picker, /columnCatalog\(currentView\)\.forEach/)
+  assert.match(picker, /iconLock/)
+  assert.match(picker, /input.disabled = true/)
+  assert.match(picker, /cursor-not-allowed/)
+  assert.match(columns, /Empleado, Fecha y Hora permanecen siempre visibles/)
+  assert.match(columns, /Empleado, Fecha, Ingreso y Estado permanecen siempre visibles/)
+  assert.match(columns, /PDF y Vista actual del CSV utilizan las columnas seleccionadas/)
+  assert.equal(columns.includes('CSV completo'), false)
   const damaged = sanitizeColumnIds('movimientos', ['legajo'])
   assert.deepEqual(requiredColumnIds('movimientos').every((id) => damaged.includes(id)), true)
+})
+
+check('Fichadas limpia textos permanentes y usa tooltips accesibles', () => {
+  const view = read('src/views/fichadas.js')
+  const movimientos = read('src/components/fichadas-table.js')
+  const jornadas = read('src/components/jornadas-table.js')
+  const columns = read('src/utils/fichadas-columns.js')
+  assert.equal(view.includes('fichadas-filter-help'), false)
+  assert.equal(view.includes('Tipo y Método filtran los movimientos originales. El resumen de jornadas usa empleado y período, sin perder ingreso o egreso por el filtro de Tipo.'), false)
+  assert.match(view, /FICHADAS_MOVIMIENTOS_TAB_TOOLTIP/)
+  assert.match(view, /FICHADAS_JORNADAS_TAB_TOOLTIP/)
+  assert.match(view, /FICHADAS_TIPO_METODO_TOOLTIP/)
+  assert.match(view, /bindTooltipRoot\(view\)/)
+  assert.match(view, /unbindTooltipRoot\(view\)/)
+  assert.match(view, /lg:flex-row lg:items-end/)
+  assert.match(view, /sm:justify-end/)
+  assert.match(view, /px-3 py-3/)
+  assert.equal(movimientos.includes('Esta vista conserva las marcaciones originales informadas por el dispositivo'), false)
+  assert.equal(jornadas.includes('El horario previsto es el horario actual del empleado, no un historial de la fecha de la fichada.'), false)
+  assert.equal(jornadas.includes('Las jornadas que atraviesan medianoche pueden requerir una regla adicional'), false)
+  assert.match(columns, /Muestra las marcaciones originales informadas por el dispositivo/)
+  assert.match(columns, /Las jornadas nocturnas pueden requerir reglas adicionales/)
+  assert.match(columns, /Tipo y Método se aplican a los movimientos originales/)
 })
 
 check('Tooltip de movimiento intermedio accesible', () => {
@@ -637,6 +695,7 @@ check('Botones secundarios de Fichadas usan btn-secondary', () => {
   const css = read('src/style.css')
   assert.match(view, /id="fichadas-clear" class="\$\{BTN_SECONDARY_CLASS\}"/)
   assert.match(view, /id="fichadas-csv" class="\$\{BTN_SECONDARY_CLASS\}"/)
+  assert.equal(view.includes('fichadas-csv-completo'), false)
   assert.match(view, /id="fichadas-print" class="rounded-lg bg-blue-600/)
   assert.equal(view.includes('id="fichadas-print" class="${BTN_SECONDARY_CLASS}"'), false)
   assert.match(css, /\.btn-secondary/)
@@ -648,6 +707,311 @@ check('Botones secundarios de Fichadas usan btn-secondary', () => {
   assert.equal(/id="fichadas-clear"[^>]*style=/.test(view), false)
   assert.equal(/id="fichadas-csv"[^>]*style=/.test(view), false)
 })
+
+check('PDF con subconjunto de columnas visibles', () => {
+  const records = annotateMovimientos([
+    punch({ id: 1, hours: 8, minutes: 0, tipo: 'Entrada' }),
+    punch({ id: 2, hours: 18, minutes: 0, tipo: 'Salida', sucursalId: 3 }),
+  ])
+  const selection = buildFichadasViewSelection({
+    view: 'movimientos',
+    records,
+    columnIds: ['empleado', 'fecha', 'hora'],
+    filters: { periodo: 'hoy', tipo: 'Entrada', metodo: 'todos' },
+    empresa: 'devs',
+    generatedAt: '11/9/2026, 12:00',
+  })
+  const snapshot = buildFichadasExportSnapshot(selection, { mode: 'view' })
+  assert.deepEqual(snapshot.columnIds, ['empleado', 'fecha', 'hora'])
+  assert.equal(snapshot.headers.includes('Legajo'), false)
+  assert.equal(snapshot.headers.includes('Método'), false)
+  assert.equal(snapshot.printRows.length, 2)
+  assert.equal(snapshot.printRows[0].length, 3)
+  assert.equal(snapshot.title, FICHADAS_EXPORT_TITLE)
+  const html = buildFichadasPrintDocument({
+    title: snapshot.title,
+    empresa: snapshot.empresa,
+    periodo: snapshot.periodo,
+    generatedAt: snapshot.generatedAt,
+    filters: snapshot.filtersSummary,
+    columns: snapshot.headers,
+    rows: snapshot.printRows,
+    landscape: snapshot.landscape,
+  })
+  assert.match(html, /Reporte de fichadas/)
+  assert.match(html, /Empresa/)
+  assert.match(html, /Período consultado/)
+  assert.match(html, /thead \{ display: table-header-group/)
+  assert.match(html, /page-break-inside: avoid/)
+  assert.equal(html.includes('Legajo'), false)
+  assert.equal(html.includes('nav'), false)
+})
+
+check('CSV con subconjunto de columnas visibles', () => {
+  const records = annotateMovimientos([
+    punch({ id: 1, hours: 8, minutes: 0, tipo: 'Entrada' }),
+    punch({ id: 2, hours: 18, minutes: 0, tipo: 'Salida' }),
+  ])
+  const selection = buildFichadasViewSelection({
+    view: 'movimientos',
+    records,
+    columnIds: compactColumnIds('movimientos'),
+  })
+  const viewCsv = buildFichadasExportSnapshot(selection, { mode: 'view' })
+  assert.equal(viewCsv.headers.includes('Legajo'), false)
+  assert.equal(viewCsv.headers.includes('Método'), false)
+  const csv = buildCsv(viewCsv.headers, viewCsv.csvRows)
+  assert.match(csv, /^\uFEFF/)
+  assert.match(csv, /Empleado/)
+  assert.equal(csv.includes('Legajo'), false)
+  assert.match(viewCsv.csvRows[0][1], /^\d{4}-\d{2}-\d{2}$/)
+  assert.match(viewCsv.csvRows[0][2], /^\d{2}:\d{2}:\d{2}$/)
+
+  const full = buildFichadasExportSnapshot(selection, { mode: 'full' })
+  assert.deepEqual(full.columnIds, allColumnIds('movimientos'))
+  assert.equal(full.headers.includes('Legajo'), true)
+  assert.equal(full.recordCount, viewCsv.recordCount)
+})
+
+check('Exportación usa filtros, ordenamiento y todas las páginas', () => {
+  const filtered = filterMovimientosOriginales(
+    annotateMovimientos([
+      punch({ id: 1, hours: 8, minutes: 0, tipo: 'Entrada' }),
+      punch({ id: 2, hours: 9, minutes: 0, tipo: 'Salida' }),
+      punch({ id: 3, hours: 10, minutes: 0, tipo: 'Entrada' }),
+      punch({ id: 4, hours: 11, minutes: 0, tipo: 'Salida' }),
+      punch({ id: 5, hours: 12, minutes: 0, tipo: 'Entrada' }),
+    ]),
+    { tipo: 'Entrada', metodo: 'todos' },
+  )
+  const ordered = [...filtered].sort((a, b) => String(b.fechaHora).localeCompare(String(a.fechaHora)))
+  const paged = paginateItems(ordered, 1, 2)
+  assert.equal(paged.items.length, 2)
+  assert.equal(paged.pageCount > 1, true)
+  const snapshot = buildFichadasExportSnapshot(
+    buildFichadasViewSelection({
+      view: 'movimientos',
+      records: ordered,
+      columnIds: ['empleado', 'tipo'],
+      filters: { tipo: 'Entrada', metodo: 'todos', periodo: 'todos' },
+    }),
+    { mode: 'view' },
+  )
+  assert.equal(snapshot.recordCount, ordered.length)
+  assert.equal(snapshot.recordCount > paged.items.length, true)
+  assert.equal(snapshot.csvRows.every((row) => row[1] === 'Entrada'), true)
+  assert.equal(snapshot.csvRows[0][0], ordered[0].empleado)
+})
+
+check('Ausencia de resultados y ninguna columna seleccionada', () => {
+  const empty = buildFichadasExportSnapshot(
+    buildFichadasViewSelection({
+      view: 'movimientos',
+      records: [],
+      columnIds: allColumnIds('movimientos'),
+    }),
+    { mode: 'view' },
+  )
+  assert.equal(empty.canExport, false)
+  assert.equal(empty.disableReason, FICHADAS_EXPORT_EMPTY_MESSAGE)
+
+  const noCols = buildFichadasExportSnapshot(
+    buildFichadasViewSelection({
+      view: 'movimientos',
+      records: annotateMovimientos([punch({ id: 1, hours: 8, minutes: 0, tipo: 'Entrada' })]),
+      columnIds: [],
+    }),
+    { mode: 'view' },
+  )
+  assert.equal(noCols.canExport, false)
+  assert.equal(noCols.disableReason, FICHADAS_EXPORT_NO_COLUMNS_MESSAGE)
+  assert.equal(noCols.headers.length, 0)
+  const view = read('src/views/fichadas.js')
+  assert.match(view, /FICHADAS_EXPORT_EMPTY_MESSAGE/)
+  assert.match(view, /FICHADAS_EXPORT_NO_COLUMNS_MESSAGE/)
+  assert.match(view, /csvButton.disabled = !canOpenCsv/)
+  assert.match(view, /printButton.disabled = !canPrint/)
+})
+
+check('La exportación excluye campos sensibles', () => {
+  const snapshot = buildFichadasExportSnapshot(
+    buildFichadasViewSelection({
+      view: 'movimientos',
+      records: annotateMovimientos([punch({ id: 1, hours: 8, minutes: 0, tipo: 'Entrada', dispositivoId: 99 })]),
+      columnIds: allColumnIds('movimientos'),
+    }),
+    { mode: 'full' },
+  )
+  FICHADAS_FORBIDDEN_EXPORT_FIELDS.forEach((field) => {
+    assert.equal(snapshot.columnIds.includes(field), false)
+    assert.equal(snapshot.headers.includes(field), false)
+  })
+  assert.equal(snapshot.headers.some((header) => /jwt|hash|token|secret|huella|plantilla/i.test(header)), false)
+  const view = read('src/views/fichadas.js')
+  assert.match(view, /buildFichadasViewSelection/)
+  assert.match(view, /currentSelection\(\)/)
+  assert.equal(view.includes('passwordHash'), false)
+})
+
+check('El modal de CSV abre y cierra con la opción predeterminada', () => {
+  const markup = fichadasCsvExportMarkup({
+    viewRecordCount: 12,
+    viewColumnCount: 3,
+    completeRecordCount: 40,
+    completeColumnCount: 7,
+    selectedMode: 'view',
+  })
+  assert.match(markup, /role="radiogroup"/)
+  assert.match(markup, /value="view"/)
+  assert.match(markup, /checked/)
+  assert.match(markup, new RegExp(FICHADAS_CSV_VIEW_TITLE))
+  assert.match(markup, new RegExp(FICHADAS_CSV_RECOMMENDED))
+  assert.match(markup, new RegExp(csvExportSummaryLabel(12, 3)))
+  assert.match(markup, /Cancelar/)
+  assert.match(markup, new RegExp(FICHADAS_CSV_EXPORT_LABEL))
+  assert.equal(markup.includes('CSV completo'), false)
+
+  const modalSrc = read('src/components/fichadas-csv-export.js')
+  assert.match(modalSrc, /title: FICHADAS_CSV_MODAL_TITLE/)
+  assert.match(modalSrc, /subtitle: FICHADAS_CSV_MODAL_SUBTITLE/)
+  assert.match(modalSrc, /labelledBy: 'fichadas-csv-export-title'/)
+  assert.match(modalSrc, /closeOnEscape: \(\) => !busy/)
+  assert.match(modalSrc, /canClose: \(\) => !busy/)
+  assert.match(modalSrc, /closeOnBackdrop: \(\) => !busy/)
+  assert.equal(FICHADAS_CSV_MODAL_TITLE, 'Exportar fichadas')
+  assert.equal(FICHADAS_CSV_MODAL_SUBTITLE, 'Elegí qué información querés incluir en el archivo.')
+  const view = read('src/views/fichadas.js')
+  assert.match(view, /openFichadasCsvExportModal/)
+  assert.match(view, /csvExportModal\?\.close/)
+  assert.equal((view.match(/Exportar CSV/g) || []).length >= 1, true)
+  assert.equal(view.includes('fichadas-csv-completo'), false)
+})
+
+check('Vista filtrada y exportación completa usan el mismo generador', () => {
+  const filtered = filterMovimientosOriginales(
+    annotateMovimientos([
+      punch({ id: 1, hours: 8, minutes: 0, tipo: 'Entrada' }),
+      punch({ id: 2, hours: 18, minutes: 0, tipo: 'Salida' }),
+    ]),
+    { tipo: 'Entrada', metodo: 'todos' },
+  )
+  const all = annotateMovimientos([
+    punch({ id: 1, hours: 8, minutes: 0, tipo: 'Entrada' }),
+    punch({ id: 2, hours: 18, minutes: 0, tipo: 'Salida' }),
+  ])
+  const viewSelection = buildFichadasViewSelection({
+    view: 'movimientos',
+    records: filtered,
+    columnIds: ['empleado', 'fecha', 'hora'],
+    filters: { tipo: 'Entrada', metodo: 'todos', periodo: 'hoy', empleadoId: 7 },
+  })
+  const completeSelection = buildFichadasCompleteSelection({
+    view: 'movimientos',
+    records: all,
+  })
+  const viewSnap = resolveFichadasCsvSnapshot({ mode: 'view', viewSelection, completeSelection })
+  const fullSnap = resolveFichadasCsvSnapshot({ mode: 'full', viewSelection, completeSelection })
+  assert.equal(viewSnap.recordCount, 1)
+  assert.deepEqual(viewSnap.columnIds, ['empleado', 'fecha', 'hora'])
+  assert.equal(fullSnap.recordCount, 2)
+  assert.deepEqual(fullSnap.columnIds, allColumnIds('movimientos'))
+  assert.equal(fullSnap.headers.includes('Legajo'), true)
+  assert.equal(viewSnap.headers.includes('Legajo'), false)
+  const viewPayload = buildFichadasCsvPayload(viewSnap, '2024-01-08')
+  const fullPayload = buildFichadasCsvPayload(fullSnap, '2024-01-08')
+  assert.equal(viewPayload.ok, true)
+  assert.equal(fullPayload.ok, true)
+  assert.match(viewPayload.content, /^\uFEFF/)
+  assert.match(viewPayload.content, /Empleado/)
+  assert.equal(viewPayload.content.includes('Legajo'), false)
+  assert.match(fullPayload.content, /Legajo/)
+  assert.match(fullPayload.filename, /completo/)
+  assert.equal(hasFichadasServerFilters({ periodo: 'hoy', empleadoId: 7 }), true)
+  assert.equal(hasFichadasServerFilters({ periodo: 'todos' }), false)
+  assert.deepEqual(fichadasCompleteQuery(), {})
+  const view = read('src/views/fichadas.js')
+  assert.match(view, /getFichadas\(fichadasCompleteQuery\(\)\)/)
+  assert.match(view, /buildFichadasCsvPayload|downloadCsv/)
+  assert.match(read('src/components/fichadas-csv-export.js'), /runFichadasCsvExportAttempt/)
+  assert.match(read('src/utils/fichadas-export.js'), /buildCsv\(snapshot.headers, snapshot.csvRows\)/)
+})
+
+check('El modal de CSV documenta doble clic, permisos y campos sensibles', () => {
+  assert.equal(needsLargeCsvConfirm(FICHADAS_CSV_LARGE_THRESHOLD), true)
+  assert.equal(needsLargeCsvConfirm(1), false)
+  const markup = fichadasCsvExportMarkup({ busy: true })
+  assert.match(markup, new RegExp(FICHADAS_CSV_GENERATING_LABEL))
+  assert.match(markup, /disabled/)
+  assert.match(markup, new RegExp(FICHADAS_CSV_FULL_WARNING))
+  const view = read('src/views/fichadas.js')
+  assert.match(view, /getFichadas\(fichadasCompleteQuery\(\)\)/)
+  assert.equal(JSON.stringify(fichadasCompleteQuery()).includes('tipo'), false)
+  assert.equal(JSON.stringify(fichadasCompleteQuery()).includes('empleadoId'), false)
+  assert.match(read('src/api/fichadas.js'), /apiFetch\(`\/api\/fichadas/)
+  assert.match(read('src/components/fichadas-csv-export.js'), /if \(busy \|\| exporting\) return/)
+})
+
+const emptyPayload = buildFichadasCsvPayload(
+  resolveFichadasCsvSnapshot({
+    mode: 'view',
+    viewSelection: buildFichadasViewSelection({ view: 'movimientos', records: [], columnIds: ['empleado'] }),
+  }),
+  '2024-01-08',
+)
+assert.equal(emptyPayload.ok, false)
+assert.equal(emptyPayload.content, undefined)
+assert.equal(emptyPayload.message, FICHADAS_EXPORT_EMPTY_MESSAGE)
+passed += 1
+console.log('ok - Ausencia de resultados no arma un CSV')
+
+const csvDownloads = []
+const busyResult = await runFichadasCsvExportAttempt({
+  busy: true,
+  snapshot: resolveFichadasCsvSnapshot({
+    mode: 'view',
+    viewSelection: buildFichadasViewSelection({
+      view: 'movimientos',
+      records: annotateMovimientos([punch({ id: 1, hours: 8, minutes: 0, tipo: 'Entrada' })]),
+      columnIds: ['empleado'],
+    }),
+  }),
+  stamp: '2024-01-08',
+  download: (filename, content) => csvDownloads.push({ filename, content }),
+})
+const okResult = await runFichadasCsvExportAttempt({
+  busy: false,
+  snapshot: resolveFichadasCsvSnapshot({
+    mode: 'view',
+    viewSelection: buildFichadasViewSelection({
+      view: 'movimientos',
+      records: annotateMovimientos([punch({ id: 1, hours: 8, minutes: 0, tipo: 'Entrada' })]),
+      columnIds: ['empleado'],
+    }),
+  }),
+  stamp: '2024-01-08',
+  download: (filename, content) => csvDownloads.push({ filename, content }),
+})
+assert.equal(busyResult.status, 'busy')
+assert.equal(okResult.status, 'ok')
+assert.equal(csvDownloads.length, 1)
+const cancelled = await runFichadasCsvExportAttempt({
+  snapshot: resolveFichadasCsvSnapshot({
+    mode: 'full',
+    completeSelection: buildFichadasCompleteSelection({
+      view: 'movimientos',
+      records: Array.from({ length: FICHADAS_CSV_LARGE_THRESHOLD }, (_, index) =>
+        punch({ id: index + 1, hours: 8, minutes: 0, tipo: 'Entrada' }),
+      ),
+    }),
+  }),
+  stamp: '2024-01-08',
+  confirmLarge: async () => false,
+  download: () => csvDownloads.push({ skipped: true }),
+})
+assert.equal(cancelled.status, 'cancelled')
+assert.equal(csvDownloads.length, 1)
+passed += 1
+console.log('ok - Doble clic y confirmación de exportación grande')
 
 console.log(`${passed} passed, ${failed} failed`)
 if (failed > 0) process.exit(1)

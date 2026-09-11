@@ -33,11 +33,12 @@ import {
   getUsuarios,
   restablecerPasswordUsuario,
   createUsuario,
-  USUARIO_IDENTIDAD_CORREO_CONFIRM,
 } from '../api/usuarios.js'
+import { pageHeadingMarkup } from '../components/page-heading.js'
 import {
   API_ENABLEMENT_HINT,
   USUARIO_ACCION_FUERA_DE_ALCANCE,
+  USUARIOS_TABLE_CENTERED_COLUMNS,
   USUARIOS_TABLE_COLUMNS,
   empresaIdDeTenant,
   puedeAbrirNuevoUsuario,
@@ -66,8 +67,14 @@ import {
   createPasswordTemporalPanel,
 } from '../components/password-temporal-panel.js'
 import {
+  applyUsuarioEditSaves,
   createUsuarioEditPanel,
-  rolCambioConfirmMessage,
+  openUsuarioModificacionesConfirm,
+  USUARIO_EDIT_SUCCESS_MESSAGE,
+  USUARIO_EDIT_TITLE,
+  usuarioEditIdentidadPayload,
+  usuarioEditRolPayload,
+  usuarioEditSubtitle,
   usuarioEstadoConfirmMessage,
 } from '../components/usuario-edit-panel.js'
 import { createUsuarioForm } from '../components/usuario-form.js'
@@ -75,12 +82,24 @@ import { isAdmin, isSuperadmin, rolesAsignablesParaAlta, usuarioRolLabel } from 
 import { displayValue, escapeHtml, formatApiDateTime, formatDateTime } from '../utils/format.js'
 import { createKeyedLock, createViewLifecycle, runLockedConfirmAction } from '../utils/view-guard.js'
 
+const USUARIOS_COL_WIDTH = {
+  Estado: 'w-28 min-w-28',
+  Contraseña: 'w-36 min-w-36',
+  Bloqueo: 'w-36 min-w-36',
+  Acciones: 'w-32 min-w-32',
+}
+
+export function usuariosColumnAlignClass(label) {
+  return USUARIOS_TABLE_CENTERED_COLUMNS.includes(label) ? 'text-center' : 'text-left'
+}
+
 export function usuariosTableHeadMarkup(columns = USUARIOS_TABLE_COLUMNS) {
   return columns
-    .map(
-      (label) =>
-        `<th scope="col" class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">${escapeHtml(label)}</th>`,
-    )
+    .map((label) => {
+      const align = usuariosColumnAlignClass(label)
+      const width = USUARIOS_COL_WIDTH[label] ?? ''
+      return `<th scope="col" class="px-4 py-3 ${align} ${width} text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">${escapeHtml(label)}</th>`
+    })
     .join('')
 }
 
@@ -89,10 +108,10 @@ const USUARIO_FILA_ACCION_CLASS =
 
 export function usuarioFilaAccionesMarkup(operador, usuario) {
   if (!puedeEditarUsuarioObjetivo(operador, usuario)) {
-    return '<span class="text-sm text-slate-400">—</span>'
+    return '<div class="flex justify-center text-slate-400">—</div>'
   }
 
-  return `<div class="flex flex-col items-stretch gap-1.5 sm:items-start">
+  return `<div class="flex flex-col items-center justify-center gap-1.5">
       <button type="button" class="${USUARIO_FILA_ACCION_CLASS}" data-usuario-accion="editar" data-usuario-id="${usuario.id}" aria-label="Editar usuario">Editar usuario</button>
     </div>`
 }
@@ -168,19 +187,15 @@ export async function renderAdministracion(container) {
   view.className = 'space-y-6'
 
   view.innerHTML = `
-    <section class="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-      <div>
-        <h2 class="text-xl font-semibold tracking-tight text-slate-900">Administración</h2>
-        <p class="mt-1 text-sm text-slate-500">
-          Usuarios del panel y empresas. Las sucursales se administran dentro de cada empresa.
-        </p>
-      </div>
-    </section>
-    <div class="flex flex-wrap gap-2 rounded-xl border border-slate-200 bg-slate-50 p-1" role="tablist" aria-label="Secciones de administración">
-      <button type="button" data-section="${SECTIONS.usuarios}" role="tab" class="rounded-lg border px-4 py-2 text-sm font-medium">
+    ${pageHeadingMarkup({
+      title: 'Gestioná usuarios y empresas',
+      description: 'Administrá sus accesos, roles, estados y estructura organizativa.',
+    })}
+    <div class="inline-flex w-fit max-w-full flex-wrap gap-1 rounded-xl border border-slate-200 bg-slate-50 p-1 dark:border-slate-700 dark:bg-slate-800/60" role="tablist" aria-label="Secciones de administración">
+      <button type="button" data-section="${SECTIONS.usuarios}" role="tab" class="inline-flex rounded-lg border px-3 py-1.5 text-sm font-medium">
         Usuarios
       </button>
-      <button type="button" data-section="${SECTIONS.empresas}" role="tab" class="rounded-lg border px-4 py-2 text-sm font-medium">
+      <button type="button" data-section="${SECTIONS.empresas}" role="tab" class="inline-flex rounded-lg border px-3 py-1.5 text-sm font-medium">
         Empresas
       </button>
     </div>
@@ -250,7 +265,7 @@ export async function renderAdministracion(container) {
     }
     tabButtons.forEach((button) => {
       const active = button.dataset.section === section
-      button.className = `rounded-lg border px-4 py-2 text-sm font-medium ${active ? TAB_ACTIVE : TAB_IDLE}`
+      button.className = `inline-flex rounded-lg border px-3 py-1.5 text-sm font-medium ${active ? TAB_ACTIVE : TAB_IDLE}`
       button.setAttribute('aria-selected', String(active))
     })
     renderPanel()
@@ -346,7 +361,6 @@ export async function renderAdministracion(container) {
 
   function cuentaEstadoMarkup(usuario) {
     const estado = estadoCuentaUsuario(usuario)
-    const hasta = formatApiDateTime(usuario.bloqueadoHasta)
     const badge =
       estado === 'Bloqueado'
         ? badgeHtml('Bloqueado', 'danger')
@@ -354,14 +368,18 @@ export async function renderAdministracion(container) {
           ? badgeHtml('Inactivo', 'danger')
           : badgeHtml('Activo', 'success')
 
+    return `<div class="flex justify-center">${badge}</div>`
+  }
+
+  function bloqueoEstadoMarkup(usuario) {
+    const estado = estadoCuentaUsuario(usuario)
+    if (estado !== 'Bloqueado') {
+      return '<div class="flex justify-center text-slate-400">—</div>'
+    }
+    const hasta = formatApiDateTime(usuario.bloqueadoHasta)
     return `
-      <div class="flex flex-col gap-1">
-        ${badge}
-        ${
-          estado === 'Bloqueado' && hasta
-            ? `<p class="text-xs text-slate-500 dark:text-slate-400">Hasta ${escapeHtml(hasta)}</p>`
-            : ''
-        }
+      <div class="flex flex-col items-center justify-center gap-1 text-center">
+        <p class="text-xs font-medium text-slate-700 dark:text-slate-300">${hasta ? `Hasta ${escapeHtml(hasta)}` : 'Bloqueado'}</p>
       </div>
     `
   }
@@ -432,11 +450,11 @@ export async function renderAdministracion(container) {
     }
 
     const sectionEl = document.createElement('section')
-    sectionEl.className = 'overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm'
+    sectionEl.className = 'overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-900'
     sectionEl.innerHTML = `
       <div class="max-h-[65vh] overflow-auto">
-        <table class="min-w-full divide-y divide-slate-200">
-          <thead class="sticky top-0 z-10 bg-slate-50">
+        <table class="min-w-full divide-y divide-slate-200 dark:divide-slate-700">
+          <thead class="sticky top-0 z-10 bg-slate-50 dark:bg-slate-800">
             <tr>
               ${usuariosTableHeadMarkup()}
             </tr>
@@ -446,13 +464,14 @@ export async function renderAdministracion(container) {
               .map(
                 (usuario) => `
                   <tr class="hover:bg-slate-50 dark:hover:bg-slate-800/60">
-                    <td class="whitespace-nowrap px-4 py-3 text-sm font-medium text-slate-900 dark:text-slate-100">${displayValue(usuario.nombreUsuario)}</td>
-                    <td class="whitespace-nowrap px-4 py-3 text-sm text-slate-600 dark:text-slate-300">${displayValue(usuario.correo)}</td>
-                    <td class="whitespace-nowrap px-4 py-3 text-sm text-slate-600 dark:text-slate-300">${escapeHtml(usuarioRolLabel(usuario.rol))}</td>
-                    <td class="whitespace-nowrap px-4 py-3 text-sm text-slate-600 dark:text-slate-300">${displayValue(empresaLabel(usuario.empresaId))}</td>
-                    <td class="whitespace-nowrap px-4 py-3 text-sm">${cuentaEstadoMarkup(usuario)}</td>
-                    <td class="whitespace-nowrap px-4 py-3 text-sm">${passwordEstadoMarkup(usuario)}</td>
-                    <td class="px-4 py-3 text-sm">${usuarioAccionesMarkup(usuario)}</td>
+                    <td class="whitespace-nowrap px-4 py-3 text-left text-sm font-medium text-slate-900 dark:text-slate-100">${displayValue(usuario.nombreUsuario)}</td>
+                    <td class="whitespace-nowrap px-4 py-3 text-left text-sm text-slate-600 dark:text-slate-300">${displayValue(usuario.correo)}</td>
+                    <td class="whitespace-nowrap px-4 py-3 text-left text-sm text-slate-600 dark:text-slate-300">${escapeHtml(usuarioRolLabel(usuario.rol))}</td>
+                    <td class="whitespace-nowrap px-4 py-3 text-left text-sm text-slate-600 dark:text-slate-300">${displayValue(empresaLabel(usuario.empresaId))}</td>
+                    <td class="w-28 min-w-28 whitespace-nowrap px-4 py-3 text-center text-sm">${cuentaEstadoMarkup(usuario)}</td>
+                    <td class="w-36 min-w-36 whitespace-nowrap px-4 py-3 text-center text-sm"><div class="flex justify-center">${passwordEstadoMarkup(usuario)}</div></td>
+                    <td class="w-36 min-w-36 whitespace-nowrap px-4 py-3 text-center text-sm">${bloqueoEstadoMarkup(usuario)}</td>
+                    <td class="w-32 min-w-32 px-4 py-3 text-center text-sm">${usuarioAccionesMarkup(usuario)}</td>
                   </tr>
                 `,
               )
@@ -521,7 +540,7 @@ export async function renderAdministracion(container) {
       return
     }
     usuarioEditPanel.update(next)
-    usuarioEditSetSubtitle?.(next.nombreUsuario || next.correo)
+    usuarioEditSetSubtitle?.(usuarioEditSubtitle(next))
     applyUsuarioAccionBusy()
   }
 
@@ -692,82 +711,47 @@ export async function renderAdministracion(container) {
     await loadUsuarios()
   }
 
-  async function confirmarCambioRol(usuario, rol) {
-    if (String(rol) === String(usuario?.rol ?? '')) return
+  async function confirmarModificaciones(usuario, changes) {
+    if (!Array.isArray(changes) || changes.length === 0) return { status: 'cancelled' }
 
-    const key = usuarioAccionLock.key('rol', usuario.id)
-    const outcome = await runLockedConfirmAction({
-      lock: usuarioAccionLock,
-      key,
-      isAlive: isViewAlive,
-      onLockChange: () => applyUsuarioAccionBusy(),
-      confirm: () =>
-        openConfirmModal({
-          title: 'Cambiar rol',
-          message: rolCambioConfirmMessage(usuario.rol, rol),
-          confirmLabel: 'Cambiar rol',
-        }),
-      execute: () => cambiarRolUsuario(usuario.id, rol, { empresaId: empresaSeleccionadaId() }),
-    })
+    const key = usuarioAccionLock.key('guardar', usuario.id)
+    if (!usuarioAccionLock.acquire(key)) return { status: 'busy' }
+    applyUsuarioAccionBusy()
 
-    if (outcome.status === 'busy' || outcome.status === 'cancelled' || outcome.status === 'confirm-error') {
-      return
-    }
+    try {
+      if (!isViewAlive()) return { status: 'disposed' }
 
-    if (outcome.status === 'error') {
-      handleUsuarioAccionError(outcome.error, 'No se pudo actualizar el rol del usuario.')
-      return
-    }
+      const outcome = await openUsuarioModificacionesConfirm({
+        changes,
+        execute: () =>
+          applyUsuarioEditSaves({
+            changes,
+            saveIdentidad: () =>
+              actualizarIdentidadUsuario(
+                usuario.id,
+                usuarioEditIdentidadPayload(usuario, changes),
+                { empresaId: empresaSeleccionadaId() },
+              ),
+            saveRol: () =>
+              cambiarRolUsuario(usuario.id, usuarioEditRolPayload(changes), {
+                empresaId: empresaSeleccionadaId(),
+              }),
+          }),
+        onAfterAttempt: async (summary) => {
+          if (!isViewAlive()) return
+          if (summary?.status === 'ok') {
+            viewToast({ message: USUARIO_EDIT_SUCCESS_MESSAGE, tone: 'success' })
+          }
+          await loadUsuarios()
+        },
+      })
 
-    if (outcome.status !== 'ok' || !isViewAlive()) return
-    viewToast({ message: outcome.result?.mensaje || 'Usuario actualizado correctamente.', tone: 'success' })
-    await loadUsuarios()
-  }
-
-  async function confirmarCambioIdentidad(usuario, { nombreUsuario, correo }) {
-    const correoActual = String(usuario?.correo ?? '').trim()
-    const correoNuevo = String(correo ?? '').trim()
-    const correoCambia = correoActual !== correoNuevo
-    const key = usuarioAccionLock.key('identidad', usuario.id)
-    const outcome = await runLockedConfirmAction({
-      lock: usuarioAccionLock,
-      key,
-      isAlive: isViewAlive,
-      onLockChange: () => applyUsuarioAccionBusy(),
-      confirm: () =>
-        correoCambia
-          ? openConfirmModal({
-              title: 'Actualizar correo',
-              message: USUARIO_IDENTIDAD_CORREO_CONFIRM,
-              confirmLabel: 'Guardar información',
-            })
-          : Promise.resolve(true),
-      execute: () =>
-        actualizarIdentidadUsuario(
-          usuario.id,
-          { nombreUsuario, correo },
-          { empresaId: empresaSeleccionadaId() },
-        ),
-    })
-
-    if (outcome.status === 'busy' || outcome.status === 'cancelled' || outcome.status === 'confirm-error') {
+      if (outcome.status !== 'ok' || !isViewAlive()) return outcome
       return outcome
+    } finally {
+      usuarioAccionLock.release(key)
+      applyUsuarioAccionBusy()
     }
-
-    if (outcome.status === 'error') {
-      if (outcome.error?.status !== 409) {
-        handleUsuarioAccionError(outcome.error, 'No se pudieron actualizar los datos del usuario.')
-      }
-      return outcome
-    }
-
-    if (outcome.status !== 'ok' || !isViewAlive()) return outcome
-    viewToast({
-      message: outcome.result?.mensaje || 'Datos del usuario actualizados correctamente.',
-      tone: 'success',
-    })
-    await loadUsuarios()
-    return outcome
   }
 
   function openUsuarioEdit(usuario) {
@@ -779,13 +763,9 @@ export async function renderAdministracion(container) {
       usuario,
       operador: user,
       empresaLabel: empresaLabel(usuario.empresaId),
-      onRequestIdentidad: (payload) => {
+      onRequestSave: (changes) => {
         const actual = panelEdit.getUsuario()
-        return confirmarCambioIdentidad(actual, payload)
-      },
-      onRequestRol: (rol) => {
-        const actual = panelEdit.getUsuario()
-        void confirmarCambioRol(actual, rol)
+        return confirmarModificaciones(actual, changes)
       },
       onRequestEstado: (activo) => {
         const actual = panelEdit.getUsuario()
@@ -802,8 +782,8 @@ export async function renderAdministracion(container) {
     })
     usuarioEditPanel = panelEdit
     const modal = openModal({
-      title: 'Editar usuario',
-      subtitle: usuario.nombreUsuario || usuario.correo || '',
+      title: USUARIO_EDIT_TITLE,
+      subtitle: usuarioEditSubtitle(usuario),
       dialogClass: 'max-w-2xl',
       content: panelEdit.element,
       labelledBy: 'usuario-edit-title',

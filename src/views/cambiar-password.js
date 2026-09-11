@@ -4,7 +4,7 @@ import {
   getCurrentUser,
   logout,
 } from '../api/auth.js'
-import { APP_NAME } from '../config/navigation.js'
+import { brandLogoAuthMarkup } from '../components/brand-logo.js'
 import { createThemeToggle } from '../components/theme-toggle.js'
 import {
   applyPasswordConfirmPresentation,
@@ -36,13 +36,7 @@ export function renderCambioPasswordObligatorio(container, { onLogout, onComplet
   view.innerHTML = `
     <div id="cambio-theme-toggle" class="absolute right-4 top-4 sm:right-6 sm:top-6"></div>
     <div class="w-full max-w-md">
-      <div class="mb-8 flex flex-col items-center text-center">
-        <span class="flex h-12 w-12 items-center justify-center rounded-xl bg-blue-600 text-lg font-bold text-white">CA</span>
-        <h1 class="mt-4 text-xl font-semibold tracking-tight text-slate-900 dark:text-white">${APP_NAME}</h1>
-        <p class="mt-1 text-sm text-slate-500 dark:text-slate-400">
-          Debés cambiar tu contraseña antes de continuar.
-        </p>
-      </div>
+      ${brandLogoAuthMarkup({ subtitle: 'Debés cambiar tu contraseña antes de continuar.' })}
 
       <form id="cambio-password-form" class="rounded-2xl border border-slate-200 bg-white p-6 shadow-xl dark:border-slate-800 dark:bg-slate-900 sm:p-8" novalidate>
         <p class="text-sm text-slate-600 dark:text-slate-300">
