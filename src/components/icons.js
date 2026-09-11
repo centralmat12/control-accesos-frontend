@@ -98,6 +98,31 @@ export function iconEyeOff() {
   </svg>`
 }
 
+export function iconStatusOk() {
+  return `<svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true">
+    <path stroke-linecap="round" stroke-linejoin="round" d="M20 6 9 17l-5-5" />
+  </svg>`
+}
+
+export function iconStatusWarn() {
+  return `<svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true">
+    <path stroke-linecap="round" stroke-linejoin="round" d="M12 8v5m0 3h.01M10.3 3.7 2.2 18a2 2 0 0 0 1.74 3h16.12a2 2 0 0 0 1.74-3L13.7 3.7a2 2 0 0 0-3.4 0Z" />
+  </svg>`
+}
+
+export function iconStatusOff() {
+  return `<svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true">
+    <path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" />
+  </svg>`
+}
+
+export function iconStatusUnknown() {
+  return `<svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true">
+    <circle cx="12" cy="12" r="8" />
+    <path stroke-linecap="round" d="M12 8v4m0 4h.01" />
+  </svg>`
+}
+
 export function iconList() {
   return `<svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
     <path stroke-linecap="round" stroke-linejoin="round" d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01" />
@@ -107,6 +132,18 @@ export function iconList() {
 export function iconBuilding() {
   return `<svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
     <path stroke-linecap="round" stroke-linejoin="round" d="M4 21V5a1 1 0 0 1 1-1h6v17H4Zm8 0V9h7a1 1 0 0 1 1 1v11M8 8h.01M8 12h.01M8 16h.01M16 13h.01M16 17h.01" />
+  </svg>`
+}
+
+export function iconInfo() {
+  return `<svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+    <path stroke-linecap="round" stroke-linejoin="round" d="M12 16v-4m0-4h.01M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
+  </svg>`
+}
+
+export function iconLock() {
+  return `<svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+    <path stroke-linecap="round" stroke-linejoin="round" d="M7 11V8a5 5 0 0 1 10 0v3m-11 0h12v9H6z" />
   </svg>`
 }
 

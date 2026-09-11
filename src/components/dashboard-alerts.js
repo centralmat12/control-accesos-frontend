@@ -6,16 +6,27 @@ import { iconAlertTriangle } from './icons.js'
  * La huella solo se muestra pendiente cuando `tieneHuella` es false.
  * El estado de agente/lector no se infiere a partir de fichadas.
  */
-export function createDashboardAlerts(alertas, { onOpenEmpleados } = {}) {
-  if (!alertas?.items?.length) return null
+export function dashboardHasAlertas(alertas) {
+  return Array.isArray(alertas?.items) && alertas.items.length > 0
+}
 
-  const pendingCount = alertas.count ?? alertas.items.length
+export function dashboardContentLayout({ hasDataError = false, alertas } = {}) {
+  if (hasDataError) return 'error'
+  if (dashboardHasAlertas(alertas)) return 'split'
+  return 'wide'
+}
+
+export function createDashboardAlerts(alertas, { onOpenEmpleados } = {}) {
+  const items = Array.isArray(alertas?.items) ? alertas.items : []
+  if (!dashboardHasAlertas(alertas)) return null
+
+  const pendingCount = alertas?.count ?? items.length
   const section = document.createElement('section')
   section.className =
-    'rounded-xl border border-amber-300 bg-amber-50/80 p-5 shadow-sm shadow-amber-950/5 dark:border-amber-700/70 dark:bg-amber-950/30 dark:shadow-black/20'
+    'flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-amber-300 bg-amber-50/80 p-5 shadow-sm shadow-amber-950/5 dark:border-amber-700/70 dark:bg-amber-950/30 dark:shadow-black/20'
 
   const heading = document.createElement('div')
-  heading.className = 'mb-4'
+  heading.className = 'mb-4 shrink-0'
   heading.innerHTML = `
     <div class="flex items-start gap-3">
       <span class="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-amber-100 text-amber-800 ring-1 ring-inset ring-amber-600/20 dark:bg-amber-900/60 dark:text-amber-200 dark:ring-amber-400/20">
@@ -30,9 +41,9 @@ export function createDashboardAlerts(alertas, { onOpenEmpleados } = {}) {
   section.append(heading)
 
   const list = document.createElement('ul')
-  list.className = 'max-h-80 space-y-2 overflow-y-auto pr-1'
+  list.className = 'min-h-0 flex-1 space-y-2 overflow-y-auto pr-1'
 
-  alertas.items.forEach((item, index) => {
+  items.forEach((item, index) => {
     const copy = empleadoAlertCopy(item.empleado, item.missing)
     const li = document.createElement('li')
     li.innerHTML = `
@@ -61,7 +72,7 @@ export function createDashboardAlerts(alertas, { onOpenEmpleados } = {}) {
   const go = document.createElement('button')
   go.type = 'button'
   go.className =
-    'mt-4 text-sm font-semibold text-amber-900 underline-offset-2 hover:underline dark:text-amber-200'
+    'mt-4 shrink-0 text-sm font-semibold text-amber-900 underline-offset-2 hover:underline dark:text-amber-200'
   go.textContent = 'Ir a Empleados'
   go.addEventListener('click', () => onOpenEmpleados?.())
   section.append(go)

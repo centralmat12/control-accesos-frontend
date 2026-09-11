@@ -20,6 +20,7 @@ import { renderCambioPasswordObligatorio } from './views/cambiar-password.js'
 import { renderLogin } from './views/login.js'
 import { renderRegistros } from './views/registros.js'
 import { logInfo } from './utils/activity-log.js'
+import { assignViewHash, parseHashView, viewHash, writeViewHash } from './utils/hash-route.js'
 
 const views = {
   dashboard: renderDashboard,
@@ -44,10 +45,25 @@ export function bootstrap(root) {
   let pendingViewOptions = {}
   let mainEl = null
   let viewExtras = {}
+  let historyLock = false
 
   const refreshActiveView = () => {
     if (!mainEl || !isAuthenticated()) return
     void renderView(mainEl, currentView, viewExtras)
+  }
+
+  function resolvedHashView(user = getCurrentUser()) {
+    const parsed = parseHashView(globalThis.location?.hash)
+    const viewId = resolveAccessibleView(user, parsed.viewId)
+    return { parsed, viewId }
+  }
+
+  function canonicalizeHash(viewId, { valid = true } = {}) {
+    const expected = viewHash(viewId)
+    if (valid && expected === viewHash(parseHashView(globalThis.location?.hash).viewId) && !parseHashView(globalThis.location?.hash).empty) {
+      if ((globalThis.location?.hash || '') === expected) return
+    }
+    writeViewHash(viewId, { replace: true })
   }
 
   const mount = () => {
@@ -69,11 +85,13 @@ export function bootstrap(root) {
         onLogout: () => {
           currentView = DEFAULT_VIEW
           pendingViewOptions = {}
+          writeViewHash(DEFAULT_VIEW, { replace: true })
           mount()
         },
         onCompleted: () => {
           currentView = DEFAULT_VIEW
           pendingViewOptions = {}
+          writeViewHash(DEFAULT_VIEW, { replace: true })
           mount()
         },
       })
@@ -109,7 +127,12 @@ export function bootstrap(root) {
       currentView = viewId
       pendingViewOptions = options
       setSidebarOpen(false)
+      historyLock = true
+      assignViewHash(viewId)
       mount()
+      queueMicrotask(() => {
+        historyLock = false
+      })
     }
 
     const { root: layout, main } = createLayout({
@@ -121,13 +144,20 @@ export function bootstrap(root) {
         logout()
         currentView = DEFAULT_VIEW
         pendingViewOptions = {}
+        writeViewHash(DEFAULT_VIEW, { replace: true })
         mount()
       },
     })
 
     root.replaceChildren(layout)
     mainEl = main
-    currentView = resolveAccessibleView(user, currentView)
+    const fromHash = resolvedHashView(user)
+    if (!fromHash.parsed.valid || fromHash.parsed.empty || fromHash.viewId !== fromHash.parsed.viewId) {
+      canonicalizeHash(fromHash.viewId, { valid: fromHash.parsed.valid && !fromHash.parsed.empty })
+    } else if ((globalThis.location?.hash || '') !== viewHash(fromHash.viewId)) {
+      writeViewHash(fromHash.viewId, { replace: true })
+    }
+    currentView = fromHash.viewId
     viewExtras = { onNavigate: navigate, ...pendingViewOptions }
     pendingViewOptions = {}
     if (openingLayout) {
@@ -137,12 +167,51 @@ export function bootstrap(root) {
     void renderView(main, currentView, viewExtras)
   }
 
+  function onHistoryNavigation() {
+    if (historyLock) return
+    historyLock = true
+    queueMicrotask(() => {
+      historyLock = false
+    })
+
+    if (!isAuthenticated()) {
+      clearActiveView()
+      mainEl = null
+      passwordChangeViewActive = false
+      currentView = DEFAULT_VIEW
+      pendingViewOptions = {}
+      mount()
+      return
+    }
+
+    if (requiresPasswordChange(getCurrentUser())) {
+      if (!passwordChangeViewActive) mount()
+      return
+    }
+
+    const { parsed, viewId } = resolvedHashView()
+    if (!parsed.valid || parsed.empty || viewId !== parsed.viewId || (globalThis.location?.hash || '') !== viewHash(viewId)) {
+      writeViewHash(viewId, { replace: true })
+    }
+
+    if (viewId === currentView && Object.keys(pendingViewOptions).length === 0 && mainEl) {
+      setSidebarOpen(false)
+      return
+    }
+
+    currentView = viewId
+    pendingViewOptions = {}
+    setSidebarOpen(false)
+    mount()
+  }
+
   window.addEventListener('ca:unauthorized', () => {
     clearActiveView()
     mainEl = null
     passwordChangeViewActive = false
     currentView = DEFAULT_VIEW
     pendingViewOptions = {}
+    writeViewHash(DEFAULT_VIEW, { replace: true })
     mount()
   })
 
@@ -152,10 +221,21 @@ export function bootstrap(root) {
     mainEl = null
     currentView = DEFAULT_VIEW
     pendingViewOptions = {}
+    writeViewHash(DEFAULT_VIEW, { replace: true })
     mount()
   })
 
   window.addEventListener(EMPRESA_CONTEXTO_EVENT, refreshActiveView)
+  window.addEventListener('hashchange', onHistoryNavigation)
+  window.addEventListener('popstate', onHistoryNavigation)
+
+  if (isAuthenticated() && !requiresPasswordChange(getCurrentUser())) {
+    const initial = resolvedHashView()
+    currentView = initial.viewId
+    if (!initial.parsed.valid || initial.parsed.empty) {
+      writeViewHash(initial.viewId, { replace: true })
+    }
+  }
 
   mount()
 }

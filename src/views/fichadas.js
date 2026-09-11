@@ -3,47 +3,60 @@ import { getCurrentUser } from '../api/auth.js'
 import { canLoadTenantData } from '../api/empresa-context.js'
 import { empresaDisplayName, getEmpresaActual } from '../api/empresas.js'
 import { FICHADAS_LIMITE, getFichadas } from '../api/fichadas.js'
+import { pageHeadingMarkup } from '../components/page-heading.js'
 import { createEmpleadoCombobox } from '../components/empleado-combobox.js'
 import { createColumnPicker } from '../components/column-picker.js'
 import { BTN_SECONDARY_CLASS } from '../components/button-styles.js'
 import { createFichadasTable } from '../components/fichadas-table.js'
 import { createFeedbackState, createSelectEmpresaState } from '../components/feedback-state.js'
 import { printReport } from '../components/fichadas-print.js'
+import { openFichadasCsvExportModal } from '../components/fichadas-csv-export.js'
+import { showToast } from '../components/toast.js'
+import { bindTooltipRoot, unbindTooltipRoot } from '../components/tooltip.js'
 import { openJornadaDetalle } from '../components/jornada-detalle.js'
 import { createJornadasTable } from '../components/jornadas-table.js'
 import { createPagination } from '../components/pagination.js'
 import { createTableSkeleton } from '../components/skeleton.js'
 import { createStatCard } from '../components/stat-card.js'
-import { iconAlertTriangle, iconCalendar, iconClock, iconLogin, iconLogout } from '../components/icons.js'
-import { buildCsv, downloadCsv } from '../utils/csv.js'
+import { iconAlertTriangle, iconCalendar, iconClock, iconInfo, iconLogin, iconLogout } from '../components/icons.js'
+import { downloadCsv } from '../utils/csv.js'
 import {
-  displayMetodoLabel,
-  displayTipoLabel,
-  formatDate,
+  escapeHtml,
   formatDateTime,
-  formatTime,
   todayDateKey,
 } from '../utils/format.js'
-import { buildJornadas, buildJornadasCsvRows, summarizeJornadasVista } from '../utils/jornadas.js'
+import { buildJornadas, summarizeJornadasVista } from '../utils/jornadas.js'
 import {
-  JORNADAS_EXPORT_HEADERS,
-  JORNADAS_PRINT_HEADERS,
-  MOVIMIENTOS_EXPORT_HEADERS,
+  FICHADAS_JORNADAS_TAB_TOOLTIP,
+  FICHADAS_MOVIMIENTOS_TAB_TOOLTIP,
+  FICHADAS_TIPO_METODO_TOOLTIP,
   isMobileColumnViewport,
   loadColumnIds,
   saveColumnIds,
   visibleColumnCount,
 } from '../utils/fichadas-columns.js'
 import {
+  FICHADAS_EXPORT_EMPTY_MESSAGE,
+  FICHADAS_EXPORT_NO_COLUMNS_MESSAGE,
+  buildFichadasCompleteSelection,
+  buildFichadasExportSnapshot,
+  buildFichadasViewSelection,
+  fichadasCompleteQuery,
+  hasFichadasServerFilters,
+} from '../utils/fichadas-export.js'
+import {
   annotateMovimientos,
   filterMovimientosOriginales,
   summarizeMovimientosVista,
 } from '../utils/movimientos.js'
 import { DEFAULT_PAGE_SIZE, PAGE_SIZE_OPTIONS, paginateItems } from '../utils/paginate.js'
-import { describePeriodo, resolvePeriodRange } from '../utils/period.js'
+import { resolvePeriodRange } from '../utils/period.js'
 
 const CONTROL_CLASS =
-  'w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none placeholder:text-slate-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100'
+  'h-11 w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none placeholder:text-slate-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100'
+
+const INFO_BUTTON_CLASS =
+  'inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-slate-500 hover:bg-slate-100 hover:text-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 dark:hover:bg-slate-800 dark:hover:text-slate-200'
 
 /**
  * Decisión de filtros:
@@ -52,16 +65,8 @@ const CONTROL_CLASS =
  * Así el filtro visual de Tipo no oculta el ingreso o el egreso calculados.
  * Antes, Tipo y Método iban en la consulta y el resumen podía quedar parcial.
  */
-const FILTER_HELP =
-  'Tipo y Método filtran los movimientos originales. El resumen de jornadas usa empleado y período, sin perder ingreso o egreso por el filtro de Tipo.'
-
-function describeFilters(filters, empleadoLabel) {
-  const parts = []
-  parts.push(`Tipo: ${filters.tipo === 'todos' ? 'Todos' : displayTipoLabel(filters.tipo)}`)
-  parts.push(`Método: ${filters.metodo === 'todos' ? 'Todos' : displayMetodoLabel(filters.metodo)}`)
-  parts.push(describePeriodo(filters.periodo, filters.desde, filters.hasta))
-  if (empleadoLabel) parts.push(`Empleado: ${empleadoLabel}`)
-  return parts.join(' · ')
+function infoButtonMarkup({ id, tooltip, ariaLabel }) {
+  return `<button type="button" id="${escapeHtml(id)}" class="${INFO_BUTTON_CLASS}" data-tooltip="${escapeHtml(tooltip)}" aria-label="${escapeHtml(ariaLabel)}">${iconInfo()}</button>`
 }
 
 function empresaLabel(empresa) {
@@ -139,9 +144,10 @@ export async function renderFichadas(container) {
     const view = document.createElement('div')
     view.className = 'space-y-6'
     view.innerHTML = `
-      <section>
-        <p class="mt-1 text-sm text-slate-500">Consultá los registros de asistencia de los empleados.</p>
-      </section>
+      ${pageHeadingMarkup({
+        title: 'Consultá las fichadas',
+        description: 'Filtrá y revisá los registros de ingreso y egreso.',
+      })}
     `
     view.append(createSelectEmpresaState())
     container.replaceChildren(view)
@@ -152,15 +158,15 @@ export async function renderFichadas(container) {
   view.className = 'space-y-6'
 
   view.innerHTML = `
-    <section>
-      <h2 class="text-xl font-semibold tracking-tight text-slate-900 dark:text-slate-100">Fichadas</h2>
-      <p class="mt-1 text-sm text-slate-500 dark:text-slate-400">Consultá los registros de asistencia de los empleados.</p>
-    </section>
+    ${pageHeadingMarkup({
+      title: 'Consultá las fichadas',
+      description: 'Filtrá y revisá los registros de ingreso y egreso.',
+    })}
     <div id="fichadas-summary"></div>
-    <section class="rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-900 sm:p-5">
-      <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-5 xl:items-end">
-        <div id="fichadas-empleado-wrap" class="min-w-0 sm:col-span-2"></div>
-        <div>
+    <section class="rounded-xl border border-slate-200 bg-white px-3 py-3 shadow-sm dark:border-slate-700 dark:bg-slate-900">
+      <div class="flex flex-col gap-3 lg:flex-row lg:items-end">
+        <div id="fichadas-empleado-wrap" class="min-w-0 w-full lg:min-w-[16rem] lg:flex-[2]"></div>
+        <div class="w-full lg:w-44 lg:shrink-0">
           <label for="fichadas-periodo" class="mb-1.5 block text-sm font-medium text-slate-700 dark:text-slate-300">Período</label>
           <select id="fichadas-periodo" class="${CONTROL_CLASS}">
             <option value="todos">Todos / Sin filtro de fecha</option>
@@ -173,25 +179,31 @@ export async function renderFichadas(container) {
             <option value="personalizado">Personalizado</option>
           </select>
         </div>
-        <div>
-          <label for="fichadas-tipo" class="mb-1.5 block text-sm font-medium text-slate-700 dark:text-slate-300">Tipo</label>
-          <select id="fichadas-tipo" class="${CONTROL_CLASS}" aria-describedby="fichadas-filter-help">
-            <option value="todos">Todos</option>
-            <option value="Entrada">Entrada</option>
-            <option value="Salida">Salida</option>
-          </select>
-        </div>
-        <div>
-          <label for="fichadas-metodo" class="mb-1.5 block text-sm font-medium text-slate-700 dark:text-slate-300">Método</label>
-          <select id="fichadas-metodo" class="${CONTROL_CLASS}" aria-describedby="fichadas-filter-help">
-            <option value="todos">Todos</option>
-            <option value="Biometrico">Biométrico</option>
-            <option value="Manual">Manual</option>
-          </select>
+        <div class="flex w-full min-w-0 flex-col gap-3 sm:flex-row sm:items-end lg:flex-[1.4]">
+          <div class="min-w-0 flex-1">
+            <label for="fichadas-tipo" class="mb-1.5 block text-sm font-medium text-slate-700 dark:text-slate-300">Tipo</label>
+            <select id="fichadas-tipo" class="${CONTROL_CLASS}" aria-describedby="fichadas-tipo-metodo-info">
+              <option value="todos">Todos</option>
+              <option value="Entrada">Entrada</option>
+              <option value="Salida">Salida</option>
+            </select>
+          </div>
+          <div class="min-w-0 flex-1">
+            <label for="fichadas-metodo" class="mb-1.5 block text-sm font-medium text-slate-700 dark:text-slate-300">Método</label>
+            <select id="fichadas-metodo" class="${CONTROL_CLASS}" aria-describedby="fichadas-tipo-metodo-info">
+              <option value="todos">Todos</option>
+              <option value="Biometrico">Biométrico</option>
+              <option value="Manual">Manual</option>
+            </select>
+          </div>
+          ${infoButtonMarkup({
+            id: 'fichadas-tipo-metodo-info',
+            tooltip: FICHADAS_TIPO_METODO_TOOLTIP,
+            ariaLabel: 'Información sobre Tipo y Método',
+          })}
         </div>
       </div>
-      <p id="fichadas-filter-help" class="mt-3 text-xs leading-5 text-slate-500 dark:text-slate-400">${FILTER_HELP}</p>
-      <div id="fichadas-custom-dates" class="mt-4 hidden grid gap-4 sm:grid-cols-2">
+      <div id="fichadas-custom-dates" class="mt-3 hidden grid gap-3 sm:grid-cols-2">
         <div>
           <label for="fichadas-desde" class="mb-1.5 block text-sm font-medium text-slate-700 dark:text-slate-300">Desde</label>
           <input id="fichadas-desde" type="date" class="${CONTROL_CLASS}" />
@@ -201,12 +213,12 @@ export async function renderFichadas(container) {
           <input id="fichadas-hasta" type="date" class="${CONTROL_CLASS}" />
         </div>
       </div>
-      <p id="fichadas-date-error" class="mt-3 hidden text-sm text-red-600"></p>
-      <div class="mt-4 flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:justify-end">
+      <p id="fichadas-date-error" class="mt-2 hidden text-sm text-red-600"></p>
+      <div class="mt-2 flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:justify-end">
         <button type="button" id="fichadas-clear" class="${BTN_SECONDARY_CLASS}">
           Limpiar filtros
         </button>
-        <button type="button" id="fichadas-csv" class="${BTN_SECONDARY_CLASS}">
+        <button type="button" id="fichadas-csv" class="${BTN_SECONDARY_CLASS}" aria-label="Exportar CSV">
           Exportar CSV
         </button>
         <button type="button" id="fichadas-print" class="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-50">
@@ -215,13 +227,23 @@ export async function renderFichadas(container) {
       </div>
     </section>
     <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-      <div class="inline-flex rounded-lg border border-slate-200 bg-white p-1 shadow-sm dark:border-slate-700 dark:bg-slate-900" role="tablist" aria-label="Vista de fichadas">
+      <div class="inline-flex flex-wrap items-center gap-0.5 rounded-lg border border-slate-200 bg-white p-1 shadow-sm dark:border-slate-700 dark:bg-slate-900" role="tablist" aria-label="Vista de fichadas">
         <button type="button" id="fichadas-tab-movimientos" role="tab" aria-selected="true" class="rounded-md px-3 py-2 text-sm font-medium bg-blue-600 text-white">
           Movimientos registrados
         </button>
+        ${infoButtonMarkup({
+          id: 'fichadas-tab-movimientos-info',
+          tooltip: FICHADAS_MOVIMIENTOS_TAB_TOOLTIP,
+          ariaLabel: 'Información sobre Movimientos registrados',
+        })}
         <button type="button" id="fichadas-tab-jornadas" role="tab" aria-selected="false" class="rounded-md px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800">
           Resumen de jornadas
         </button>
+        ${infoButtonMarkup({
+          id: 'fichadas-tab-jornadas-info',
+          tooltip: FICHADAS_JORNADAS_TAB_TOOLTIP,
+          ariaLabel: 'Información sobre Resumen de jornadas',
+        })}
       </div>
       <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-4">
         <label for="fichadas-page-size" class="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-300">
@@ -238,6 +260,7 @@ export async function renderFichadas(container) {
     <div id="fichadas-results"></div>
     <div id="fichadas-pagination"></div>
   `
+  bindTooltipRoot(view)
 
   const summaryContainer = view.querySelector('#fichadas-summary')
   const results = view.querySelector('#fichadas-results')
@@ -272,6 +295,7 @@ export async function renderFichadas(container) {
   let pageSize = DEFAULT_PAGE_SIZE
   let loadSeq = 0
   let jornadaDetalleModal = null
+  let csvExportModal = null
   const columnStorage = window.localStorage
   const isMobileColumns = isMobileColumnViewport(window.innerWidth)
   const columnPrefs = {
@@ -340,9 +364,28 @@ export async function renderFichadas(container) {
     tabJornadas.setAttribute('aria-selected', String(activeView === 'jornadas'))
   }
 
-  function setExportEnabled(enabled) {
-    csvButton.disabled = !enabled
-    printButton.disabled = !enabled
+  function setExportEnabled({ canPrint = false, canOpenCsv = false, disableReason = '' } = {}) {
+    printButton.disabled = !canPrint
+    csvButton.disabled = !canOpenCsv
+    const reason = disableReason || ''
+    printButton.title = canPrint ? '' : reason
+    csvButton.title = canOpenCsv ? '' : reason
+  }
+
+  function currentSelection() {
+    const filters = getFilters()
+    const dataset = currentDataset(filters)
+    const records = activeView === 'movimientos' ? dataset.movimientos : dataset.jornadas
+    const selection = buildFichadasViewSelection({
+      view: activeView,
+      records,
+      columnIds: columnPrefs[activeView],
+      filters,
+      empresa: empresaLabel(empresa),
+      empleadoLabel: selectedEmpleadoLabel(),
+      generatedAt: formatDateTime(new Date().toISOString()),
+    })
+    return { filters, dataset, selection }
   }
 
   function resetPages() {
@@ -414,7 +457,7 @@ export async function renderFichadas(container) {
     paginationContainer.replaceChildren()
 
     if (error) {
-      setExportEnabled(false)
+      setExportEnabled({ canPrint: false, canOpenCsv: false, disableReason: error })
       countLabel.textContent = ''
       results.replaceChildren(
         renderTablePlaceholder({
@@ -430,11 +473,11 @@ export async function renderFichadas(container) {
       return
     }
 
-    const dataset = currentDataset(filters)
+    const { dataset, selection } = currentSelection()
     renderSummary(dataset)
 
     const isMovimientos = activeView === 'movimientos'
-    const rows = isMovimientos ? dataset.movimientos : dataset.jornadas
+    const rows = selection.records
     const noun = isMovimientos ? 'movimientos' : 'jornadas'
     const page = isMovimientos ? movimientosPage : jornadasPage
     const paged = paginateItems(rows, page, pageSize)
@@ -442,7 +485,12 @@ export async function renderFichadas(container) {
     if (isMovimientos) movimientosPage = paged.page
     else jornadasPage = paged.page
 
-    setExportEnabled(rows.length > 0)
+    const viewSnapshot = buildFichadasExportSnapshot(selection, { mode: 'view' })
+    setExportEnabled({
+      canPrint: viewSnapshot.canExport,
+      canOpenCsv: true,
+      disableReason: viewSnapshot.disableReason,
+    })
 
     if (rows.length === 0) {
       countLabel.textContent = `0 ${noun}`
@@ -500,7 +548,7 @@ export async function renderFichadas(container) {
     summaryContainer.replaceChildren()
     countLabel.textContent = ''
     paginationContainer.replaceChildren()
-    setExportEnabled(false)
+    setExportEnabled({ canPrint: false, canOpenCsv: false })
     results.replaceChildren(
       createTableSkeleton({
         rows: 8,
@@ -629,98 +677,68 @@ export async function renderFichadas(container) {
     return notes
   }
 
-  function exportCsv() {
-    const filters = getFilters()
+  function openCsvExport() {
+    const { filters, selection } = currentSelection()
     if (dateRangeError(filters)) return
-    const dataset = currentDataset(filters)
-    const stamp = todayDateKey()
-
-    if (activeView === 'movimientos') {
-      if (dataset.movimientos.length === 0) return
-      const csv = buildCsv(
-        MOVIMIENTOS_EXPORT_HEADERS,
-        dataset.movimientos.map((item) => [
-          item.empleado ?? '',
-          item.legajo ?? '',
-          item.fechaHora ? formatDate(item.fechaHora) : '',
-          item.fechaHora ? formatTime(item.fechaHora) : '',
-          displayTipoLabel(item.tipo),
-          displayMetodoLabel(item.metodo),
-          item.observacionLabel ?? '',
-        ]),
-      )
-      downloadCsv(`fichadas-${stamp}.csv`, csv)
-      return
-    }
-
-    if (dataset.jornadas.length === 0) return
-    const csv = buildCsv(
-      JORNADAS_EXPORT_HEADERS,
-      buildJornadasCsvRows(dataset.jornadas),
-    )
-    downloadCsv(`jornadas-${stamp}.csv`, csv)
+    csvExportModal?.close({ force: true })
+    csvExportModal = openFichadasCsvExportModal({
+      viewSelection: selection,
+      loadCompleteSelection: async () => {
+        const raw = hasFichadasServerFilters(filters)
+          ? await getFichadas(fichadasCompleteQuery())
+          : fichadas
+        const records =
+          activeView === 'jornadas' ? buildJornadas(raw, empleadoById) : annotateMovimientos(raw)
+        return buildFichadasCompleteSelection({
+          view: activeView,
+          records,
+          empresa: empresaLabel(empresa),
+          generatedAt: formatDateTime(new Date().toISOString()),
+        })
+      },
+      stamp: todayDateKey(),
+      download: downloadCsv,
+    })
   }
 
   function exportPrint() {
-    const filters = getFilters()
+    const { filters, dataset, selection } = currentSelection()
     if (dateRangeError(filters)) return
-    const dataset = currentDataset(filters)
-    const notes = exportNotes(fichadas.length >= FICHADAS_LIMITE, filters)
-    const filterText = describeFilters(filters, selectedEmpleadoLabel())
-
-    if (activeView === 'movimientos') {
-      if (dataset.movimientos.length === 0) return
-      const totals = dataset.movimientoTotals
-      printReport({
-        title: 'Reporte de movimientos registrados',
-        empresa: empresaLabel(empresa),
-        generatedAt: formatDateTime(new Date().toISOString()),
-        filters: filterText,
-        totals,
-        summaryLines: [
-          `<p><strong>Movimientos totales:</strong> ${totals.total}</p>`,
-          `<p><strong>Entradas informadas:</strong> ${totals.entradas} · <strong>Salidas informadas:</strong> ${totals.salidas} · <strong>Posibles duplicados:</strong> ${totals.posiblesDuplicados}</p>`,
-        ],
-        columns: MOVIMIENTOS_EXPORT_HEADERS,
-        rows: dataset.movimientos.map((item) => [
-          item.empleado ?? '',
-          item.legajo ?? '',
-          item.fechaHora ? formatDate(item.fechaHora) : '',
-          item.fechaHora ? formatTime(item.fechaHora) : '',
-          displayTipoLabel(item.tipo),
-          displayMetodoLabel(item.metodo),
-          item.observacionLabel ?? '',
-        ]),
-        notes,
-      })
+    const snapshot = buildFichadasExportSnapshot(selection, { mode: 'view' })
+    if (snapshot.columnIds.length === 0) {
+      showToast({ message: FICHADAS_EXPORT_NO_COLUMNS_MESSAGE, tone: 'warning' })
+      return
+    }
+    if (!snapshot.recordCount) {
+      showToast({ message: FICHADAS_EXPORT_EMPTY_MESSAGE, tone: 'warning' })
       return
     }
 
-    if (dataset.jornadas.length === 0) return
-    const totals = dataset.jornadaTotals
+    const notes = exportNotes(fichadas.length >= FICHADAS_LIMITE, filters)
+    const totals = selection.view === 'movimientos' ? dataset.movimientoTotals : dataset.jornadaTotals
+    const summaryLines =
+      selection.view === 'movimientos'
+        ? [
+            `<p><strong>Movimientos totales:</strong> ${totals.total}</p>`,
+            `<p><strong>Entradas informadas:</strong> ${totals.entradas} · <strong>Salidas informadas:</strong> ${totals.salidas} · <strong>Posibles duplicados:</strong> ${totals.posiblesDuplicados}</p>`,
+          ]
+        : [
+            `<p><strong>Jornadas:</strong> ${totals.total}</p>`,
+            `<p><strong>Completas:</strong> ${totals.completas} · <strong>En curso:</strong> ${totals.enCurso} · <strong>Pendientes:</strong> ${totals.pendientes}</p>`,
+          ]
+
     printReport({
-      title: 'Reporte de resumen de jornadas',
-      empresa: empresaLabel(empresa),
-      generatedAt: formatDateTime(new Date().toISOString()),
-      filters: filterText,
+      title: snapshot.title,
+      empresa: snapshot.empresa,
+      periodo: snapshot.periodo,
+      generatedAt: snapshot.generatedAt,
+      filters: snapshot.filtersSummary,
       totals,
-      summaryLines: [
-        `<p><strong>Jornadas:</strong> ${totals.total}</p>`,
-        `<p><strong>Completas:</strong> ${totals.completas} · <strong>En curso:</strong> ${totals.enCurso} · <strong>Pendientes:</strong> ${totals.pendientes}</p>`,
-      ],
-      columns: JORNADAS_PRINT_HEADERS,
-      rows: dataset.jornadas.map((item) => [
-        item.empleado ?? '',
-        item.legajo ?? '',
-        item.fecha,
-        item.horarioPrevisto,
-        item.ingresoHora,
-        item.egresoHora,
-        item.fichadasIntermediasLabel,
-        String(item.posiblesDuplicados ?? 0),
-        item.estado,
-      ]),
+      summaryLines,
+      columns: snapshot.headers,
+      rows: snapshot.printRows,
       notes,
+      landscape: snapshot.landscape,
     })
   }
 
@@ -735,7 +753,7 @@ export async function renderFichadas(container) {
     renderResults()
   })
   clearButton.addEventListener('click', clearFilters)
-  csvButton.addEventListener('click', exportCsv)
+  csvButton.addEventListener('click', openCsvExport)
   printButton.addEventListener('click', () => {
     try {
       exportPrint()
@@ -754,12 +772,14 @@ export async function renderFichadas(container) {
 
   syncCustomDates()
   setTabStyles()
-  setExportEnabled(false)
+  setExportEnabled({ canPrint: false, canOpenCsv: false })
   container.replaceChildren(view)
   await loadFichadas()
   return () => {
+    unbindTooltipRoot(view)
     columnPicker.destroy()
     empleadoCombobox.destroy()
+    csvExportModal?.close({ force: true })
     jornadaDetalleModal?.close({ force: true })
   }
 }

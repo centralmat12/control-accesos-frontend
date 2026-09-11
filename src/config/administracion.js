@@ -49,8 +49,11 @@ export const USUARIOS_TABLE_COLUMNS = Object.freeze([
   'Empresa',
   'Estado',
   'Contraseña',
+  'Bloqueo',
   'Acciones',
 ])
+
+export const USUARIOS_TABLE_CENTERED_COLUMNS = Object.freeze(['Estado', 'Contraseña', 'Bloqueo', 'Acciones'])
 
 export const API_ADMIN_ENDPOINTS = Object.freeze({
   listarUsuarios: true,

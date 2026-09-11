@@ -1,8 +1,10 @@
 import { EMPRESA_CONTEXTO_EVENT, getEmpresaContexto } from '../api/empresa-context.js'
 import { empresaDisplayName, getCachedEmpresaNombre, getEmpresaActual } from '../api/empresas.js'
 import { APP_NAME, getNavItemsForUser } from '../config/navigation.js'
+import { APP_VERSION_LABEL } from '../config/version.js'
 import { isSuperadmin } from '../config/roles.js'
 import { getSidebarCollapsed, setSidebarCollapsed } from '../config/sidebar.js'
+import { brandLogoHorizontalMarkup, brandLogoMarkMarkup } from './brand-logo.js'
 import { NAV_ICONS } from './icons.js'
 
 function brandLabel(empresaNombre) {
@@ -20,8 +22,14 @@ function immediateEmpresaNombre(user) {
 
 function applyBrand(el, empresaNombre) {
   const text = brandLabel(empresaNombre)
-  el.textContent = text
   el.title = text
+}
+
+function brandVisibilityClasses(collapsed) {
+  return {
+    horizontal: collapsed ? 'min-w-0 lg:hidden' : 'min-w-0',
+    mark: collapsed ? 'hidden lg:block' : 'hidden',
+  }
 }
 
 export function createSidebar({ currentView, user, onNavigate }) {
@@ -32,11 +40,16 @@ export function createSidebar({ currentView, user, onNavigate }) {
   aside.className = `fixed inset-y-0 left-0 z-40 flex w-72 -translate-x-full flex-col border-r border-slate-800 bg-slate-950 text-slate-300 transition-[width,transform] duration-200 lg:translate-x-0 ${
     collapsed ? 'lg:w-20' : 'lg:w-72'
   }`
+  const visibility = brandVisibilityClasses(collapsed)
 
   aside.innerHTML = `
-    <div data-sidebar-brand-row class="flex h-16 min-w-0 items-center gap-3 overflow-hidden border-b border-slate-800 px-6 ${collapsed ? 'lg:justify-center lg:px-3' : ''}">
-      <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-blue-600 text-sm font-bold text-white">CA</span>
-      <span id="sidebar-brand" class="min-w-0 truncate text-sm font-semibold tracking-tight text-white ${collapsed ? 'lg:hidden' : ''}"></span>
+    <div data-sidebar-brand-row class="flex min-w-0 items-center border-b border-slate-800 px-4 py-3 ${collapsed ? 'lg:h-16 lg:justify-center lg:px-3 lg:py-0' : ''}">
+      <div id="sidebar-brand" class="min-w-0">
+        <div data-brand-horizontal class="${visibility.horizontal}">
+          ${brandLogoHorizontalMarkup({ variant: 'sidebar', alt: APP_NAME })}
+        </div>
+        ${brandLogoMarkMarkup({ alt: APP_NAME, extraClass: visibility.mark })}
+      </div>
     </div>
     <nav data-sidebar-nav class="flex-1 space-y-1 overflow-y-auto p-4 ${collapsed ? 'lg:px-3' : ''}" aria-label="Navegación principal">
       ${navItems.map((item) => {
@@ -45,8 +58,8 @@ export function createSidebar({ currentView, user, onNavigate }) {
           ? 'bg-blue-600 text-white shadow-sm'
           : 'text-slate-300 hover:bg-slate-800 hover:text-white'
         return `
-          <button
-            type="button"
+          <a
+            href="#/${item.id}"
             data-view="${item.id}"
             data-label="${item.label}"
             title="${collapsed ? item.label : ''}"
@@ -56,7 +69,7 @@ export function createSidebar({ currentView, user, onNavigate }) {
           >
             ${NAV_ICONS[item.id]()}
             <span data-sidebar-label class="${collapsed ? 'lg:hidden' : ''}">${item.label}</span>
-          </button>
+          </a>
         `
       }).join('')}
     </nav>
@@ -72,15 +85,15 @@ export function createSidebar({ currentView, user, onNavigate }) {
       >
         ${collapsed ? '»' : '«'}
       </button>
-      <span data-sidebar-footer class="mt-2 block text-center ${collapsed ? 'lg:hidden' : ''}">Rama: Versión: v0.1.0-beta</span>
+      <span data-sidebar-footer class="mt-2 block text-center ${collapsed ? 'lg:hidden' : ''}">${APP_VERSION_LABEL}</span>
     </div>
   `
 
   const brandEl = aside.querySelector('#sidebar-brand')
   applyBrand(brandEl, immediateEmpresaNombre(user))
 
-  aside.querySelectorAll('[data-view]').forEach((button) => {
-    button.addEventListener('click', () => onNavigate(button.dataset.view))
+  aside.querySelectorAll('[data-view]').forEach((link) => {
+    link.addEventListener('click', () => setSidebarOpen(false))
   })
   aside.querySelector('[data-sidebar-collapse]')?.addEventListener('click', () => {
     applySidebarCollapsed(setSidebarCollapsed(!getSidebarCollapsed()))
@@ -115,7 +128,14 @@ function applySidebarCollapsed(collapsed) {
   const brandRow = sidebar.querySelector('[data-sidebar-brand-row]')
   brandRow?.classList.toggle('lg:justify-center', collapsed)
   brandRow?.classList.toggle('lg:px-3', collapsed)
-  sidebar.querySelector('#sidebar-brand')?.classList.toggle('lg:hidden', collapsed)
+  brandRow?.classList.toggle('lg:h-16', collapsed)
+  brandRow?.classList.toggle('lg:py-0', collapsed)
+  sidebar.querySelector('[data-brand-horizontal]')?.classList.toggle('lg:hidden', collapsed)
+  const mark = sidebar.querySelector('[data-brand-mark]')
+  if (mark) {
+    mark.classList.add('hidden')
+    mark.classList.toggle('lg:block', collapsed)
+  }
 
   const nav = sidebar.querySelector('[data-sidebar-nav]')
   nav?.classList.toggle('lg:px-3', collapsed)

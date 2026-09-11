@@ -23,7 +23,7 @@ export function createLayout({ currentView, user, onNavigate, onLogout }) {
 
   const main = document.createElement('main')
   main.id = 'app-main'
-  main.className = 'min-w-0 flex-1 p-4 lg:p-8'
+  main.className = 'mx-auto min-w-0 w-full max-w-7xl flex-1 p-4 lg:p-8'
 
   content.append(createHeader({ currentView, user, onLogout }), main)
   shell.append(content)

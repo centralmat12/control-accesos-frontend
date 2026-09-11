@@ -61,6 +61,21 @@ export function alwaysVisibleLegend(view) {
     : 'Siempre visibles: Empleado, Fecha y Hora.'
 }
 
+export const FICHADAS_COLUMNS_INFO_TOOLTIP = {
+  movimientos:
+    'Empleado, Fecha y Hora permanecen siempre visibles. PDF y Vista actual del CSV utilizan las columnas seleccionadas.',
+  jornadas:
+    'Empleado, Fecha, Ingreso y Estado permanecen siempre visibles. PDF y Vista actual del CSV utilizan las columnas seleccionadas.',
+}
+
+export const FICHADAS_MOVIMIENTOS_TAB_TOOLTIP = 'Muestra las marcaciones originales informadas por el dispositivo.'
+
+export const FICHADAS_JORNADAS_TAB_TOOLTIP =
+  'El ingreso y el egreso se calculan con la primera y la última marcación válida del día. El horario mostrado corresponde a la asignación actual del empleado. Las jornadas nocturnas pueden requerir reglas adicionales.'
+
+export const FICHADAS_TIPO_METODO_TOOLTIP =
+  'Tipo y Método se aplican a los movimientos originales. El Resumen de jornadas conserva el ingreso y egreso calculados.'
+
 export function allColumnIds(view) {
   return columnCatalog(view).map((column) => column.id)
 }

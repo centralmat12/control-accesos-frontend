@@ -227,7 +227,7 @@ await check('8-12. Modal: identidad editable, empresa estática y rol según ope
   assert.equal(markupAdmin.includes('id="usuario-edit-rol"'), false)
   assert.equal(markupAdmin.includes('Guardar rol'), false)
   assert.match(markupAdmin, /name="nombreUsuario"/)
-  assert.match(markupAdmin, /Desactivar usuario/)
+  assert.match(markupAdmin, /Desactivar cuenta/)
 })
 
 await check('13. Confirmaciones de ascenso y descenso', () => {
@@ -281,12 +281,12 @@ await check('20-21. Inactivo no ofrece reset/unlock; bloqueado activo sí', () =
 
   assert.equal(puedeRestablecerUsuarioObjetivo(sa, inactivo), false)
   assert.equal(puedeDesbloquearUsuarioObjetivo(sa, inactivo), false)
-  assert.equal(markupInactivo.includes('Restablecer contraseña'), false)
-  assert.equal(markupInactivo.includes('Desbloquear cuenta'), false)
-  assert.match(markupInactivo, /Reactivar usuario/)
+  assert.equal(markupInactivo.includes('Restablecer clave'), false)
+  assert.equal(markupInactivo.includes('Desbloquear'), false)
+  assert.match(markupInactivo, /Reactivar cuenta/)
   assert.equal(puedeDesbloquearUsuarioObjetivo(sa, bloqueado), true)
-  assert.match(markupBloqueado, /Desbloquear cuenta/)
-  assert.match(markupBloqueado, /Restablecer contraseña/)
+  assert.match(markupBloqueado, /Desbloquear/)
+  assert.match(markupBloqueado, /Restablecer clave/)
 })
 
 await check('22-23. No existe Eliminar ni DELETE de usuarios', () => {

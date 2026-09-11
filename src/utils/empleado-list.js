@@ -88,6 +88,20 @@ export function filterEmpleados(
   )
 }
 
+export function empleadosFiltersArePristine({
+  query = '',
+  sucursalIds = [],
+  includeUnassigned = false,
+  departamentoId = 'todos',
+  estado = 'todos',
+} = {}) {
+  const emptyQuery = String(query ?? '').trim() === ''
+  const allSucursales = (!sucursalIds || sucursalIds.length === 0) && includeUnassigned !== true
+  const allDepartamentos = !departamentoId || departamentoId === 'todos'
+  const allEstado = !estado || estado === 'todos'
+  return emptyQuery && allSucursales && allDepartamentos && allEstado
+}
+
 export function sortEmpleados(empleados, key, direction) {
   const sortKey = EMPLEADO_SORT_KEYS.includes(key) ? key : 'nombre'
   const dir = direction === 'desc' ? -1 : 1

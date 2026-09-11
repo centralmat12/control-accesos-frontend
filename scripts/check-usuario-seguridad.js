@@ -647,9 +647,12 @@ await check('37. Encabezado y skeleton de usuarios usan las mismas columnas', ()
   const markup = usuariosTableHeadMarkup()
   const heads = markup.match(/<th\b/g) || []
   assert.equal(heads.length, USUARIOS_TABLE_COLUMNS.length)
-  assert.equal(USUARIOS_TABLE_COLUMNS.length, 7)
+  assert.equal(USUARIOS_TABLE_COLUMNS.length, 8)
   assert.equal(USUARIOS_TABLE_COLUMNS.includes('Acciones'), true)
   assert.equal(USUARIOS_TABLE_COLUMNS.includes('Contraseña'), true)
+  assert.equal(USUARIOS_TABLE_COLUMNS.includes('Bloqueo'), true)
+  assert.match(markup, /text-center/)
+  assert.match(markup, /text-left/)
 })
 
 await check('esMismoUsuario prioriza ID y no habilita sin identificar al operador', () => {
