@@ -2,7 +2,7 @@ import { createHeader } from './header.js'
 import { createSidebar, setSidebarOpen } from './sidebar.js'
 import { getSidebarCollapsed } from '../config/sidebar.js'
 
-export function createLayout({ currentView, user, onNavigate, onLogout }) {
+export function createLayout({ currentView, user, onNavigate, onLogout, onChangePassword }) {
   const root = document.createElement('div')
   root.className = 'min-h-screen bg-slate-50 text-slate-900'
 
@@ -25,7 +25,7 @@ export function createLayout({ currentView, user, onNavigate, onLogout }) {
   main.id = 'app-main'
   main.className = 'mx-auto min-w-0 w-full max-w-7xl flex-1 p-4 lg:p-8'
 
-  content.append(createHeader({ currentView, user, onLogout }), main)
+  content.append(createHeader({ currentView, user, onLogout, onChangePassword }), main)
   shell.append(content)
   root.append(createSidebar({ currentView, user, onNavigate }), overlay, shell)
 

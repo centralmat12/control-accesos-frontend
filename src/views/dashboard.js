@@ -1,14 +1,16 @@
 import { getCurrentUser } from '../api/auth.js'
-import { listAgentesCatalog } from '../api/agentes.js'
 import { canLoadTenantData, getOperativeEmpresaId } from '../api/empresa-context.js'
 import {
   EMPRESAS_CATALOG_EVENT,
   EMPRESAS_CATALOG_STATUS,
   getEmpresasCatalogState,
 } from '../api/empresas.js'
-import { getDashboardData } from '../api/dashboard.js'
-import { FICHADAS_LIMITE } from '../api/fichadas.js'
-import { puedeListarAgentes } from '../config/administracion.js'
+import { listAgentesCatalog } from '../api/agentes.js'
+import { getSucursales } from '../api/sucursales.js'
+import { buildDashboardData, dashboardFichadasFilters, getDashboardUsuariosGestion } from '../api/dashboard.js'
+import { getEmpleados } from '../api/empleados.js'
+import { getHealthReady, isHealthReadyEnabled } from '../api/health.js'
+import { FICHADAS_LIMITE, getFichadas } from '../api/fichadas.js'
 import { isSuperadmin } from '../config/roles.js'
 import {
   createDashboardAlerts,
@@ -21,13 +23,24 @@ import { createDashboardSkeleton } from '../components/skeleton.js'
 import { createStatCard } from '../components/stat-card.js'
 import { iconClock, iconLogin, iconLogout, iconUsers } from '../components/icons.js'
 import {
-  agenteSinPermisoStatus,
-  apiConsultaStatus,
+  baseDatosStatus,
   createSystemStatusCard,
-  datosCargaStatus,
+  sistemaOperativoStatus,
 } from '../components/system-status.js'
-import { formatClockTime } from '../utils/format.js'
-import { resumenAgentesConectividad } from '../utils/agente-conectividad.js'
+import { buildDashboardAlertas } from '../utils/dashboard-alertas.js'
+import {
+  baseDatosEvidenceSource,
+  deriveBaseDatosConnected,
+  deriveSistemaKind,
+  interpretHealthResponse,
+  queryFromSettled,
+} from '../utils/dashboard-sistema.js'
+import {
+  attachSucursalNombres,
+  dispositivosResumenStatus,
+  filterAgentesPorEmpresa,
+  resumenDispositivosDesdeAgentes,
+} from '../utils/dashboard-dispositivos.js'
 import { logInfo } from '../utils/activity-log.js'
 
 const REFRESH_INTERVAL_MS = 5 * 60_000
@@ -71,12 +84,31 @@ export function renderDashboard(container, { onNavigate } = {}) {
   let refreshBlocked = false
   let systemHost = null
   let layoutMode = null
-  let agentState = {
+  let deviceState = {
     loaded: false,
-    permitted: false,
-    agentes: [],
+    reason: '',
+    total: 0,
+    conectados: 0,
+    desconectados: 0,
+    dispositivos: [],
+    error: '',
+    status: 0,
+  }
+  let sistemaState = {
+    loaded: false,
+    kind: 'unknown',
     error: '',
   }
+  let healthState = {
+    loaded: false,
+    verdict: 'inconclusive',
+    connected: null,
+    reachable: false,
+    error: '',
+    status: 0,
+  }
+  let dbEvidence = []
+  let usuariosState = []
 
   function setRefreshHint(message) {
     if (!message) {
@@ -100,38 +132,48 @@ export function renderDashboard(container, { onNavigate } = {}) {
     refreshButton.textContent = active ? 'Actualizando...' : 'Actualizar'
   }
 
-  function currentAgentStatus(now = new Date()) {
-    if (!agentState.permitted) return agenteSinPermisoStatus()
-    if (agentState.error) {
-      return {
-        tone: 'error',
-        label: 'Error',
-        detail: agentState.error,
-        items: [],
-      }
-    }
-    if (!agentState.loaded) {
-      return {
-        tone: 'neutral',
-        label: 'Sin información',
-        detail: 'Todavía no se consultaron los agentes.',
-        items: [],
-      }
-    }
-    return resumenAgentesConectividad(agentState.agentes, now)
+  function currentDbConnected() {
+    return deriveBaseDatosConnected({
+      health: healthState.loaded ? healthState : null,
+      evidence: dbEvidence,
+      sistemaKind: sistemaState.kind,
+    })
   }
 
   function currentSystemCard() {
+    const detailed = isSuperadmin(getCurrentUser())
+    const showDispositivos = isSuperadmin(getCurrentUser())
+    const connected = currentDbConnected()
     return createSystemStatusCard({
-      api: apiConsultaStatus({
-        ok: hasSuccessfulData && !lastRequestError,
-        errorMessage: lastRequestError,
+      sistema: sistemaOperativoStatus({
+        kind: sistemaState.loaded ? sistemaState.kind : 'unknown',
+        errorMessage: sistemaState.error,
+        detailed,
       }),
-      datos: datosCargaStatus({
-        lastSuccessAt,
-        clockLabel: lastSuccessAt ? formatClockTime(lastSuccessAt) : '',
+      baseDatos: baseDatosStatus({
+        connected,
+        errorMessage: healthState.error,
+        detailed,
+        source: baseDatosEvidenceSource({ health: healthState, evidence: dbEvidence }),
       }),
-      agente: currentAgentStatus(),
+      dispositivos: showDispositivos ? dispositivosResumenStatus(deviceState) : null,
+    })
+  }
+
+  function currentAlertas() {
+    const user = getCurrentUser()
+    return buildDashboardAlertas({
+      user,
+      empleados: lastData?.empleados ?? [],
+      usuarios: usuariosState,
+      dispositivos: deviceState.dispositivos,
+      dispositivosConsultaOk:
+        isSuperadmin(user) && deviceState.loaded && !deviceState.error && !deviceState.reason,
+      sistema: {
+        baseDatosConectada: currentDbConnected(),
+        detail: healthState.error,
+      },
+      isSuperadminViewer: isSuperadmin(user),
     })
   }
 
@@ -265,9 +307,10 @@ export function renderDashboard(container, { onNavigate } = {}) {
   }
 
   function renderOperationalLayout(data, { showDataError = false, errorMessage = '' } = {}) {
+    const alertas = currentAlertas()
     const layout = dashboardContentLayout({
       hasDataError: showDataError,
-      alertas: data?.alertas,
+      alertas,
     })
     layoutMode = layout
 
@@ -317,8 +360,11 @@ export function renderDashboard(container, { onNavigate } = {}) {
       const rightCol = document.createElement('div')
       rightCol.className = 'contents lg:flex lg:min-h-0 lg:flex-col lg:gap-6'
 
-      const alerts = createDashboardAlerts(data?.alertas, {
-        onOpenEmpleados: (initialQuery) => onNavigate?.('empleados', initialQuery ? { initialQuery } : {}),
+      const alerts = createDashboardAlerts(alertas, {
+        onAction: (action) => {
+          if (!action?.view) return
+          onNavigate?.(action.view, action.initialQuery ? { initialQuery: action.initialQuery } : {})
+        },
       })
       if (alerts) alerts.classList.add('order-3', 'min-h-0', 'min-w-0', 'lg:flex-1')
 
@@ -356,25 +402,119 @@ export function renderDashboard(container, { onNavigate } = {}) {
     renderOperationalLayout(data)
   }
 
-  async function loadAgents(user) {
+  async function loadDispositivos(user) {
+    // GET /api/agentes es SoloSuperadmin. ADMIN/RRHH necesitan soporte futuro de la API.
+    if (!isSuperadmin(user)) {
+      deviceState = {
+        hidden: true,
+        loaded: true,
+        reason: 'unsupported',
+        total: 0,
+        conectados: 0,
+        desconectados: 0,
+        dispositivos: [],
+        error: '',
+        status: 0,
+      }
+      return
+    }
+
     const empresaId = getOperativeEmpresaId(user)
-    const permitted = puedeListarAgentes(user, empresaId)
-    if (!permitted) {
-      agentState = { loaded: true, permitted: false, agentes: [], error: '' }
+    if (!empresaId) {
+      deviceState = {
+        loaded: true,
+        reason: 'empresa',
+        total: 0,
+        conectados: 0,
+        desconectados: 0,
+        dispositivos: [],
+        error: '',
+        status: 0,
+      }
       return
     }
 
     try {
-      const agentes = await listAgentesCatalog({ empresaId })
-      agentState = { loaded: true, permitted: true, agentes, error: '' }
-    } catch (error) {
-      if (error.message === 'Sesión expirada o no autorizada.') throw error
-      agentState = {
-        loaded: true,
-        permitted: true,
-        agentes: [],
-        error: error.message || 'No se pudieron consultar los agentes.',
+      const agentes = filterAgentesPorEmpresa(await listAgentesCatalog({ empresaId }), empresaId)
+      let sucursales = []
+      try {
+        sucursales = await getSucursales({ empresaId })
+      } catch {
+        sucursales = []
       }
+      deviceState = {
+        loaded: true,
+        reason: '',
+        error: '',
+        status: 0,
+        hidden: false,
+        ...resumenDispositivosDesdeAgentes(attachSucursalNombres(agentes, sucursales)),
+      }
+    } catch (error) {
+      deviceState = {
+        loaded: true,
+        reason: '',
+        total: 0,
+        conectados: 0,
+        desconectados: 0,
+        dispositivos: [],
+        error: error.message || 'No se pudieron consultar los dispositivos.',
+        status: Number(error.status) || 0,
+      }
+      throw error
+    }
+  }
+
+  async function loadHealth() {
+    if (!isHealthReadyEnabled()) {
+      return interpretHealthResponse({ skipped: true })
+    }
+    return getHealthReady()
+  }
+
+  async function loadUsuariosGestion() {
+    return getDashboardUsuariosGestion()
+  }
+
+  function applyQueryOutcomes({
+    empleadosResult,
+    fichadasResult,
+    dispositivosResult,
+    health,
+    usuariosResult,
+    usuariosSkipped,
+    agentesSkipped,
+  }) {
+    const empleadosQuery = queryFromSettled('empleados', empleadosResult)
+    const fichadasQuery = queryFromSettled('fichadas', fichadasResult)
+    const usuariosQuery = queryFromSettled('usuarios', usuariosResult, { skipped: usuariosSkipped })
+    const agentesQuery = queryFromSettled('agentes', dispositivosResult, {
+      skipped: agentesSkipped || Boolean(deviceState.hidden) || deviceState.reason === 'empresa',
+    })
+    const healthQuery =
+      health?.verdict === 'skipped'
+        ? { name: 'health', outcome: 'skipped', status: 0, reachable: false }
+        : health?.verdict === 'healthy'
+          ? { name: 'health', outcome: 'success', status: health.status, reachable: true }
+          : health?.verdict === 'unhealthy'
+            ? { name: 'health', outcome: 'success', status: health.status, reachable: true }
+            : { name: 'health', outcome: health?.reachable ? 'skipped' : 'network', status: health?.status || 0, reachable: Boolean(health?.reachable) }
+
+    const queries = [empleadosQuery, fichadasQuery, usuariosQuery, agentesQuery, healthQuery]
+    sistemaState = {
+      loaded: true,
+      kind: deriveSistemaKind(queries, { settled: true }),
+      error: [empleadosResult, fichadasResult].find((item) => item.status === 'rejected')?.reason?.message || '',
+    }
+
+    dbEvidence = [empleadosQuery, fichadasQuery, usuariosQuery, agentesQuery]
+    healthState = {
+      loaded: true,
+      verdict: health?.verdict ?? 'inconclusive',
+      connected: health?.connected ?? null,
+      reachable: Boolean(health?.reachable),
+      error: health?.verdict === 'unhealthy' ? 'El chequeo opcional de disponibilidad indicó que la base no está accesible.' : '',
+      status: health?.status || 0,
     }
   }
 
@@ -401,32 +541,69 @@ export function renderDashboard(container, { onNavigate } = {}) {
     const user = getCurrentUser()
 
     try {
-      const [dashboardResult, agentResult] = await Promise.allSettled([getDashboardData(), loadAgents(user)])
+      const [empleadosResult, fichadasResult, dispositivosResult, healthResult, usuariosResult] = await Promise.allSettled([
+        getEmpleados(),
+        getFichadas(dashboardFichadasFilters()),
+        loadDispositivos(user),
+        loadHealth(),
+        loadUsuariosGestion(),
+      ])
       if (cancelled || seq !== loadSeq) return
 
-      if (agentResult.status === 'rejected') {
-        if (agentResult.reason?.message === 'Sesión expirada o no autorizada.') return
-        agentState = {
-          loaded: true,
-          permitted: puedeListarAgentes(user, getOperativeEmpresaId(user)),
-          agentes: [],
-          error: agentResult.reason?.message || 'No se pudieron consultar los agentes.',
-        }
+      const sessionExpired = [empleadosResult, fichadasResult, dispositivosResult, usuariosResult].some(
+        (result) => result.status === 'rejected' && result.reason?.message === 'Sesión expirada o no autorizada.',
+      )
+      if (sessionExpired) return
+
+      const usuariosValue = usuariosResult.status === 'fulfilled' ? usuariosResult.value : null
+      const usuariosSkipped = Boolean(usuariosValue && usuariosValue.attempted === false)
+      if (usuariosResult.status === 'fulfilled') {
+        usuariosState = Array.isArray(usuariosValue?.usuarios) ? usuariosValue.usuarios : []
+      } else {
+        usuariosState = []
       }
 
-      if (dashboardResult.status === 'fulfilled') {
+      const health = healthResult.status === 'fulfilled' ? healthResult.value : { verdict: 'inconclusive', connected: null, reachable: false, status: 0 }
+      applyQueryOutcomes({
+        empleadosResult,
+        fichadasResult,
+        dispositivosResult,
+        health,
+        usuariosResult: usuariosSkipped
+          ? { status: 'fulfilled', value: [] }
+          : usuariosResult.status === 'fulfilled'
+            ? { status: 'fulfilled', value: usuariosValue.usuarios }
+            : usuariosResult,
+        usuariosSkipped,
+        agentesSkipped: !isSuperadmin(user),
+      })
+
+      const empleadosOk = empleadosResult.status === 'fulfilled'
+      const fichadasOk = fichadasResult.status === 'fulfilled'
+      const snapshot = buildDashboardData(
+        empleadosOk ? empleadosResult.value : lastData?.empleados ?? [],
+        fichadasOk ? fichadasResult.value : lastData?.ultimasFichadas ?? [],
+      )
+
+      if (empleadosOk || fichadasOk) {
         hasSuccessfulData = true
         lastRequestError = ''
         lastSuccessAt = new Date()
-        banner.replaceChildren()
-        renderData(dashboardResult.value)
+        if (empleadosOk && fichadasOk) {
+          banner.replaceChildren()
+        } else {
+          const failed = empleadosOk ? fichadasResult.reason : empleadosResult.reason
+          lastRequestError = failed?.message || 'Ocurrió un error al consultar la API.'
+          showRefreshError(lastRequestError)
+        }
+        renderData(snapshot)
         return
       }
 
-      const error = dashboardResult.reason
-      if (error?.message === 'Sesión expirada o no autorizada.') return
-
-      lastRequestError = error?.message || 'Ocurrió un error al consultar la API.'
+      lastRequestError =
+        empleadosResult.reason?.message ||
+        fichadasResult.reason?.message ||
+        'Ocurrió un error al consultar la API.'
 
       if (hasSuccessfulData && lastData) {
         showRefreshError(lastRequestError)

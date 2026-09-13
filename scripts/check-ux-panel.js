@@ -10,10 +10,19 @@ import {
   resumenAgentesConectividad,
 } from '../src/utils/agente-conectividad.js'
 import {
+  puedeConsultarEstadoAgente,
+  puedeListarAgentes,
+  puedeVerSeccionEmpresas,
   USUARIOS_TABLE_CENTERED_COLUMNS,
   USUARIOS_TABLE_COLUMNS,
 } from '../src/config/administracion.js'
-import { apiConsultaStatus, agenteSinPermisoStatus, datosCargaStatus } from '../src/components/system-status.js'
+import {
+  apiConsultaStatus,
+  agenteEmpresaAusenteStatus,
+  agenteSinConfigurarStatus,
+  agenteSinPermisoStatus,
+  datosCargaStatus,
+} from '../src/components/system-status.js'
 import {
   dashboardContentLayout,
   dashboardHasAlertas,
@@ -58,7 +67,11 @@ check('Los contenidos usan títulos funcionales y no repiten la sección', () =>
   const dashboard = read('src/views/dashboard.js')
 
   assert.match(admin, /Gestioná usuarios y empresas/)
+  assert.match(admin, /Gestioná usuarios/)
   assert.match(admin, /Administrá sus accesos, roles, estados y estructura organizativa\./)
+  assert.match(admin, /Administrá sus accesos, roles y estados\./)
+  assert.match(admin, /canViewEmpresasSection/)
+  assert.match(admin, /puedeVerSeccionEmpresas/)
   assert.equal(admin.includes('<h2 class="text-xl font-semibold tracking-tight text-slate-900">Administración</h2>'), false)
 
   assert.match(fichadas, /Consultá las fichadas/)
@@ -82,20 +95,21 @@ check('Administración usa pestañas compactas de ancho automático', () => {
   assert.match(admin, /data-section="\$\{SECTIONS\.empresas\}"/)
 })
 
-check('La tabla de usuarios centra Estado, Contraseña, Bloqueo y Acciones', () => {
+check('La tabla de usuarios centra Estado, Cambio de clave, Bloqueo y Acciones', () => {
   assert.deepEqual([...USUARIOS_TABLE_COLUMNS], [
     'Usuario',
     'Correo',
     'Rol',
     'Empresa',
     'Estado',
-    'Contraseña',
+    'Cambio de clave',
     'Bloqueo',
     'Acciones',
   ])
-  assert.deepEqual([...USUARIOS_TABLE_CENTERED_COLUMNS], ['Estado', 'Contraseña', 'Bloqueo', 'Acciones'])
+  assert.deepEqual([...USUARIOS_TABLE_CENTERED_COLUMNS], ['Estado', 'Cambio de clave', 'Bloqueo', 'Acciones'])
   assert.equal(usuariosColumnAlignClass('Usuario'), 'text-left')
   assert.equal(usuariosColumnAlignClass('Estado'), 'text-center')
+  assert.equal(usuariosColumnAlignClass('Cambio de clave'), 'text-center')
   const markup = usuariosTableHeadMarkup()
   assert.match(markup, /w-28 min-w-28/)
   assert.match(markup, /w-36 min-w-36/)
@@ -138,11 +152,13 @@ check('El dashboard usa la grilla operativa de dos columnas', () => {
   assert.match(dashboard, /load\(\{ silent: true \}\)/)
   assert.match(dashboard, /stopLabelClock/)
   assert.match(dashboard, /stopAutoRefresh/)
+  assert.match(dashboard, /isHealthReadyEnabled/)
   assert.match(dashboard, /listAgentesCatalog/)
   assert.equal(dashboard.includes('createImplementationStatusSection'), false)
   assert.equal(dashboard.includes('Estado de implementación'), false)
-  assert.equal(dashboard.includes('/api/health'), false)
+  assert.equal(dashboard.includes('/api/health/'), false)
   assert.equal(dashboard.includes('/api/sistema'), false)
+  assert.equal(dashboard.includes('/api/dashboard/estado'), false)
 })
 
 check('Dashboard con alertas, sin alertas y con error', () => {
@@ -173,7 +189,7 @@ check('API y datos no inventan una base de datos consultada por el navegador', (
   const api = apiConsultaStatus({ ok: true })
   const error = apiConsultaStatus({ ok: false, errorMessage: 'La API no respondió.' })
   const datos = datosCargaStatus({ lastSuccessAt: new Date(), clockLabel: '12:00' })
-  assert.equal(api.label, 'Operativa')
+  assert.equal(api.label, 'Operativo')
   assert.equal(error.label, 'Error')
   assert.equal(error.detail, 'La API no respondió.')
   assert.equal(datos.label, 'Datos actualizados')
@@ -226,24 +242,36 @@ check('La conectividad del agente usa un último contacto real', () => {
   assert.equal(summary.label, 'Desconectado')
   assert.match(summary.detail, /Lector B/)
   assert.equal(agenteSinPermisoStatus().label, 'Estado no disponible para este rol')
+  assert.equal(agenteEmpresaAusenteStatus().label, 'Empresa no disponible')
+  assert.equal(agenteSinConfigurarStatus().label, 'Sin dispositivos configurados')
   assert.equal(resumenAgentesConectividad([], now).label, 'Sin información')
   assert.equal(resumenAgentesConectividad([{ nombre: 'App Sede Central' }], now).label, 'Sin actividad registrada')
+  assert.equal(puedeConsultarEstadoAgente({ rol: 'ADMIN', empresaId: 9 }), false)
+  assert.equal(puedeConsultarEstadoAgente({ rol: 'RRHH', empresaId: 9 }), false)
+  assert.equal(puedeConsultarEstadoAgente({ rol: 'SuperAdmin' }), true)
+  assert.equal(puedeListarAgentes({ rol: 'ADMIN', empresaId: 9 }, 9), false)
+  assert.equal(puedeListarAgentes({ rol: 'RRHH', empresaId: 9 }, 9), false)
+  assert.equal(puedeVerSeccionEmpresas({ rol: 'ADMIN', empresaId: 9 }), false)
+  assert.equal(puedeVerSeccionEmpresas({ rol: 'SuperAdmin' }), true)
 })
 
-check('El listado de agentes del dashboard reutiliza GET /api/agentes y no guarda secretos', () => {
+check('El dashboard consulta el estado operativo y no el listado administrativo de agentes', () => {
   const agentes = read('src/api/agentes.js')
   const dashboard = read('src/views/dashboard.js')
+  const api = read('src/api/dashboard.js')
   const mapFn = agentes.slice(agentes.indexOf('export function mapAgente'), agentes.indexOf('export function mapAgenteCreado'))
-  const catalogFn = agentes.slice(
-    agentes.indexOf('export async function listAgentesCatalog'),
-    agentes.indexOf('async function createAgenteOnce'),
-  )
   assert.match(mapFn, /ultimoAcceso/)
   assert.equal(mapFn.includes('clientSecret'), false)
-  assert.match(catalogFn, /AGENTE_API_PATHS\.listar/)
-  assert.equal(catalogFn.includes('loadedAgenteClientIds'), false)
-  assert.match(dashboard, /puedeListarAgentes/)
+  assert.match(dashboard, /listAgentesCatalog/)
+  assert.match(dashboard, /isSuperadmin/)
+  assert.equal(dashboard.includes('puedeConsultarEstadoAgente'), false)
+  assert.equal(dashboard.includes('getDashboardDispositivosEstado'), false)
+  assert.equal(dashboard.includes('getDashboardSistemaEstado'), false)
   assert.equal(dashboard.includes('getAgentes('), false)
+  assert.equal(api.includes('/api/dashboard/'), false)
+  assert.match(read('src/config/api.js'), /HEALTH_READY_ENABLED/)
+  assert.match(read('src/api/health.js'), /isHealthReadyEnabled/)
+  assert.match(read('.env.example'), /VITE_ENABLE_HEALTH_READY/)
 })
 
 check('El contenedor común no rompe tablas anchas', () => {

@@ -655,12 +655,12 @@ export async function renderFichadas(container) {
   }
 
   function exportNotes(capped, filters) {
-    const notes = [
-      'El ingreso y el egreso del resumen se calculan usando la primera y la última marcación válida del día. Los movimientos originales permanecen disponibles para auditoría.',
-      'El horario previsto es el horario actual del empleado, no un historial de la fecha de la fichada.',
-      'Las jornadas que atraviesan medianoche pueden requerir una regla adicional basada en el turno asignado.',
-      'Tipo y Método filtran movimientos originales. El resumen de jornadas usa empleado y período.',
-    ]
+      const notes = [
+          'Ingreso y egreso corresponden a la primera y última fichada del día. Las intermedias se conservan para auditoría.',
+          'Horario asignado al empleado.',
+          'Los turnos nocturnos pueden requerir reglas adicionales.',
+          'Tipo y Método filtran fichadas. El resumen usa empleado y período.',
+      ]
 
     if (filters.tipo !== 'todos' || filters.metodo !== 'todos') {
       notes.push(
@@ -670,7 +670,7 @@ export async function renderFichadas(container) {
 
     if (capped) {
       notes.push(
-        `La consulta alcanzó el límite máximo de ${FICHADAS_LIMITE} registros de la API. Pueden existir movimientos adicionales fuera de este resultado.`,
+        `La consulta alcanzó el límite máximo de ${FICHADAS_LIMITE} registros.`,
       )
     }
 

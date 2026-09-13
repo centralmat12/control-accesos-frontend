@@ -65,7 +65,7 @@ check('Inputs date y time permanecen nativos', () => {
 
 check('Textos de usuario sin endpoints', () => {
   const admin = read('src/views/administracion.js')
-  assert.match(admin, /Usuarios del panel web/)
+  assert.match(admin, /Gestioná usuarios/)
   assert.match(admin, /No se pudieron cargar los usuarios/)
   assert.equal(admin.includes('GET /api/usuarios'), false)
   // Ninguna ruta de la API como literal de texto en la vista.

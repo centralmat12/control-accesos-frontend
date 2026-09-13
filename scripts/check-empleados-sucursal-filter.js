@@ -222,7 +222,94 @@ check('Limpiar filtros habilitado y deshabilitado', () => {
   assert.match(view, /clearFiltersButton.disabled = pristine/)
   assert.match(view, /updateClearFiltersState/)
   assert.match(view, /sucursalFilter\.clear\(\)/)
+  assert.match(view, /actividadSelect.value = 'activos'/)
   assert.match(view, /estadoSelect.value = 'todos'/)
+  assert.equal(empleadosFiltersArePristine({ estadoActividad: 'inactivos' }), false)
+  assert.equal(empleadosFiltersArePristine({ estadoActividad: 'todos' }), false)
+  assert.equal(empleadosFiltersArePristine({ estadoActividad: 'activos' }), true)
+})
+
+check('Filtro Estado combina Activos, Inactivos y Todos', () => {
+  const mixed = [
+    { id: 1, nombre: 'Ana', apellido: 'Perez', activo: true, sucursalId: 2, departamentoId: 10, dni: '1', legajo: 'A1' },
+    { id: 2, nombre: 'Bruno', apellido: 'Diaz', activo: false, sucursalId: 5, departamentoId: 11, dni: '2', legajo: 'B2' },
+  ]
+  assert.deepEqual(
+    filterEmpleados(mixed, { estadoActividad: 'activos' }).map((item) => item.id),
+    [1],
+  )
+  assert.deepEqual(
+    filterEmpleados(mixed, { estadoActividad: 'inactivos' }).map((item) => item.id),
+    [2],
+  )
+  assert.deepEqual(
+    filterEmpleados(mixed, { estadoActividad: 'todos' }).map((item) => item.id),
+    [1, 2],
+  )
+  const view = read('src/views/empleados.js')
+  assert.match(view, /id="empleados-actividad"/)
+  assert.match(view, /getEmpleados\(\{ incluirInactivos: true \}\)/)
+})
+
+check('Estado se combina con búsqueda, sucursal, departamento y estado de datos', () => {
+  const mixed = [
+    {
+      id: 1,
+      nombre: 'Ana',
+      apellido: 'Perez',
+      activo: true,
+      sucursalId: 2,
+      sucursal: 'Centro',
+      departamentoId: 10,
+      departamento: 'Ops',
+      dni: '1',
+      cuil: '20111111113',
+      legajo: 'A1',
+      horario: '08:00-17:00',
+      tieneHuella: true,
+    },
+    {
+      id: 2,
+      nombre: 'Bruno',
+      apellido: 'Diaz',
+      activo: false,
+      sucursalId: 5,
+      departamentoId: 11,
+      dni: '2',
+      legajo: 'B2',
+    },
+    {
+      id: 3,
+      nombre: 'Carla',
+      apellido: 'Lopez',
+      activo: true,
+      sucursalId: 5,
+      departamentoId: 11,
+      dni: '3',
+      legajo: 'C3',
+      tieneHuella: false,
+    },
+  ]
+  assert.deepEqual(
+    filterEmpleados(mixed, { query: 'bruno', estadoActividad: 'inactivos' }).map((item) => item.id),
+    [2],
+  )
+  assert.deepEqual(
+    filterEmpleados(mixed, { sucursalIds: [5], estadoActividad: 'todos' }).map((item) => item.id),
+    [2, 3],
+  )
+  assert.deepEqual(
+    filterEmpleados(mixed, { departamentoId: '11', estadoActividad: 'activos' }).map((item) => item.id),
+    [3],
+  )
+  assert.deepEqual(
+    filterEmpleados(mixed, { estado: 'pendientes', estadoActividad: 'todos' }).map((item) => item.id),
+    [3],
+  )
+  assert.deepEqual(
+    filterEmpleados(mixed, { estado: 'pendientes', estadoActividad: 'inactivos' }).map((item) => item.id),
+    [],
+  )
 })
 
 if (failed) {

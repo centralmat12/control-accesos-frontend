@@ -7,7 +7,7 @@ import {
   validateEmpleadoValues,
 } from '../utils/empleado-data.js'
 import { getSucursales } from '../api/sucursales.js'
-import { iconPencil } from './icons.js'
+import { iconPencil, iconStatusOff, iconStatusOk } from './icons.js'
 import { biometricStatusBadge, employeeStatusBadge } from './badge.js'
 import { openModal } from './modal.js'
 import {
@@ -18,7 +18,7 @@ import {
   setDepartamentoIdle,
 } from './sucursal-departamento-selects.js'
 import { showToast } from './toast.js'
-import { BTN_SECONDARY_CLASS } from './button-styles.js'
+import { BTN_DANGER_CLASS, BTN_POSITIVE_CLASS, BTN_SECONDARY_CLASS } from './button-styles.js'
 import {
   FORM_HELP_CLASS,
   FORM_INPUT_CLASS,
@@ -644,28 +644,111 @@ function promptEmpleadoChangesConfirm(changes) {
   })
 }
 
-export function createEmpleadoRecord({ empleado, empresaLabel = '', persistUpdate, onUpdated }) {
+export function createEmpleadoRecord({
+  empleado,
+  empresaLabel = '',
+  persistUpdate,
+  onUpdated,
+  onDeactivate,
+  onReactivate,
+}) {
   void empresaLabel
   const root = document.createElement('div')
   let current = empleado
+  let deactivateOpen = false
+  let reactivateOpen = false
+
+  function canDeactivateEmpleado(item) {
+    return item?.activo !== false && typeof onDeactivate === 'function'
+  }
+
+  function canReactivateEmpleado(item) {
+    return item?.activo === false && typeof onReactivate === 'function'
+  }
 
   function showView() {
     const view = document.createElement('div')
     view.append(createEmpleadoDetail(current))
 
     const actions = document.createElement('div')
-    actions.className = 'mt-5 flex justify-end border-t border-slate-100 pt-4'
+    actions.className = 'mt-6 flex flex-col gap-2 border-t border-slate-100 pt-4 sm:flex-row sm:justify-end'
+
+    if (canReactivateEmpleado(current)) {
+      actions.innerHTML = `
+      <button
+        type="button"
+        id="empleado-reactivate"
+        class="${BTN_POSITIVE_CLASS} w-full sm:w-auto"
+      >
+        ${iconStatusOk()}
+        Activar empleado
+      </button>
+    `
+      const reactivateButton = actions.querySelector('#empleado-reactivate')
+      reactivateButton?.addEventListener('click', () => {
+        if (!canReactivateEmpleado(current) || reactivateOpen) return
+        reactivateOpen = true
+        reactivateButton.disabled = true
+
+        function restoreActions() {
+          if (!reactivateButton.isConnected) return
+          reactivateButton.disabled = false
+        }
+
+        const result = onReactivate(current, { onError: restoreActions })
+        Promise.resolve(result).finally(() => {
+          reactivateOpen = false
+          restoreActions()
+        })
+      })
+      view.append(actions)
+      root.replaceChildren(view)
+      return
+    }
+
+    const deactivateMarkup = canDeactivateEmpleado(current)
+      ? `
+      <button
+        type="button"
+        id="empleado-deactivate"
+        class="${BTN_DANGER_CLASS} w-full sm:w-auto"
+      >
+        ${iconStatusOff()}
+        Desactivar
+      </button>`
+      : ''
     actions.innerHTML = `
+      ${deactivateMarkup}
       <button
         type="button"
         id="empleado-edit"
-        class="${BTN_SECONDARY_CLASS} gap-2"
+        class="${BTN_SECONDARY_CLASS} w-full gap-2 sm:w-auto"
       >
         ${iconPencil()}
         Editar datos
       </button>
     `
-    actions.querySelector('#empleado-edit')?.addEventListener('click', showEdit)
+    const editButton = actions.querySelector('#empleado-edit')
+    const deactivateButton = actions.querySelector('#empleado-deactivate')
+    editButton?.addEventListener('click', showEdit)
+    deactivateButton?.addEventListener('click', () => {
+      if (!canDeactivateEmpleado(current) || deactivateOpen) return
+      deactivateOpen = true
+      deactivateButton.disabled = true
+      if (editButton) editButton.disabled = true
+
+      function restoreActions() {
+        if (!deactivateButton.isConnected) return
+        deactivateButton.disabled = false
+        if (editButton?.isConnected) editButton.disabled = false
+      }
+
+      const result = onDeactivate(current, { onError: restoreActions })
+      Promise.resolve(result).finally(() => {
+        deactivateOpen = false
+        restoreActions()
+      })
+    })
     view.append(actions)
     root.replaceChildren(view)
   }
@@ -709,7 +792,7 @@ export function createEmpleadoRecord({ empleado, empresaLabel = '', persistUpdat
   return root
 }
 
-export function createDeactivateConfirm({ empleado, onCancel, onConfirm }) {
+export function createDeactivateConfirm({ empleado, onCancel, onConfirm, onFailure }) {
   const wrapper = document.createElement('div')
   const name = [empleado.nombre, empleado.apellido].filter(Boolean).join(' ') || 'este empleado'
 
@@ -761,6 +844,69 @@ export function createDeactivateConfirm({ empleado, onCancel, onConfirm }) {
       confirmButton.disabled = false
       cancelButton.disabled = false
       confirmButton.textContent = 'Desactivar'
+      onFailure?.()
+    }
+  })
+
+  return wrapper
+}
+
+export function createReactivateConfirm({ empleado, onCancel, onConfirm, onFailure }) {
+  const wrapper = document.createElement('div')
+  const name = [empleado.nombre, empleado.apellido].filter(Boolean).join(' ') || 'este empleado'
+
+  wrapper.innerHTML = `
+    <p id="empleado-reactivate-error" class="mb-3 hidden rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800" role="alert"></p>
+    <p class="text-sm text-slate-600">
+      ¿Querés volver a activar a <span class="font-medium text-slate-900">${escapeHtml(name)}</span>?
+    </p>
+    <p class="mt-2 text-sm text-slate-600">
+      El empleado volverá a aparecer entre los empleados activos y podrá registrar fichadas.
+    </p>
+    <div class="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+      <button
+        type="button"
+        id="empleado-reactivate-cancel"
+        data-autofocus
+        class="${BTN_SECONDARY_CLASS}"
+      >
+        Cancelar
+      </button>
+      <button
+        type="button"
+        id="empleado-reactivate-confirm"
+        class="${BTN_POSITIVE_CLASS}"
+      >
+        Activar empleado
+      </button>
+    </div>
+  `
+
+  const error = wrapper.querySelector('#empleado-reactivate-error')
+  const cancelButton = wrapper.querySelector('#empleado-reactivate-cancel')
+  const confirmButton = wrapper.querySelector('#empleado-reactivate-confirm')
+
+  cancelButton.addEventListener('click', onCancel)
+
+  confirmButton.addEventListener('click', async () => {
+    if (confirmButton.disabled) return
+    error.classList.add('hidden')
+    error.textContent = ''
+    confirmButton.disabled = true
+    cancelButton.disabled = true
+    confirmButton.textContent = 'Activando...'
+
+    try {
+      await onConfirm()
+    } catch (err) {
+      const message = err.message || 'No se pudo activar el empleado.'
+      error.textContent = message
+      error.classList.remove('hidden')
+      showToast({ message, tone: 'error' })
+      confirmButton.disabled = false
+      cancelButton.disabled = false
+      confirmButton.textContent = 'Activar empleado'
+      onFailure?.()
     }
   })
 

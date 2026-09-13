@@ -28,7 +28,7 @@ import {
   getNavItemsForUser,
   resolveAccessibleView,
 } from '../src/config/navigation.js'
-import { rolesAsignablesParaAlta } from '../src/config/roles.js'
+import { cuentaRolLabel, rolesAsignablesParaAlta } from '../src/config/roles.js'
 import {
   rolCambioConfirmMessage,
   USUARIO_DESACTIVAR_MESSAGE,
@@ -408,6 +408,12 @@ await check('29. Cambio de rol no devuelve JWT del objetivo', async () => {
   assert.equal(result.usuario.token, undefined)
   assert.equal(result.token, undefined)
   assert.equal(USUARIO_API_CAPABILITIES.cambiarRol, true)
+})
+
+await check('Etiqueta amigable de rol en menú de cuenta', () => {
+  assert.equal(cuentaRolLabel('SuperAdmin'), 'SuperAdmin')
+  assert.equal(cuentaRolLabel('ADMIN'), 'Administrador')
+  assert.equal(cuentaRolLabel('RRHH'), 'Recursos Humanos')
 })
 
 await check('30-31. Alta: ADMIN solo RRHH; SuperAdmin ADMIN y RRHH', async () => {

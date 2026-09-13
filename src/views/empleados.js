@@ -1,4 +1,11 @@
-import { createEmpleado, deactivateEmpleado, getEmpleadoById, getEmpleados, patchEmpleado } from '../api/empleados.js'
+import {
+  createEmpleado,
+  deactivateEmpleado,
+  getEmpleadoById,
+  getEmpleados,
+  patchEmpleado,
+  reactivateEmpleado,
+} from '../api/empleados.js'
 import { getCurrentUser } from '../api/auth.js'
 import { canLoadTenantData, getOperativeEmpresaId } from '../api/empresa-context.js'
 import { empresaDisplayName, getEmpresaActual } from '../api/empresas.js'
@@ -10,6 +17,7 @@ import {
   createDeactivateConfirm,
   createEmpleadoForm,
   createEmpleadoRecord,
+  createReactivateConfirm,
 } from '../components/empleado-form.js'
 import { createEmpleadosTable, fullName } from '../components/empleados-table.js'
 import { createFeedbackState, createSelectEmpresaState } from '../components/feedback-state.js'
@@ -103,6 +111,14 @@ export async function renderEmpleados(container, { initialQuery } = {}) {
           <p id="empleados-departamento-hint" class="sr-only">Según las sucursales seleccionadas</p>
         </div>
         <div class="w-full min-w-0 md:w-[185px] md:min-w-[170px] md:max-w-[200px]">
+          <label for="empleados-actividad" class="mb-1.5 block text-sm font-medium text-slate-700">Estado</label>
+          <select id="empleados-actividad" class="${CONTROL_CLASS}">
+            <option value="activos" selected>Activos</option>
+            <option value="inactivos">Inactivos</option>
+            <option value="todos">Todos</option>
+          </select>
+        </div>
+        <div class="w-full min-w-0 md:w-[185px] md:min-w-[170px] md:max-w-[200px]">
           <label for="empleados-estado" class="mb-1.5 block text-sm font-medium text-slate-700">Estado de datos</label>
           <select id="empleados-estado" class="${CONTROL_CLASS}">
             <option value="todos">Todos</option>
@@ -145,6 +161,7 @@ export async function renderEmpleados(container, { initialQuery } = {}) {
   const departamentoSelect = view.querySelector('#empleados-departamento')
   const departamentoHint = view.querySelector('#empleados-departamento-hint')
   const sucursalHost = view.querySelector('#empleados-sucursal-host')
+  const actividadSelect = view.querySelector('#empleados-actividad')
   const estadoSelect = view.querySelector('#empleados-estado')
   const pageSizeSelect = view.querySelector('#empleados-page-size')
   const clearFiltersButton = view.querySelector('#empleados-clear-filters')
@@ -201,6 +218,7 @@ export async function renderEmpleados(container, { initialQuery } = {}) {
       departamentoId:
         !departamentoSelect.disabled && departamentoId ? String(departamentoId) : DEPARTAMENTO_ALL,
       estado: estadoSelect.value,
+      estadoActividad: actividadSelect.value,
     }
   }
 
@@ -378,7 +396,7 @@ export async function renderEmpleados(container, { initialQuery } = {}) {
       results.replaceChildren(
         createFeedbackState({
           title: 'No hay empleados',
-          message: 'Todavía no hay empleados activos. Creá el primero con “Nuevo empleado”.',
+          message: 'Todavía no hay empleados. Creá el primero con “Nuevo empleado”.',
         }),
       )
       return
@@ -411,7 +429,6 @@ export async function renderEmpleados(container, { initialQuery } = {}) {
           renderResults()
         },
         onView: openDetail,
-        onDeactivate: openDeactivate,
       }),
     )
 
@@ -441,7 +458,7 @@ export async function renderEmpleados(container, { initialQuery } = {}) {
     )
 
     try {
-      empleados = await getEmpleados()
+      empleados = await getEmpleados({ incluirInactivos: true })
       loaded = true
       loadError = false
       applySucursalCatalog()
@@ -520,12 +537,18 @@ export async function renderEmpleados(container, { initialQuery } = {}) {
     activeModalClose = modal.close
 
     try {
-      const [detail, empresa] = await Promise.all([getEmpleadoById(empleado.id), getEmpresaActual()])
+      const inactive = empleado.activo === false
+      const [detail, empresa] = await Promise.all([
+        inactive ? Promise.resolve(empleado) : getEmpleadoById(empleado.id),
+        getEmpresaActual(),
+      ])
       loading.replaceWith(
         createEmpleadoRecord({
           empleado: detail,
           empresaLabel: empresaDisplayName(empresa, detail.empresaId),
           persistUpdate: persistEmpleadoUpdate,
+          onDeactivate: openDeactivate,
+          onReactivate: openReactivate,
           onUpdated: (updated) => {
             empleados = empleados.map((item) => (Number(item.id) === Number(updated.id) ? { ...item, ...updated } : item))
             renderSummary()
@@ -550,29 +573,80 @@ export async function renderEmpleados(container, { initialQuery } = {}) {
     }
   }
 
-  function openDeactivate(empleado) {
-    const confirm = createDeactivateConfirm({
-      empleado,
-      onCancel: () => closeActiveModal(),
-      onConfirm: async () => {
-        await deactivateEmpleado(empleado.id)
-        empleados = empleados.filter((item) => Number(item.id) !== Number(empleado.id))
-        closeActiveModal({ force: true })
-        renderSummary()
-        renderResults()
-        showToast({ message: 'Empleado desactivado.', tone: 'success' })
-      },
-    })
+  function openDeactivate(empleado, { onError } = {}) {
+    return new Promise((resolve) => {
+      let settled = false
+      let confirmClose = null
 
-    const modal = openModal({
-      title: 'Desactivar empleado',
-      content: confirm,
-      labelledBy: 'empleado-deactivate-title',
-      onClose: () => {
-        activeModalClose = null
-      },
+      const confirm = createDeactivateConfirm({
+        empleado,
+        onCancel: () => confirmClose?.(),
+        onFailure: onError,
+        onConfirm: async () => {
+          await deactivateEmpleado(empleado.id)
+          empleados = empleados.map((item) =>
+            Number(item.id) === Number(empleado.id) ? { ...item, activo: false } : item,
+          )
+          settled = true
+          confirmClose?.({ force: true })
+          closeActiveModal({ force: true })
+          renderSummary()
+          renderResults()
+          showToast({ message: 'Empleado desactivado.', tone: 'success' })
+          resolve(true)
+        },
+      })
+
+      const modal = openModal({
+        title: 'Desactivar empleado',
+        content: confirm,
+        labelledBy: 'empleado-deactivate-title',
+        stacked: true,
+        closeOnBackdrop: true,
+        onClose: () => {
+          if (!settled) resolve(false)
+        },
+      })
+      confirmClose = modal.close
     })
-    activeModalClose = modal.close
+  }
+
+  function openReactivate(empleado, { onError } = {}) {
+    return new Promise((resolve) => {
+      let settled = false
+      let confirmClose = null
+
+      const confirm = createReactivateConfirm({
+        empleado,
+        onCancel: () => confirmClose?.(),
+        onFailure: onError,
+        onConfirm: async () => {
+          await reactivateEmpleado(empleado.id)
+          empleados = empleados.map((item) =>
+            Number(item.id) === Number(empleado.id) ? { ...item, activo: true } : item,
+          )
+          settled = true
+          confirmClose?.({ force: true })
+          closeActiveModal({ force: true })
+          renderSummary()
+          renderResults()
+          showToast({ message: 'Empleado activado.', tone: 'success' })
+          resolve(true)
+        },
+      })
+
+      const modal = openModal({
+        title: 'Activar empleado',
+        content: confirm,
+        labelledBy: 'empleado-reactivate-title',
+        stacked: true,
+        closeOnBackdrop: true,
+        onClose: () => {
+          if (!settled) resolve(false)
+        },
+      })
+      confirmClose = modal.close
+    })
   }
 
   if (!empresaId && !isSuperadmin(user)) {
@@ -604,6 +678,7 @@ export async function renderEmpleados(container, { initialQuery } = {}) {
   async function clearAllFilters() {
     searchInput.value = ''
     sucursalFilter.clear()
+    actividadSelect.value = 'activos'
     estadoSelect.value = 'todos'
     await syncDepartamentoFilter({ preserveDepartamentoId: null })
     onFilterChange()
@@ -611,6 +686,7 @@ export async function renderEmpleados(container, { initialQuery } = {}) {
 
   newButton.addEventListener('click', openCreateForm)
   searchInput.addEventListener('input', onFilterChange)
+  actividadSelect.addEventListener('change', onFilterChange)
   estadoSelect.addEventListener('change', onFilterChange)
   departamentoSelect.addEventListener('change', onFilterChange)
   clearFiltersButton.addEventListener('click', () => {

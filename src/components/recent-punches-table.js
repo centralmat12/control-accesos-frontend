@@ -68,7 +68,7 @@ export function createRecentPunchesTable(fichadas, { onViewAll } = {}) {
         : `
         <div class="flex min-h-0 flex-1 flex-col items-center justify-center px-5 py-8 text-center">
           <span class="mx-auto flex h-9 w-9 items-center justify-center rounded-full bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-300" aria-hidden="true">${iconClock()}</span>
-          <p class="mt-3 text-sm font-medium text-slate-700 dark:text-slate-200">No hay fichadas registradas hoy.</p>
+          <p class="mt-3 text-sm font-medium text-slate-700 dark:text-slate-100">No hay fichadas registradas hoy.</p>
           <p class="mt-1 text-xs text-slate-500 dark:text-slate-400">Los movimientos aparecerán aquí cuando se registren.</p>
         </div>
       `

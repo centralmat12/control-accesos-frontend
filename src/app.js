@@ -10,13 +10,14 @@ import { createLayout } from './components/layout.js'
 import { setSidebarOpen } from './components/sidebar.js'
 import { createFeedbackState } from './components/feedback-state.js'
 import { enhanceSelectsIn, destroyDisconnectedSelects, closeOpenDropdown } from './components/dropdown.js'
+import { destroyDisconnectedAccountMenus } from './components/account-menu.js'
 import { hideTooltip } from './components/tooltip.js'
 import { createViewSkeleton } from './components/skeleton.js'
 import { renderAdministracion } from './views/administracion.js'
 import { renderDashboard } from './views/dashboard.js'
 import { renderEmpleados } from './views/empleados.js'
 import { renderFichadas } from './views/fichadas.js'
-import { renderCambioPasswordObligatorio } from './views/cambiar-password.js'
+import { openCambiarPasswordModal, renderCambioPasswordObligatorio } from './views/cambiar-password.js'
 import { renderLogin } from './views/login.js'
 import { renderRegistros } from './views/registros.js'
 import { logInfo } from './utils/activity-log.js'
@@ -35,6 +36,7 @@ let passwordChangeViewActive = false
 
 function clearActiveView() {
   closeOpenDropdown()
+  destroyDisconnectedAccountMenus()
   hideTooltip()
   activeViewCleanup?.()
   activeViewCleanup = null
@@ -147,9 +149,22 @@ export function bootstrap(root) {
         writeViewHash(DEFAULT_VIEW, { replace: true })
         mount()
       },
+      onChangePassword: () => {
+        openCambiarPasswordModal({
+          onCompleted: () => {
+            clearActiveView()
+            mainEl = null
+            currentView = DEFAULT_VIEW
+            pendingViewOptions = {}
+            writeViewHash(DEFAULT_VIEW, { replace: true })
+            mount()
+          },
+        })
+      },
     })
 
     root.replaceChildren(layout)
+    destroyDisconnectedAccountMenus()
     mainEl = main
     const fromHash = resolvedHashView(user)
     if (!fromHash.parsed.valid || fromHash.parsed.empty || fromHash.viewId !== fromHash.parsed.viewId) {
@@ -275,6 +290,7 @@ async function renderView(main, viewId, extras = {}) {
 
   main.replaceChildren(createViewSkeleton())
   destroyDisconnectedSelects()
+  destroyDisconnectedAccountMenus()
   const cleanup = await render(main, extras)
   enhanceSelectsIn(main)
   if (typeof cleanup === 'function') activeViewCleanup = cleanup

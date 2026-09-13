@@ -65,15 +65,8 @@ function parseId(value) {
   return Number.isFinite(id) && id > 0 ? id : null
 }
 
-function looksInternalMessage(message) {
-  const text = String(message ?? '')
-  return text.length > 280 || /stack|exception|at\s+\w+\.\w+/i.test(text)
-}
-
 async function publicApiMessage(response, fallback) {
-  const message = await readErrorMessage(response, fallback)
-  if (!message || looksInternalMessage(message)) return fallback
-  return message
+  return readErrorMessage(response, fallback)
 }
 
 function jsonRequest(path, options = {}) {
@@ -325,16 +318,8 @@ export async function getAgentes({ sucursalId, empresaId } = {}) {
   return filterAgentesBySucursal(agentes, { sucursalId: sucursal, empresaId: empresa })
 }
 
-/**
- * GET /api/agentes sin filtrar por sucursal. Solo SuperAdmin.
- * No guarda secretos: mapAgente omite clientSecret.
- */
-export async function listAgentesCatalog({ empresaId } = {}) {
+async function fetchAgentesCatalog({ empresaId, rememberClientIds = false } = {}) {
   const empresa = parseId(empresaId)
-  if (!puedeListarAgentes(getCurrentUser(), empresa)) {
-    throw createApiError('No tenés permiso para consultar agentes.', 403)
-  }
-
   const { response } = await apiFetch(AGENTE_API_PATHS.listar, {
     empresaId: empresa,
     missingAuthMessage: 'No hay sesión activa. Iniciá sesión para consultar agentes.',
@@ -342,7 +327,10 @@ export async function listAgentesCatalog({ empresaId } = {}) {
   })
 
   if (response.status === 403) {
-    throw createApiError('No tenés permiso para consultar agentes.', 403)
+    throw createApiError(
+      'La API rechazó GET /api/agentes (403). El listado sigue autorizado solo a SuperAdmin.',
+      403,
+    )
   }
 
   if (response.status >= 500) {
@@ -357,8 +345,24 @@ export async function listAgentesCatalog({ empresaId } = {}) {
   }
 
   const agentes = normalizeAgentes(await response.json())
+  if (rememberClientIds) {
+    loadedAgenteClientIds = agentes.map((item) => item.clientId).filter(Boolean)
+  }
   if (!empresa) return agentes
   return agentes.filter((agente) => !agente.empresaId || Number(agente.empresaId) === empresa)
+}
+
+/**
+ * GET /api/agentes sin filtrar por sucursal. Administración: Solo SuperAdmin.
+ * No guarda secretos: mapAgente omite clientSecret.
+ */
+export async function listAgentesCatalog({ empresaId } = {}) {
+  const empresa = parseId(empresaId)
+  if (!puedeListarAgentes(getCurrentUser(), empresa)) {
+    throw createApiError('No tenés permiso para consultar agentes.', 403)
+  }
+
+  return fetchAgentesCatalog({ empresaId: empresa, rememberClientIds: false })
 }
 
 async function createAgenteOnce({ sucursalId, empresaId, clientId, nombre }) {

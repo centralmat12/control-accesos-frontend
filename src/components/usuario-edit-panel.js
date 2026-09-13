@@ -11,8 +11,9 @@ import {
   puedeDesbloquearUsuarioObjetivo,
   puedeRestablecerUsuarioObjetivo,
 } from '../config/administracion.js'
-import { USUARIO_ROLES_API, normalizeRole, usuarioRolLabel } from '../config/roles.js'
+import { ROLES, USUARIO_ROLES_API, normalizeRole, usuarioRolLabel } from '../config/roles.js'
 import { escapeHtml, formatApiDateTime } from '../utils/format.js'
+import { sanitizePublicErrorMessage } from '../utils/public-error.js'
 import { BTN_SECONDARY_CLASS } from './button-styles.js'
 import { fieldIds, formFieldMarkup, wireFormFields } from './form-field.js'
 import { enhanceSelectsIn, refreshEnhancedSelect } from './dropdown.js'
@@ -58,8 +59,8 @@ const SECTION_HELP_CLASS = 'text-sm text-slate-500 dark:text-slate-400'
 export function rolCambioConfirmMessage(rolActual, rolNuevo) {
   const from = normalizeRole(rolActual)
   const to = normalizeRole(rolNuevo)
-  if (from === 'RRHH' && to === 'ADMIN') return USUARIO_ROL_PROMOTE_MESSAGE
-  if (from === 'ADMIN' && to === 'RRHH') return USUARIO_ROL_DEMOTE_MESSAGE
+  if (from === ROLES.Rrhh && to === ROLES.Admin) return USUARIO_ROL_PROMOTE_MESSAGE
+  if (from === ROLES.Admin && to === ROLES.Rrhh) return USUARIO_ROL_DEMOTE_MESSAGE
   return 'Este cambio actualizará el rol del usuario. Las sesiones actuales quedarán invalidadas.'
 }
 
@@ -170,7 +171,9 @@ export function usuarioEditSaveFeedback(summary) {
     parts.push(`Se aplicó la modificación ${summary.succeeded.map(modificationPhrase).join(' y ')}.`)
   }
   summary.failed.forEach((item) => {
-    const reason = item.error?.message ? `: ${item.error.message}` : ''
+    const reason = item.error?.message
+      ? `: ${sanitizePublicErrorMessage(item.error.message, 'No se pudo completar la operación.')}`
+      : ''
     parts.push(`No se pudo aplicar la modificación ${modificationPhrase(item.kind)}${reason}.`)
   })
   return {
@@ -213,7 +216,7 @@ export function usuarioEditEstadoResumen(usuario) {
 
 export function usuarioEditAccesoResumen(usuario) {
   const password = estadoPasswordUsuario(usuario)
-  if (!usuario?.bloqueado) return `${password} · Sin bloqueo`
+  if (!usuario?.bloqueado) return `${password}`
   const hasta = formatApiDateTime(usuario.bloqueadoHasta)
   return `${password} · ${hasta ? `Bloqueado hasta ${hasta}` : 'Bloqueado'}`
 }
@@ -334,9 +337,9 @@ export function usuarioModificacionesConfirmMarkup({ changes = [], busy = false,
         <table class="min-w-full divide-y divide-slate-200 dark:divide-slate-700">
           <thead class="bg-slate-50 dark:bg-slate-800">
             <tr>
-              <th scope="col" class="px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Campo</th>
-              <th scope="col" class="px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Valor actual</th>
-              <th scope="col" class="px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Nuevo valor</th>
+              <th scope="col" class="px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">DATO</th>
+              <th scope="col" class="px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">ANTES</th>
+              <th scope="col" class="px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">DESPUES</th>
             </tr>
           </thead>
           <tbody>${rows}</tbody>

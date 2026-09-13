@@ -31,9 +31,11 @@ import {
   puedeListarUsuarios,
 } from '../config/administracion.js'
 import {
+  isAdmin,
   isAssignableUsuarioRole,
   isSuperadmin,
   normalizeRole,
+  ROLES,
   rolesAsignablesParaAlta,
   USUARIO_ROLES_API,
 } from '../config/roles.js'
@@ -226,15 +228,8 @@ function parseEmpresaId(value) {
   return Number.isFinite(id) && id > 0 ? id : null
 }
 
-function looksInternalMessage(message) {
-  const text = String(message ?? '')
-  return text.length > 280 || /stack|exception|at\s+\w+\.\w+/i.test(text)
-}
-
 async function publicApiMessage(response, fallback) {
-  const message = await readErrorMessage(response, fallback)
-  if (!message || looksInternalMessage(message)) return fallback
-  return message
+  return readErrorMessage(response, fallback)
 }
 
 /**
@@ -319,6 +314,27 @@ export function filterUsuariosByEmpresa(usuarios, empresaId) {
   return items.filter((usuario) => Number(usuario.empresaId) === empresa)
 }
 
+/**
+ * Visibilidad en el cliente. La API también debería excluir SuperAdmin
+ * en las respuestas a ADMIN para que esas cuentas no lleguen al navegador.
+ *
+ * SuperAdmin ve todos. ADMIN nunca ve SuperAdmin (cualquier casing) y
+ * se limita a su empresa. RRHH no consulta este listado.
+ */
+export function filterUsuariosByOperador(usuarios, operador) {
+  const items = Array.isArray(usuarios) ? usuarios : []
+  if (isSuperadmin(operador)) return items
+
+  let visibles = items.filter((usuario) => !isSuperadmin(usuario))
+
+  if (isAdmin(operador)) {
+    const empresa = parseEmpresaId(operador?.empresaId)
+    if (empresa) visibles = filterUsuariosByEmpresa(visibles, empresa)
+  }
+
+  return visibles
+}
+
 export function buildUsuariosQuery(filtros = {}) {
   const params = new URLSearchParams()
   const empresa = parseEmpresaId(filtros.empresaId)
@@ -377,7 +393,8 @@ export async function getUsuarios(filtros = {}) {
   }
 
   const usuarios = normalizeUsuarios(await response.json())
-  return filterUsuariosByEmpresa(usuarios, empresaSeleccionada)
+  const scoped = filterUsuariosByEmpresa(usuarios, empresaSeleccionada)
+  return filterUsuariosByOperador(scoped, user)
 }
 
 function parseUsuarioId(value) {
@@ -569,7 +586,7 @@ async function createUsuarioOnce({ nombreUsuario, email, password, rol, empresaI
   const rolesPermitidos = rolesAsignablesParaAlta(getCurrentUser())
   if (!rolesPermitidos.includes(normalizedRol) || !isAssignableUsuarioRole(normalizedRol)) {
     throw createApiError(
-      rolesPermitidos.length === 1 && rolesPermitidos[0] === 'RRHH'
+      rolesPermitidos.length === 1 && rolesPermitidos[0] === ROLES.Rrhh
         ? 'El rol debe ser RRHH.'
         : 'El rol debe ser ADMIN o RRHH.',
       400,

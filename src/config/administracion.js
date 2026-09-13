@@ -29,13 +29,15 @@
  * - POST /api/sucursales → SoloSuperadmin + X-Empresa-Id
  * - GET/PUT /api/sucursales → PerteneceAUsuario (JWT empresa_id o X-Empresa-Id de SuperAdmin)
  * - GET/POST /api/agentes, GET /api/agentes/{id}, POST /api/agentes/{id}/rotar-secret,
- *   PATCH /api/agentes/{id}/desactivar → SoloSuperadmin (token_use=web).
- *   El listado es global: el panel filtra por sucursalId de contexto.
+ *   PATCH /api/agentes/{id}/desactivar → SoloSuperadmin (token_use=web) en la API actual.
+ *   GET /api/agentes es SoloSuperadmin. El Dashboard no lo llama para ADMIN/RRHH;
+ *   la fila Dispositivos se oculta. No es una autorización de API: es visibilidad.
+ *   El listado administrativo es global: el panel filtra por sucursalId de contexto.
  *   X-Empresa-Id no aísla el listado de agentes; se envía igual en SuperAdmin
  *   para el resto del contexto de empresa (p. ej. sucursales).
  *   No hay PUT de agente, activar, DELETE ni GET por sucursal.
  */
-import { isAdmin, isRrhh, isSuperadmin, normalizeRole } from './roles.js'
+import { isAdmin, isAgenteSucursal, isRrhh, isSuperadmin } from './roles.js'
 
 export const API_ENABLEMENT_HINT = 'Esta acción todavía no está disponible.'
 
@@ -48,12 +50,12 @@ export const USUARIOS_TABLE_COLUMNS = Object.freeze([
   'Rol',
   'Empresa',
   'Estado',
-  'Contraseña',
+  'Cambio de clave',
   'Bloqueo',
   'Acciones',
 ])
 
-export const USUARIOS_TABLE_CENTERED_COLUMNS = Object.freeze(['Estado', 'Contraseña', 'Bloqueo', 'Acciones'])
+export const USUARIOS_TABLE_CENTERED_COLUMNS = Object.freeze(['Estado', 'Cambio de clave', 'Bloqueo', 'Acciones'])
 
 export const API_ADMIN_ENDPOINTS = Object.freeze({
   listarUsuarios: true,
@@ -90,9 +92,13 @@ export function puedeAccederAdministracion(user) {
   return isSuperadmin(user) || isAdmin(user)
 }
 
+export function puedeVerSeccionEmpresas(user) {
+  return isSuperadmin(user)
+}
+
 export function puedeListarUsuarios(user) {
   if (API_ADMIN_ENDPOINTS.listarUsuarios !== true) return false
-  if (isRrhh(user) || normalizeRole(user) === 'AGENTE_SUCURSAL') return false
+  if (isRrhh(user) || isAgenteSucursal(user)) return false
   if (isSuperadmin(user)) return true
   return isAdmin(user) && Boolean(empresaIdDeTenant(user))
 }
@@ -212,7 +218,7 @@ export function puedeAbrirNuevoUsuario(user) {
 }
 
 export function puedeCrearUsuarios(user, empresaId) {
-  if (isRrhh(user) || normalizeRole(user) === 'AGENTE_SUCURSAL') return false
+  if (isRrhh(user) || isAgenteSucursal(user)) return false
 
   if (isSuperadmin(user)) {
     if (!API_ADMIN_ENDPOINTS.crearUsuariosComoSuperadmin) return false
@@ -266,10 +272,14 @@ export function puedeEditarSucursales(user, empresaId) {
 }
 
 function puedeAgentesComoSuperadmin(user, empresaId, endpointFlag) {
-  if (isRrhh(user) || normalizeRole(user) === 'AGENTE_SUCURSAL') return false
+  if (isRrhh(user) || isAgenteSucursal(user)) return false
   if (!isSuperadmin(user) || !endpointFlag) return false
   if (empresaId == null) return true
   return Boolean(parsePositiveId(empresaId))
+}
+
+export function puedeConsultarEstadoAgente(user) {
+  return isSuperadmin(user)
 }
 
 export function puedeListarAgentes(user, empresaId) {

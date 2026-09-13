@@ -7,6 +7,7 @@ import {
   validateEmailValue,
   wireFormFields,
 } from '../components/form-field.js'
+import { sanitizePublicErrorMessage } from '../utils/public-error.js'
 
 const LOGIN_INPUT_EXTRA =
   'dark:border-slate-700 dark:bg-slate-950 dark:text-white dark:placeholder:text-slate-500 focus:ring-blue-500/30'
@@ -22,30 +23,36 @@ export function renderLogin(container, { onSuccess }) {
   view.innerHTML = `
     <div id="login-theme-toggle" class="absolute right-4 top-4 sm:right-6 sm:top-6"></div>
     <div class="w-full max-w-md">
-      ${brandLogoAuthMarkup({ subtitle: 'Iniciá sesión para acceder al panel' })}
+      ${brandLogoAuthMarkup({
+      subtitle: '.Devs',
+      subtitleClass: 'font-semibold',
+      })}
+      <p class="mt-2 text-center text-sm text-slate-500 dark:text-slate-400">Iniciá sesión para acceder al panel.</p>
 
       <form id="login-form" class="rounded-2xl border border-slate-200 bg-white p-6 shadow-xl dark:border-slate-800 dark:bg-slate-900 sm:p-8" novalidate>
         <div class="space-y-4">
           ${formFieldMarkup({
-            id: 'login-email',
-            name: 'email',
-            label: 'Correo electrónico',
-            required: true,
-            type: 'email',
-            autocomplete: 'username',
-            extraInputClass: LOGIN_INPUT_EXTRA,
-            helpText: 'Ingresá el correo asociado a tu cuenta.',
+          id: 'login-email',
+          name: 'email',
+          label: 'Correo electrónico',
+          required: true,
+          showRequiredIndicator: false,
+          type: 'email',
+          autocomplete: 'username',
+          extraInputClass: LOGIN_INPUT_EXTRA,
+          helpText: '',
           })}
           ${formFieldMarkup({
-            id: 'login-password',
-            name: 'password',
-            label: 'Contraseña',
-            required: true,
-            type: 'password',
-            autocomplete: 'current-password',
-            extraInputClass: LOGIN_INPUT_EXTRA,
-            helpText: 'Ingresá la contraseña correspondiente a tu usuario.',
-          })}
+          id: 'login-password',
+          name: 'password',
+          label: 'Contraseña',
+          required: true,
+          showRequiredIndicator: false,
+          type: 'password',
+          autocomplete: 'current-password',
+          extraInputClass: LOGIN_INPUT_EXTRA,
+          helpText: '',
+            })}
         </div>
 
         <p id="login-notice" class="mt-4 hidden rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-200" role="status"></p>
@@ -115,7 +122,10 @@ export function renderLogin(container, { onSuccess }) {
       })
       onSuccess()
     } catch (error) {
-      errorEl.textContent = error.message || 'No se pudo iniciar sesión.'
+      errorEl.textContent = sanitizePublicErrorMessage(
+        error.message,
+        'No se pudo iniciar sesión.',
+      )
       errorEl.classList.remove('hidden')
       delete form.dataset.submitting
       submitBtn.disabled = false

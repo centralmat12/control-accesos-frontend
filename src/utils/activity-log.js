@@ -1,6 +1,7 @@
 /**
- * Registro de actividad del panel, solo en sessionStorage.
- * No guarda tokens, passwords, bodies ni datos biométricos.
+ * Actividad local del panel (sessionStorage).
+ * Puede ser modificada o borrada por el usuario. No es evidencia de auditoría
+ * ni reemplaza logs del servidor. No guarda JWT, contraseñas ni secretos.
  */
 
 export const ACTIVITY_LOG_KEY = 'ca.activity.logs'
@@ -150,7 +151,7 @@ function errorDetail(method, path, status) {
 
   if (code === 401) {
     if (route.toLowerCase().includes('/auth')) {
-      return 'Error 401 al iniciar sesión. La cuenta no está autorizada o las credenciales no son válidas.'
+      return 'Error 401 al iniciar sesión.'
     }
     return `Error 401 al ${consulting}. La sesión no está autorizada o expiró.`
   }

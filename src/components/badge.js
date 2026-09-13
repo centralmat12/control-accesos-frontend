@@ -39,7 +39,7 @@ export function featureStatusBadge(kind) {
 }
 
 export function employeeStatusBadge(active) {
-  return badgeHtml(active ? 'Activo' : 'Inactivo', active ? 'success' : 'danger')
+  return badgeHtml(active ? 'Activo' : 'Inactivo', active ? 'success' : 'neutral')
 }
 
 export function movementBadge(tipo, options = {}) {

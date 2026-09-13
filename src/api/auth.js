@@ -1,7 +1,15 @@
+/**
+ * Sesión del panel web.
+ *
+ * El JWT se guarda solo en sessionStorage. El frontend lee claims para adaptar
+ * la interfaz. La autorización real corresponde a la API; no se valida la firma
+ * del token en el navegador.
+ */
 import { apiUrl } from '../config/api.js'
-import { isSuperadmin } from '../config/roles.js'
+import { isAgenteSucursal, isSuperadmin } from '../config/roles.js'
 import { showToast } from '../components/toast.js'
-import { logApiNetworkError, logApiResponse, logInfo } from '../utils/activity-log.js'
+import { clearActivityLogs, logApiNetworkError, logApiResponse, logInfo } from '../utils/activity-log.js'
+import { sanitizePublicErrorMessage } from '../utils/public-error.js'
 import { clearEmpresaContexto } from './empresa-context.js'
 
 const SESSION_KEY = 'ca.auth.user'
@@ -111,6 +119,7 @@ export function notifyPasswordChangeRequired() {
 }
 
 function decodeJwtPayload(token) {
+  // Decodifica el payload para la UI. No verifica firma ni expiración criptográfica.
   try {
     const parts = String(token).split('.')
     if (parts.length < 2) return null
@@ -189,6 +198,15 @@ function userFromToken(token, fallbackEmail) {
   return user
 }
 
+function isAgentCredential(token, user) {
+  if (isAgenteSucursal(user)) return true
+  const payload = decodeJwtPayload(token)
+  const tokenUse = String(readClaim(payload, 'token_use', 'tokenUse') ?? '')
+    .trim()
+    .toLowerCase()
+  return tokenUse === 'agent'
+}
+
 export const LOGIN_TEMPORARY_LOCK_MESSAGE =
   'Por seguridad, la cuenta se encuentra temporalmente bloqueada. Intentá nuevamente más tarde o contactá a un administrador.'
 
@@ -256,9 +274,12 @@ export async function login({ email, password }) {
     throw new Error('La API no devolvió un token de acceso.')
   }
 
-  writeToken(token)
-
   const user = userFromToken(token, normalizedEmail)
+  if (isAgentCredential(token, user)) {
+    throw new Error('Esta cuenta no puede usar el panel web.')
+  }
+
+  writeToken(token)
   user.requiereCambioPassword = Boolean(
     payload?.requiereCambioPassword ?? payload?.RequiereCambioPassword,
   )
@@ -319,9 +340,7 @@ export async function cambiarPassword({ passwordActual, nuevaPassword, confirmar
       if (text) {
         const parsed = JSON.parse(text)
         const apiMessage = parsed?.mensaje ?? parsed?.message
-        if (typeof apiMessage === 'string' && apiMessage.trim() && apiMessage.length <= 280) {
-          message = apiMessage.trim()
-        }
+        message = sanitizePublicErrorMessage(apiMessage, fallback)
       }
     } catch {
       message = fallback
@@ -345,4 +364,5 @@ export function logout() {
   passwordChangeNotified = false
   clearEmpresaContexto({ silent: true })
   clearSession()
+  clearActivityLogs()
 }

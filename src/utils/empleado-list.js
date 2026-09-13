@@ -1,4 +1,4 @@
-import { empleadoTienePendientes } from './empleado-alerts.js'
+import { empleadoEstaActivo, empleadoTienePendientes } from './empleado-alerts.js'
 
 function fullName(empleado) {
   return [empleado?.nombre, empleado?.apellido].filter(Boolean).join(' ')
@@ -47,11 +47,19 @@ export function matchesIdFilter(empleado, key, selected) {
 }
 
 export function matchesEstadoDatos(empleado, estado) {
-  if (estado === 'todos') return true
+  if (!estado || estado === 'todos') return true
+  if (!empleadoEstaActivo(empleado)) return false
   const pendiente = empleadoTienePendientes(empleado)
   if (estado === 'pendientes') return pendiente
   if (estado === 'completo') return !pendiente
   return true
+}
+
+export function matchesEstadoActividad(empleado, estadoActividad) {
+  if (estadoActividad === 'todos') return true
+  const activo = empleadoEstaActivo(empleado)
+  if (estadoActividad === 'inactivos') return !activo
+  return activo
 }
 
 export function matchesSucursalMultiFilter(empleado, { sucursalIds = [], includeUnassigned = false } = {}) {
@@ -65,7 +73,17 @@ export function matchesSucursalMultiFilter(empleado, { sucursalIds = [], include
 
 export function filterEmpleados(
   empleados,
-  { query, departamento, sucursal, departamentoId, sucursalId, sucursalIds, includeUnassigned, estado },
+  {
+    query,
+    departamento,
+    sucursal,
+    departamentoId,
+    sucursalId,
+    sucursalIds,
+    includeUnassigned,
+    estado,
+    estadoActividad,
+  },
 ) {
   const normalizedQuery = String(query ?? '')
     .trim()
@@ -84,7 +102,8 @@ export function filterEmpleados(
         ? matchesSucursalMultiFilter(empleado, multi)
         : matchesIdFilter(empleado, 'sucursalId', sucursal ?? sucursalId ?? 'todos')) &&
       matchesIdFilter(empleado, 'departamentoId', departamentoFilter) &&
-      matchesEstadoDatos(empleado, estado),
+      matchesEstadoDatos(empleado, estado) &&
+      matchesEstadoActividad(empleado, estadoActividad),
   )
 }
 
@@ -94,12 +113,14 @@ export function empleadosFiltersArePristine({
   includeUnassigned = false,
   departamentoId = 'todos',
   estado = 'todos',
+  estadoActividad = 'activos',
 } = {}) {
   const emptyQuery = String(query ?? '').trim() === ''
   const allSucursales = (!sucursalIds || sucursalIds.length === 0) && includeUnassigned !== true
   const allDepartamentos = !departamentoId || departamentoId === 'todos'
   const allEstado = !estado || estado === 'todos'
-  return emptyQuery && allSucursales && allDepartamentos && allEstado
+  const defaultActividad = !estadoActividad || estadoActividad === 'activos'
+  return emptyQuery && allSucursales && allDepartamentos && allEstado && defaultActividad
 }
 
 export function sortEmpleados(empleados, key, direction) {
