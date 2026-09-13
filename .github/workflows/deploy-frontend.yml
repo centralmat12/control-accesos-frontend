@@ -285,8 +285,18 @@ jobs:
           EXTRACT="$STAGE/tree"
           rm -rf "$EXTRACT"
           mkdir -p "$EXTRACT"
-          tar -tzf "$STAGE/bundle.tar.gz" | grep -qx 'index.html'
-          tar -tzf "$STAGE/bundle.tar.gz" | grep -qE '(^|/)assets/'
+          ARCHIVE_LIST="$STAGE/archive-list.txt"
+          tar -tzf "$STAGE/bundle.tar.gz" > "$ARCHIVE_LIST"
+          NORMALIZED="$STAGE/archive-list.normalized.txt"
+          sed 's#^\./##' "$ARCHIVE_LIST" > "$NORMALIZED"
+          if ! grep -qx 'index.html' "$NORMALIZED"; then
+            echo "El bundle no incluye index.html en la raíz."
+            exit 1
+          fi
+          if ! grep -qE '^assets/' "$NORMALIZED"; then
+            echo "El bundle no incluye archivos bajo assets/."
+            exit 1
+          fi
           tar -C "$EXTRACT" -xzf "$STAGE/bundle.tar.gz"
           test -f "$EXTRACT/index.html"
           test -d "$EXTRACT/assets"
