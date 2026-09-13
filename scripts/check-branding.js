@@ -8,6 +8,7 @@ import {
   BRAND_LOGO_MARK,
   BRAND_LOGO_SIDEBAR,
 } from '../src/config/branding.js'
+import { brandLogoAuthMarkup } from '../src/components/brand-logo.js'
 import { APP_NAME } from '../src/config/navigation.js'
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..')
@@ -54,6 +55,7 @@ check('Login y sidebar referencian los logos sin incrustarlos', () => {
   const html = read('index.html')
 
   assert.match(login, /brandLogoAuthMarkup/)
+  assert.match(login, /subtitleClass: 'font-bold'/)
   assert.match(login, /Iniciá sesión para acceder al panel/)
   assert.equal(login.includes('>CA<'), false)
   assert.equal(login.includes('${APP_NAME}'), false)
@@ -87,6 +89,29 @@ check('El logo horizontal y el circular no se muestran a la vez', () => {
   assert.equal(BRAND_LOGO_SIDEBAR.width <= 168, true)
   assert.equal(BRAND_LOGO_MARK.width >= 32 && BRAND_LOGO_MARK.width <= 40, true)
   assert.equal(APP_NAME, 'Control de Accesos')
+})
+
+check('El subtítulo de auth aplica subtitleClass en el HTML generado', () => {
+  const login = read('src/views/login.js')
+  const cambio = read('src/views/cambiar-password.js')
+  assert.match(login, /subtitleClass: 'font-bold'/)
+  assert.equal(cambio.includes('subtitleClass'), false)
+
+  const generated = brandLogoAuthMarkup({ subtitle: '.Devs', subtitleClass: 'font-bold' })
+  assert.match(
+    generated,
+    /<p class="mt-3 text-sm text-slate-500 dark:text-slate-400 font-bold">\.Devs<\/p>/,
+  )
+  assert.equal(generated.includes('font-semibold'), false)
+
+  const fallback = brandLogoAuthMarkup({
+    subtitle: 'Debés cambiar tu contraseña antes de continuar.',
+  })
+  assert.match(
+    fallback,
+    /<p class="mt-3 text-sm text-slate-500 dark:text-slate-400 font-semibold">Debés cambiar tu contraseña antes de continuar\.<\/p>/,
+  )
+  assert.equal(fallback.includes('font-bold'), false)
 })
 
 console.log(`${passed} passed, ${failed} failed`)

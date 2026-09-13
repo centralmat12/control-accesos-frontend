@@ -68,19 +68,49 @@ jobs:
         id: dist
         run: |
           set -euo pipefail
+          command -v sha256sum >/dev/null
+          command -v tar >/dev/null
+          command -v grep >/dev/null
           test -f dist/index.html
           test -d dist/assets
-          ASSET_JS="$(grep -oE '/assets/[^\"[:space:]]+\.js' dist/index.html | head -n 1 || true)"
-          if [ -z "$ASSET_JS" ]; then
-            echo "No se encontró una referencia /assets/*.js en dist/index.html."
+
+          mapfile -t ASSETS < <(grep -oE '(src|href)="/assets/[^"]+\.(js|css)"' dist/index.html | grep -oE '/assets/[^"]+\.(js|css)' | sort -u)
+          if [ "${#ASSETS[@]}" -eq 0 ]; then
+            echo "No se encontraron referencias locales /assets/*.js o /assets/*.css en dist/index.html."
             exit 1
           fi
+
+          JS_COUNT=0
+          MANIFEST="${RUNNER_TEMP}/asset-manifest.tsv"
+          : > "$MANIFEST"
+          for asset in "${ASSETS[@]}"; do
+            rel="${asset#/}"
+            if [ ! -f "dist/$rel" ]; then
+              echo "El asset referenciado no existe en dist."
+              exit 1
+            fi
+            case "$asset" in
+              *.js) JS_COUNT=$((JS_COUNT + 1)) ;;
+            esac
+            hash="$(sha256sum "dist/$rel" | awk '{print $1}')"
+            size="$(wc -c < "dist/$rel" | tr -d ' ')"
+            printf '%s\t%s\t%s\n' "$rel" "$hash" "$size" >> "$MANIFEST"
+          done
+
+          if [ "$JS_COUNT" -lt 1 ]; then
+            echo "dist/index.html no referencia ningún JS local bajo /assets/."
+            exit 1
+          fi
+
+          ASSET_JS="$(awk -F '\t' '$1 ~ /\.js$/ { print "/" $1; exit }' "$MANIFEST")"
           echo "asset_js=$ASSET_JS" >> "$GITHUB_OUTPUT"
+          echo "manifest=$MANIFEST" >> "$GITHUB_OUTPUT"
 
       - name: Publicar
         id: publish
         env:
           ASSET_JS: ${{ steps.dist.outputs.asset_js }}
+          ASSET_MANIFEST: ${{ steps.dist.outputs.manifest }}
         run: |
           set -euo pipefail
           KEYFILE=""
@@ -97,6 +127,13 @@ jobs:
           }
           trap cleanup EXIT
 
+          require_cmd() {
+            if ! command -v "$1" >/dev/null; then
+              echo "Falta la herramienta $1 en el runner."
+              exit 1
+            fi
+          }
+
           require_secret() {
             local name="$1"
             local value="$2"
@@ -105,6 +142,14 @@ jobs:
               exit 1
             fi
           }
+
+          require_cmd ssh
+          require_cmd scp
+          require_cmd tar
+          require_cmd curl
+          require_cmd sha256sum
+          require_cmd mktemp
+          require_cmd node
 
           require_secret DEPLOY_HOST "$DEPLOY_HOST"
           require_secret DEPLOY_PORT "$DEPLOY_PORT"
@@ -115,7 +160,7 @@ jobs:
           require_secret DEPLOY_URL "$DEPLOY_URL"
 
           case "$DEPLOY_PATH" in
-            ''|'/'|'/var/www')
+            ''|'/'|'/var'|'/var/'|'/var/www'|'/var/www/')
               echo "DEPLOY_PATH no es una ruta de publicación válida."
               exit 1
               ;;
@@ -130,7 +175,7 @@ jobs:
             echo "DEPLOY_PATH debe ser una ruta absoluta."
             exit 1
           fi
-          if [ "${DEPLOY_PATH#/var/www/}" = "$DEPLOY_PATH" ] || [ "$DEPLOY_PATH" = "/var/www/" ]; then
+          if [ "${DEPLOY_PATH#/var/www/}" = "$DEPLOY_PATH" ]; then
             echo "DEPLOY_PATH está fuera del árbol de publicación esperado."
             exit 1
           fi
@@ -139,6 +184,18 @@ jobs:
             echo "DEPLOY_PORT no es un puerto válido."
             exit 1
           fi
+
+          if [ ! -f "$ASSET_MANIFEST" ]; then
+            echo "No se encontró el manifiesto de assets."
+            exit 1
+          fi
+          if [ -z "${ASSET_JS:-}" ]; then
+            echo "No se identificó el asset JS esperado."
+            exit 1
+          fi
+
+          ORIGIN_HOST="$(node -e 'const u=new URL(process.env.DEPLOY_URL); process.stdout.write(u.hostname)')"
+          ORIGIN_PREFIX="$(node -e 'const u=new URL(process.env.DEPLOY_URL); process.stdout.write(u.pathname.replace(/\/$/,""))')"
 
           mkdir -p "$HOME/.ssh"
           chmod 700 "$HOME/.ssh"
@@ -179,10 +236,28 @@ jobs:
             "STAGE_ID=$(printf '%q' "$STAGE_ID") BACKUP_NAME=$(printf '%q' "$BACKUP_NAME") DEPLOY_PATH=$(printf '%q' "$DEPLOY_PATH") bash -s" <<'REMOTE'
           set -euo pipefail
           case "$DEPLOY_PATH" in
-            ''|'/'|'/var/www') echo "Ruta de publicación inválida."; exit 1 ;;
+            ''|'/'|'/var'|'/var/'|'/var/www'|'/var/www/') echo "Ruta de publicación inválida."; exit 1 ;;
           esac
+          if [ "${DEPLOY_PATH#/var/www/}" = "$DEPLOY_PATH" ]; then
+            echo "Ruta de publicación fuera del árbol esperado."
+            exit 1
+          fi
           if [ ! -d "$DEPLOY_PATH" ] || [ ! -w "$DEPLOY_PATH" ]; then
             echo "No hay permiso de escritura en la ruta de publicación."
+            exit 1
+          fi
+          for tool in tar mkdir cp rm find ls bash; do
+            if ! command -v "$tool" >/dev/null; then
+              echo "Falta $tool en el servidor."
+              exit 1
+            fi
+          done
+          if ! command -v sha256sum >/dev/null && ! command -v openssl >/dev/null; then
+            echo "Falta sha256sum u openssl en el servidor."
+            exit 1
+          fi
+          if ! command -v curl >/dev/null; then
+            echo "Falta curl en el servidor."
             exit 1
           fi
           WORK="$HOME/.control-accesos-deploy"
@@ -197,14 +272,14 @@ jobs:
           if [ "${#OLD_BACKUPS[@]}" -gt 3 ]; then
             printf '%s\n' "${OLD_BACKUPS[@]:3}" | xargs -r rm -f
           fi
-          printf '%s\n' "$BACKUP_DIR/$BACKUP_NAME"
           REMOTE
 
           scp "${SCP_OPTS[@]}" "$BUNDLE" "$REMOTE:.control-accesos-deploy/staging/${STAGE_ID}/bundle.tar.gz"
+          scp "${SCP_OPTS[@]}" "$ASSET_MANIFEST" "$REMOTE:.control-accesos-deploy/staging/${STAGE_ID}/asset-manifest.tsv"
           rm -f "$BUNDLE"
 
           ssh "${SSH_OPTS[@]}" "$REMOTE" \
-            "STAGE_ID=$(printf '%q' "$STAGE_ID") DEPLOY_PATH=$(printf '%q' "$DEPLOY_PATH") bash -s" <<'REMOTE'
+            "STAGE_ID=$(printf '%q' "$STAGE_ID") bash -s" <<'REMOTE'
           set -euo pipefail
           STAGE="$HOME/.control-accesos-deploy/staging/$STAGE_ID"
           EXTRACT="$STAGE/tree"
@@ -216,12 +291,36 @@ jobs:
           test -f "$EXTRACT/index.html"
           test -d "$EXTRACT/assets"
           test -n "$(ls -A "$EXTRACT/assets")"
+          file_sha() {
+            if command -v sha256sum >/dev/null; then
+              sha256sum "$1" | awk '{print $1}'
+            else
+              openssl dgst -sha256 "$1" | awk '{print $NF}'
+            fi
+          }
+          while IFS=$'\t' read -r rel hash size; do
+            [ -n "$rel" ] || continue
+            test -f "$EXTRACT/$rel"
+            actual="$(file_sha "$EXTRACT/$rel")"
+            bytes="$(wc -c < "$EXTRACT/$rel" | tr -d ' ')"
+            if [ "$actual" != "$hash" ] || [ "$bytes" != "$size" ]; then
+              echo "El asset extraído no coincide con el manifiesto local."
+              exit 1
+            fi
+          done < "$STAGE/asset-manifest.tsv"
           REMOTE
 
-          publish_tree() {
+          copy_without_index() {
             ssh "${SSH_OPTS[@]}" "$REMOTE" \
               "TREE_REL=$(printf '%q' "$1") DEPLOY_PATH=$(printf '%q' "$DEPLOY_PATH") bash -s" <<'REMOTE'
             set -euo pipefail
+            case "$DEPLOY_PATH" in
+              ''|'/'|'/var'|'/var/'|'/var/www'|'/var/www/') echo "Ruta de publicación inválida."; exit 1 ;;
+            esac
+            if [ "${DEPLOY_PATH#/var/www/}" = "$DEPLOY_PATH" ]; then
+              echo "Ruta de publicación fuera del árbol esperado."
+              exit 1
+            fi
             SOURCE="$HOME/$TREE_REL"
             test -f "$SOURCE/index.html"
             test -d "$SOURCE/assets"
@@ -235,7 +334,34 @@ jobs:
               fi
               cp -a "$item" "$DEPLOY_PATH/"
             done
+            REMOTE
+          }
+
+          publish_index() {
+            ssh "${SSH_OPTS[@]}" "$REMOTE" \
+              "TREE_REL=$(printf '%q' "$1") DEPLOY_PATH=$(printf '%q' "$DEPLOY_PATH") bash -s" <<'REMOTE'
+            set -euo pipefail
+            case "$DEPLOY_PATH" in
+              ''|'/'|'/var'|'/var/'|'/var/www'|'/var/www/') echo "Ruta de publicación inválida."; exit 1 ;;
+            esac
+            SOURCE="$HOME/$TREE_REL"
+            test -f "$SOURCE/index.html"
             cp -a "$SOURCE/index.html" "$DEPLOY_PATH/index.html"
+            REMOTE
+          }
+
+          prune_stale() {
+            ssh "${SSH_OPTS[@]}" "$REMOTE" \
+              "TREE_REL=$(printf '%q' "$1") DEPLOY_PATH=$(printf '%q' "$DEPLOY_PATH") bash -s" <<'REMOTE'
+            set -euo pipefail
+            case "$DEPLOY_PATH" in
+              ''|'/'|'/var'|'/var/'|'/var/www'|'/var/www/') echo "Ruta de publicación inválida."; exit 1 ;;
+            esac
+            if [ "${DEPLOY_PATH#/var/www/}" = "$DEPLOY_PATH" ]; then
+              echo "Ruta de publicación fuera del árbol esperado."
+              exit 1
+            fi
+            SOURCE="$HOME/$TREE_REL"
             while IFS= read -r -d '' file; do
               rel="${file#./}"
               if [ ! -e "$SOURCE/$rel" ]; then
@@ -250,6 +376,9 @@ jobs:
             ssh "${SSH_OPTS[@]}" "$REMOTE" \
               "BACKUP_NAME=$(printf '%q' "$BACKUP_NAME") DEPLOY_PATH=$(printf '%q' "$DEPLOY_PATH") bash -s" <<'REMOTE'
             set -euo pipefail
+            case "$DEPLOY_PATH" in
+              ''|'/'|'/var'|'/var/'|'/var/www'|'/var/www/') echo "Ruta de publicación inválida."; exit 1 ;;
+            esac
             BACKUP="$HOME/.control-accesos-deploy/backups/$BACKUP_NAME"
             RESTORE="$HOME/.control-accesos-deploy/restore-$$"
             rm -rf "$RESTORE"
@@ -281,11 +410,138 @@ jobs:
             REMOTE
           }
 
-          if ! publish_tree ".control-accesos-deploy/staging/${STAGE_ID}/tree"; then
+          fail_and_rollback() {
+            local message="$1"
             ROLLED_BACK=1
             restore_backup
-            echo "La publicación falló y se restauró el respaldo."
+            echo "$message"
             exit 1
+          }
+
+          origin_check() {
+            local path="$1"
+            local expected_hash="$2"
+            local expected_size="$3"
+            local expect_html="$4"
+            ssh "${SSH_OPTS[@]}" "$REMOTE" \
+              "ORIGIN_HOST=$(printf '%q' "$ORIGIN_HOST") ORIGIN_PREFIX=$(printf '%q' "$ORIGIN_PREFIX") REQ_PATH=$(printf '%q' "$path") EXPECTED_HASH=$(printf '%q' "$expected_hash") EXPECTED_SIZE=$(printf '%q' "$expected_size") EXPECT_HTML=$(printf '%q' "$expect_html") bash -s" <<'REMOTE'
+            set -euo pipefail
+            BODY="$(mktemp)"
+            HDR="$(mktemp)"
+            cleanup_tmp() { rm -f "$BODY" "$HDR"; }
+            trap cleanup_tmp EXIT
+
+            fetch() {
+              local extra=()
+              if [ "$1" = "tls" ]; then
+                extra=(-k)
+                shift
+              fi
+              local url="$1"
+              : > "$BODY"
+              : > "$HDR"
+              curl -sS --max-time 20 --max-redirs 0 "${extra[@]}" \
+                -H "Host: $ORIGIN_HOST" \
+                -H 'Accept-Encoding: identity' \
+                -D "$HDR" -o "$BODY" \
+                -w '%{http_code}' \
+                "$url"
+            }
+
+            CODE=""
+            if CODE="$(fetch "http://127.0.0.1${ORIGIN_PREFIX}${REQ_PATH}")" && [ "$CODE" = "200" ]; then
+              :
+            elif CODE="$(fetch tls "https://127.0.0.1${ORIGIN_PREFIX}${REQ_PATH}")" && [ "$CODE" = "200" ]; then
+              :
+            else
+              echo "El origen no respondió HTTP 200 para el recurso solicitado."
+              exit 1
+            fi
+
+            if grep -qiE '^content-type:[[:space:]]*text/html' "$HDR"; then
+              IS_HTML=1
+            elif head -c 256 "$BODY" | grep -qiE '^[[:space:]]*<(!doctype[[:space:]]+html|html)'; then
+              IS_HTML=1
+            else
+              IS_HTML=0
+            fi
+
+            BYTES="$(wc -c < "$BODY" | tr -d ' ')"
+            if [ "$EXPECT_HTML" = "1" ]; then
+              if [ "$IS_HTML" != "1" ]; then
+                echo "El origen no devolvió HTML para index.html."
+                exit 1
+              fi
+            else
+              if [ "$IS_HTML" = "1" ]; then
+                echo "El origen devolvió HTML en lugar del asset. No se interpreta 200 como éxito."
+                exit 1
+              fi
+              if [ "$BYTES" != "$EXPECTED_SIZE" ]; then
+                echo "El tamaño del asset en el origen no es coherente."
+                exit 1
+              fi
+              ACTUAL=""
+              if command -v sha256sum >/dev/null; then
+                ACTUAL="$(sha256sum "$BODY" | awk '{print $1}')"
+              else
+                ACTUAL="$(openssl dgst -sha256 "$BODY" | awk '{print $NF}')"
+              fi
+              if [ "$ACTUAL" != "$EXPECTED_HASH" ]; then
+                echo "El SHA-256 del asset en el origen no coincide."
+                exit 1
+              fi
+            fi
+            REMOTE
+          }
+
+          if ! copy_without_index ".control-accesos-deploy/staging/${STAGE_ID}/tree"; then
+            fail_and_rollback "La copia de assets falló y se restauró el respaldo."
+          fi
+
+          while IFS=$'\t' read -r rel hash size; do
+            [ -n "$rel" ] || continue
+            if ! origin_check "/$rel" "$hash" "$size" "0"; then
+              fail_and_rollback "La validación de origen de un asset falló y se restauró el respaldo."
+            fi
+          done < "$ASSET_MANIFEST"
+
+          if ! publish_index ".control-accesos-deploy/staging/${STAGE_ID}/tree"; then
+            fail_and_rollback "La publicación de index.html falló y se restauró el respaldo."
+          fi
+
+          if ! origin_check "/" "" "" "1"; then
+            fail_and_rollback "La validación de origen de index.html falló y se restauró el respaldo."
+          fi
+
+          if ! ssh "${SSH_OPTS[@]}" "$REMOTE" \
+            "ASSET_JS=$(printf '%q' "$ASSET_JS") ORIGIN_HOST=$(printf '%q' "$ORIGIN_HOST") ORIGIN_PREFIX=$(printf '%q' "$ORIGIN_PREFIX") bash -s" <<'REMOTE'
+          set -euo pipefail
+          BODY="$(mktemp)"
+          HDR="$(mktemp)"
+          cleanup_tmp() { rm -f "$BODY" "$HDR"; }
+          trap cleanup_tmp EXIT
+          CODE="$(curl -sS --max-time 20 --max-redirs 0 \
+            -H "Host: $ORIGIN_HOST" \
+            -H 'Accept-Encoding: identity' \
+            -D "$HDR" -o "$BODY" \
+            -w '%{http_code}' \
+            "http://127.0.0.1${ORIGIN_PREFIX}/" || true)"
+          if [ "$CODE" != "200" ]; then
+            CODE="$(curl -sS --max-time 20 --max-redirs 0 -k \
+              -H "Host: $ORIGIN_HOST" \
+              -H 'Accept-Encoding: identity' \
+              -D "$HDR" -o "$BODY" \
+              -w '%{http_code}' \
+              "https://127.0.0.1${ORIGIN_PREFIX}/" || true)"
+          fi
+          if [ "$CODE" != "200" ] || ! grep -qiE '<(!doctype )?html' "$BODY" || ! grep -F "$ASSET_JS" "$BODY" >/dev/null; then
+            echo "El HTML de origen no referencia el asset JS esperado."
+            exit 1
+          fi
+          REMOTE
+          then
+            fail_and_rollback "La comprobación de origen posterior a la publicación falló y se restauró el respaldo."
           fi
 
           SMOKE_URL="${DEPLOY_URL}/?v=${GITHUB_SHA}"
@@ -294,28 +550,23 @@ jobs:
             -A "control-accesos-frontend-deploy" \
             -o "$BODY" \
             "$SMOKE_URL"; then
-            ROLLED_BACK=1
-            restore_backup
             rm -f "$BODY"
-            echo "El smoke test de red falló y se restauró el respaldo."
-            exit 1
+            fail_and_rollback "El smoke test público falló y se restauró el respaldo."
           fi
 
           if ! grep -qiE '<(!doctype )?html' "$BODY"; then
-            ROLLED_BACK=1
-            restore_backup
             rm -f "$BODY"
-            echo "El smoke test no devolvió HTML y se restauró el respaldo."
-            exit 1
+            fail_and_rollback "El smoke test público no devolvió HTML y se restauró el respaldo."
           fi
           if ! grep -F "$ASSET_JS" "$BODY" >/dev/null; then
-            ROLLED_BACK=1
-            restore_backup
             rm -f "$BODY"
-            echo "El HTML publicado no coincide con el asset del build. Se restauró el respaldo."
-            exit 1
+            fail_and_rollback "El HTML público no coincide con el asset del build. Se restauró el respaldo."
           fi
           rm -f "$BODY"
+
+          if ! prune_stale ".control-accesos-deploy/staging/${STAGE_ID}/tree"; then
+            fail_and_rollback "La limpieza de archivos obsoletos falló y se restauró el respaldo."
+          fi
 
           ssh "${SSH_OPTS[@]}" "$REMOTE" \
             "STAGE_ID=$(printf '%q' "$STAGE_ID") bash -s" <<'REMOTE'
@@ -334,7 +585,6 @@ jobs:
           set -euo pipefail
           echo "Commit: ${GITHUB_SHA}"
           echo "Fecha UTC: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
-          echo "URL: ${DEPLOY_URL}"
           echo "Resultado: ${PUBLISH_RESULT:-unknown}"
           if [ "${ROLLED_BACK:-0}" = "1" ]; then
             echo "Rollback: sí"
