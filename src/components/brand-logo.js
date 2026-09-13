@@ -47,13 +47,13 @@ export function brandLogoMarkMarkup({ alt = APP_NAME, extraClass = '' } = {}) {
   })
 }
 
-export function brandLogoAuthMarkup({ subtitle }) {
+export function brandLogoAuthMarkup({ subtitle, subtitleClass = 'font-semibold' }) {
   return `
     <div class="mb-8 flex flex-col items-center text-center">
       <h1 class="flex justify-center">
         ${brandLogoHorizontalMarkup({ variant: 'login', alt: APP_NAME })}
       </h1>
-      <p class="mt-3 text-sm text-slate-500 dark:text-slate-400">${escapeHtml(subtitle)}</p>
+      <p class="mt-3 text-sm text-slate-500 dark:text-slate-400 ${escapeHtml(subtitleClass)}">${escapeHtml(subtitle)}</p>
     </div>
   `
 }

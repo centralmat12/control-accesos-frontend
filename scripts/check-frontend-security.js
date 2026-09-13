@@ -100,7 +100,10 @@ check('Health opcional desactivado por defecto y sin contratos de dashboard', ()
   assert.equal(dashboardView.includes('/api/dashboard/estado-dispositivos'), false)
   assert.equal(dashboardApi.includes('/api/dashboard/'), false)
   assert.match(envExample, /VITE_ENABLE_HEALTH_READY/)
-  assert.equal(envExample.includes('VITE_ENABLE_HEALTH_READY=true\n'), false)
+  assert.equal(
+    envExample.split(/\r?\n/).some((line) => line.trim() === 'VITE_ENABLE_HEALTH_READY=true'),
+    false,
+  )
 })
 
 check('X-Empresa-Id solo en apiFetch para SuperAdmin', () => {

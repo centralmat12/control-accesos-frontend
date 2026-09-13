@@ -25,9 +25,8 @@ export function renderLogin(container, { onSuccess }) {
     <div class="w-full max-w-md">
       ${brandLogoAuthMarkup({
       subtitle: '.Devs',
-      subtitleClass: 'font-semibold',
+      subtitleClass: 'font-bold',
       })}
-      <p class="mt-2 text-center text-sm text-slate-500 dark:text-slate-400">Iniciá sesión para acceder al panel.</p>
 
       <form id="login-form" class="rounded-2xl border border-slate-200 bg-white p-6 shadow-xl dark:border-slate-800 dark:bg-slate-900 sm:p-8" novalidate>
         <div class="space-y-4">
