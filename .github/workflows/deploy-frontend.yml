@@ -344,7 +344,7 @@ jobs:
               fi
               cp -a "$item" "$DEPLOY_PATH/"
             done
-            REMOTE
+          REMOTE
           }
 
           publish_index() {
@@ -357,7 +357,7 @@ jobs:
             SOURCE="$HOME/$TREE_REL"
             test -f "$SOURCE/index.html"
             cp -a "$SOURCE/index.html" "$DEPLOY_PATH/index.html"
-            REMOTE
+          REMOTE
           }
 
           prune_stale() {
@@ -379,7 +379,7 @@ jobs:
               fi
             done < <(cd "$DEPLOY_PATH" && find . -type f -print0)
             find "$DEPLOY_PATH" -mindepth 1 -type d -empty -delete
-            REMOTE
+          REMOTE
           }
 
           restore_backup() {
@@ -417,7 +417,7 @@ jobs:
             done < <(cd "$DEPLOY_PATH" && find . -type f -print0)
             find "$DEPLOY_PATH" -mindepth 1 -type d -empty -delete
             rm -rf "$RESTORE"
-            REMOTE
+          REMOTE
           }
 
           fail_and_rollback() {
@@ -502,7 +502,7 @@ jobs:
                 exit 1
               fi
             fi
-            REMOTE
+          REMOTE
           }
 
           if ! copy_without_index ".control-accesos-deploy/staging/${STAGE_ID}/tree"; then
@@ -524,33 +524,36 @@ jobs:
             fail_and_rollback "La validación de origen de index.html falló y se restauró el respaldo."
           fi
 
-          if ! ssh "${SSH_OPTS[@]}" "$REMOTE" \
-            "ASSET_JS=$(printf '%q' "$ASSET_JS") ORIGIN_HOST=$(printf '%q' "$ORIGIN_HOST") ORIGIN_PREFIX=$(printf '%q' "$ORIGIN_PREFIX") bash -s" <<'REMOTE'
-          set -euo pipefail
-          BODY="$(mktemp)"
-          HDR="$(mktemp)"
-          cleanup_tmp() { rm -f "$BODY" "$HDR"; }
-          trap cleanup_tmp EXIT
-          CODE="$(curl -sS --max-time 20 --max-redirs 0 \
-            -H "Host: $ORIGIN_HOST" \
-            -H 'Accept-Encoding: identity' \
-            -D "$HDR" -o "$BODY" \
-            -w '%{http_code}' \
-            "http://127.0.0.1${ORIGIN_PREFIX}/" || true)"
-          if [ "$CODE" != "200" ]; then
-            CODE="$(curl -sS --max-time 20 --max-redirs 0 -k \
+          post_publish_origin_check() {
+            ssh "${SSH_OPTS[@]}" "$REMOTE" \
+              "ASSET_JS=$(printf '%q' "$ASSET_JS") ORIGIN_HOST=$(printf '%q' "$ORIGIN_HOST") ORIGIN_PREFIX=$(printf '%q' "$ORIGIN_PREFIX") bash -s" <<'REMOTE'
+            set -euo pipefail
+            BODY="$(mktemp)"
+            HDR="$(mktemp)"
+            cleanup_tmp() { rm -f "$BODY" "$HDR"; }
+            trap cleanup_tmp EXIT
+            CODE="$(curl -sS --max-time 20 --max-redirs 0 \
               -H "Host: $ORIGIN_HOST" \
               -H 'Accept-Encoding: identity' \
               -D "$HDR" -o "$BODY" \
               -w '%{http_code}' \
-              "https://127.0.0.1${ORIGIN_PREFIX}/" || true)"
-          fi
-          if [ "$CODE" != "200" ] || ! grep -qiE '<(!doctype )?html' "$BODY" || ! grep -F "$ASSET_JS" "$BODY" >/dev/null; then
-            echo "El HTML de origen no referencia el asset JS esperado."
-            exit 1
-          fi
+              "http://127.0.0.1${ORIGIN_PREFIX}/" || true)"
+            if [ "$CODE" != "200" ]; then
+              CODE="$(curl -sS --max-time 20 --max-redirs 0 -k \
+                -H "Host: $ORIGIN_HOST" \
+                -H 'Accept-Encoding: identity' \
+                -D "$HDR" -o "$BODY" \
+                -w '%{http_code}' \
+                "https://127.0.0.1${ORIGIN_PREFIX}/" || true)"
+            fi
+            if [ "$CODE" != "200" ] || ! grep -qiE '<(!doctype )?html' "$BODY" || ! grep -F "$ASSET_JS" "$BODY" >/dev/null; then
+              echo "El HTML de origen no referencia el asset JS esperado."
+              exit 1
+            fi
           REMOTE
-          then
+          }
+
+          if ! post_publish_origin_check; then
             fail_and_rollback "La comprobación de origen posterior a la publicación falló y se restauró el respaldo."
           fi
 

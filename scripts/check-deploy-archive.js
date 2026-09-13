@@ -6,8 +6,62 @@ import { spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..')
+const workflowPath = join(root, '.github/workflows/deploy-frontend.yml')
 let passed = 0
 let failed = 0
+
+function extractPublishRun(workflow) {
+  const lines = workflow.replace(/\r\n/g, '\n').split('\n')
+  let inPublish = false
+  let collecting = false
+  let contentIndent = null
+  const collected = []
+
+  for (const line of lines) {
+    if (!inPublish) {
+      if (/^\s+- name: Publicar\s*$/.test(line)) inPublish = true
+      continue
+    }
+    if (!collecting) {
+      if (/^\s+run: \|/.test(line)) collecting = true
+      continue
+    }
+    if (/^\s+- name: /.test(line)) break
+    if (line.trim() === '') {
+      collected.push('')
+      continue
+    }
+    const indent = line.match(/^ */)[0].length
+    if (contentIndent === null) contentIndent = indent
+    if (indent < contentIndent) break
+    collected.push(line.slice(contentIndent))
+  }
+
+  while (collected.length && collected[collected.length - 1] === '') collected.pop()
+  return `${collected.join('\n')}\n`
+}
+
+function runBashSyntax(script) {
+  const dir = mkdtempSync(join(tmpdir(), 'ca-publish-bash-'))
+  const file = join(dir, 'publish-extracted.sh')
+  writeFileSync(file, script.replace(/\r\n/g, '\n'))
+  try {
+    const wslFile = `/mnt/${file[0].toLowerCase()}${file.slice(2).replace(/\\/g, '/')}`
+    const attempts = [
+      ['bash', ['-n', file]],
+      ['wsl', ['-e', 'bash', '-n', wslFile]],
+    ]
+    let last = null
+    for (const [cmd, args] of attempts) {
+      last = spawnSync(cmd, args, { encoding: 'utf8' })
+      if (last.error?.code === 'ENOENT') continue
+      return last
+    }
+    return last ?? { status: 1, stderr: 'bash no está disponible', stdout: '' }
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+}
 
 function check(name, fn) {
   try {
@@ -90,6 +144,17 @@ check('Un tar real creado como en CI pasa la validación normalizada', () => {
   } finally {
     rmSync(dir, { recursive: true, force: true })
   }
+})
+
+check('El Bash extraído del step Publicar pasa bash -n', () => {
+  const workflow = readFileSync(workflowPath, 'utf8')
+  const script = extractPublishRun(workflow)
+  assert.match(script, /^set -euo pipefail\n/)
+  assert.match(script, /post_publish_origin_check\(\) \{/)
+  assert.match(script, /if ! post_publish_origin_check; then/)
+  assert.equal(/if ! ssh[\s\S]*<<'REMOTE'[\s\S]*^REMOTE\nthen/m.test(script), false)
+  const syntax = runBashSyntax(script)
+  assert.equal(syntax.status, 0, syntax.stderr || syntax.stdout || 'bash -n falló')
 })
 
 console.log(`${passed} passed, ${failed} failed`)
