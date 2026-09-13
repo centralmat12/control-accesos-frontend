@@ -56,7 +56,7 @@ check('Login y sidebar referencian los logos sin incrustarlos', () => {
 
   assert.match(login, /brandLogoAuthMarkup/)
   assert.match(login, /subtitleClass: 'font-bold'/)
-  assert.match(login, /Iniciá sesión para acceder al panel/)
+  assert.equal(login.includes('Iniciá sesión para acceder al panel.'), false)
   assert.equal(login.includes('>CA<'), false)
   assert.equal(login.includes('${APP_NAME}'), false)
   assert.match(sidebar, /brandLogoHorizontalMarkup/)
