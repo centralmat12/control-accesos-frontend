@@ -35,7 +35,7 @@ export function renderRegistros(container) {
     <section class="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
       <div>
         <p class="mt-1 text-sm text-slate-500">
-          Actividad de esta pestaña. Se guarda solo en la sesión del navegador y se borra al cerrarla.
+          Actividad local del panel. Se guarda en esta pestaña, el usuario puede borrarla y no reemplaza los logs del servidor.
         </p>
       </div>
       <button

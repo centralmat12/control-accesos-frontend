@@ -4,7 +4,13 @@ function isBlank(value) {
   return !String(value ?? '').trim()
 }
 
+export function empleadoEstaActivo(empleado) {
+  return empleado?.activo !== false
+}
+
 export function empleadoFaltantes(empleado) {
+  if (!empleadoEstaActivo(empleado)) return []
+
   const missing = EMPLEADO_DATA_FIELDS
     .filter(({ key }) => isBlank(empleado?.[key]))
     .map(({ key, label }) => ({ key, label }))
@@ -25,7 +31,7 @@ export function empleadoTienePendientes(empleado) {
 }
 
 export function summarizeEmpleadoDatos(empleados) {
-  const activos = Array.isArray(empleados) ? empleados : []
+  const activos = Array.isArray(empleados) ? empleados.filter(empleadoEstaActivo) : []
   const conPendientes = activos.filter(empleadoTienePendientes).length
 
   return {
@@ -74,11 +80,11 @@ export function empleadoSearchHint(empleado) {
 }
 
 /**
- * Alertas a partir de GET /api/empleados (solo activos).
+ * Alertas operativas: solo empleados activos.
  * No consulta endpoints biométricos.
  */
 export function buildEmpleadoAlertas(empleados) {
-  const activos = Array.isArray(empleados) ? empleados : []
+  const activos = Array.isArray(empleados) ? empleados.filter(empleadoEstaActivo) : []
   const items = activos.flatMap((empleado, index) => {
     const missing = empleadoFaltantes(empleado)
     return missing.length > 0

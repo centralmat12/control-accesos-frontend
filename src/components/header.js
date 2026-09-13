@@ -11,9 +11,10 @@ import {
 } from '../api/empresa-context.js'
 import { isSuperadmin } from '../config/roles.js'
 import { NAV_ITEMS } from '../config/navigation.js'
-import { iconLogout, iconMenu } from './icons.js'
+import { iconMenu } from './icons.js'
 import { setSidebarOpen } from './sidebar.js'
 import { createThemeToggle } from './theme-toggle.js'
+import { createAccountMenu } from './account-menu.js'
 import { escapeHtml } from '../utils/format.js'
 import { logInfo } from '../utils/activity-log.js'
 import { enhanceSelect, refreshEnhancedSelect } from './dropdown.js'
@@ -36,7 +37,7 @@ function sortEmpresas(empresas) {
   )
 }
 
-export function createHeader({ currentView, user, onLogout }) {
+export function createHeader({ currentView, user, onLogout, onChangePassword }) {
   const item = NAV_ITEMS.find((nav) => nav.id === currentView)
   const header = document.createElement('header')
   header.className =
@@ -59,22 +60,10 @@ export function createHeader({ currentView, user, onLogout }) {
         <h1 class="truncate text-base font-semibold text-slate-900 dark:text-slate-100 sm:text-lg">${escapeHtml(item?.label ?? '')}</h1>
       </div>
     </div>
-    <div class="flex min-w-0 shrink-0 items-center gap-1.5 sm:gap-3">
+    <div class="flex shrink-0 items-center gap-2 sm:gap-3">
       ${superadmin ? '<div id="header-empresa" class="relative w-[min(16rem,42vw)] min-w-[10rem] max-w-[16rem] shrink-0 overflow-visible"></div>' : ''}
-      <div class="hidden min-w-0 text-right sm:block">
-        <p class="truncate text-sm font-medium text-slate-800 dark:text-slate-200">${escapeHtml(user.nombre)}</p>
-        <p class="truncate text-xs text-slate-500 dark:text-slate-400">${escapeHtml(user.rol)}</p>
-      </div>
       <div id="header-theme-toggle"></div>
-      <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-slate-900 text-xs font-semibold text-white">${escapeHtml(initials(user.nombre))}</span>
-      <button
-        type="button"
-        id="logout-button"
-        class="inline-flex h-9 items-center gap-2 rounded-lg border border-slate-200 px-2 text-sm font-medium text-slate-700 hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800 sm:px-3"
-      >
-        ${iconLogout()}
-        <span class="hidden sm:inline">Cerrar sesión</span>
-      </button>
+      <div id="header-account-menu"></div>
     </div>
   `
 
@@ -84,9 +73,16 @@ export function createHeader({ currentView, user, onLogout }) {
     setSidebarOpen(true)
   })
 
-  header.querySelector('#logout-button')?.addEventListener('click', () => {
-    onLogout()
-  })
+  const accountSlot = header.querySelector('#header-account-menu')
+  if (accountSlot) {
+    const menu = createAccountMenu({
+      user,
+      initials: initials(user.nombre),
+      onChangePassword: () => onChangePassword?.(),
+      onLogout: () => onLogout?.(),
+    })
+    accountSlot.replaceChildren(menu.root)
+  }
 
   if (superadmin) {
     void renderSuperadminSelector(header.querySelector('#header-empresa'))

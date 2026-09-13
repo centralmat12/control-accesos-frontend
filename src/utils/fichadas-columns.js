@@ -11,7 +11,7 @@ export const MOVIMIENTOS_COLUMN_CATALOG = [
   { id: 'legajo', label: 'Legajo', required: false },
   { id: 'fecha', label: 'Fecha', required: true },
   { id: 'hora', label: 'Hora', required: true },
-  { id: 'tipo', label: 'Tipo informado', required: false },
+  { id: 'tipo', label: 'Movimiento', required: false },
   { id: 'metodo', label: 'Método', required: false },
   { id: 'observacion', label: 'Observación', required: false },
 ]
@@ -68,10 +68,10 @@ export const FICHADAS_COLUMNS_INFO_TOOLTIP = {
     'Empleado, Fecha, Ingreso y Estado permanecen siempre visibles. PDF y Vista actual del CSV utilizan las columnas seleccionadas.',
 }
 
-export const FICHADAS_MOVIMIENTOS_TAB_TOOLTIP = 'Muestra las marcaciones originales informadas por el dispositivo.'
+export const FICHADAS_MOVIMIENTOS_TAB_TOOLTIP = 'Muestra las fichadas informadas por el lector biometrico.'
 
 export const FICHADAS_JORNADAS_TAB_TOOLTIP =
-  'El ingreso y el egreso se calculan con la primera y la última marcación válida del día. El horario mostrado corresponde a la asignación actual del empleado. Las jornadas nocturnas pueden requerir reglas adicionales.'
+  'El ingreso y el egreso se calculan con la primera y la última fichada válida del día. El horario mostrado corresponde a la asignación actual del empleado.'
 
 export const FICHADAS_TIPO_METODO_TOOLTIP =
   'Tipo y Método se aplican a los movimientos originales. El Resumen de jornadas conserva el ingreso y egreso calculados.'
@@ -170,7 +170,7 @@ export const MOVIMIENTOS_EXPORT_HEADERS = [
   'Legajo',
   'Fecha',
   'Hora',
-  'Tipo informado',
+  'Movimiento',
   'Método',
   'Observación',
 ]

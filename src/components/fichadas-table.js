@@ -91,7 +91,7 @@ export function createFichadasTable(
 
   const headers = columns
     .map((column) => {
-      const title = column.id === 'tipo' ? ` title="${TIPO_INFORMADO_TOOLTIP}"` : ''
+      const title = column.id === 'tipo' ? ` title="${escapeHtml(TIPO_INFORMADO_TOOLTIP)}"` : ''
       return `<th scope="col" class="${TH_CLASS}" data-column="${column.id}"${title}>${column.label}</th>`
     })
     .join('')

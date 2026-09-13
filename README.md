@@ -4,6 +4,8 @@
 
 Frontend del sistema de control de accesos y fichadas biométricas (proyecto de tesis). Es un panel de administración que se ejecuta en el navegador y se comunica con una API ASP.NET Core. **No accede a la base de datos**: solo consume HTTP.
 
+Roles, sesión, contratos reales y límites del cliente: [docs/FRONTEND-SECURITY.md](docs/FRONTEND-SECURITY.md).
+
 ## Tecnologías
 
 Definidas en `package.json` y usadas en el código:
@@ -249,6 +251,7 @@ VITE_API_BASE_URL=
 | -------- | ------------ | --- |
 | `VITE_API_BASE_URL` | Frontend (Vite la inyecta en el build) | Prefijo de todas las rutas `/api/...`. En desarrollo conviene dejarla **vacía** para que el navegador llame a `/api` en el mismo origen y Vite proxyee al backend. En producción, si no hay proxy inverso, hay que definirla **antes** de `npm run build`. |
 | `DEV_API_PROXY_TARGET` | Solo `vite.config.js` (no llega al navegador) | Destino del proxy en `npm run dev`. Si no está definida, se usa `http://161.153.193.159:8080`. |
+| `VITE_ENABLE_HEALTH_READY` | Frontend | Opcional. Solo si vale exactamente `true` se llama `GET /health/ready`. La API oficial no tiene ese endpoint; dejarlo desactivado. |
 
 Ejemplo de `.env.local` para desarrollo con proxy:
 
@@ -264,14 +267,14 @@ DEV_API_PROXY_TARGET=http://161.153.193.159:8080
 | Funcionalidad | Estado |
 | ------------- | ------ |
 | Interfaz principal (sidebar, header, layout) | Implementada |
-| Navegación entre vistas | Implementada (sin rutas de URL) |
+| Navegación entre vistas | Implementada (hash: `#/dashboard`, `#/fichadas`, `#/empleados`, `#/administracion`, `#/registros`) |
 | Login | Integrado con la API real (`POST /api/Auth/Login`) |
 | Sesión | JWT en `sessionStorage` (`ca.auth.token`) y usuario en `ca.auth.user` |
 | Peticiones protegidas | Header `Authorization: Bearer <token>` |
 | Empleados (listado, alta, detalle, baja lógica) | Integrado con la API. Paginación, filtros y ordenamiento en el cliente |
 | Fichadas (filtros server-side, período, jornadas, CSV, impresión) | Integrado con la API |
 | Empresa (nombre en reportes de fichadas) | `GET /api/empresas` (si falla, la vista sigue y el nombre queda vacío) |
-| Dashboard | Datos reales (`GET /api/empleados` + `GET /api/fichadas` del día). Refresco manual y automático (60 s). No hay endpoint de dashboard. |
+| Dashboard | Datos reales (`GET /api/empleados` + `GET /api/fichadas` del día; SuperAdmin también `GET /api/agentes`). Refresco manual y automático. No hay endpoint de dashboard en la API oficial. |
 | Áreas, Horarios, Dispositivos, Agentes | Placeholders: el código de vista genérica se conserva, pero **no aparecen** en el menú principal |
 
 El frontend **no valida la firma** del JWT. Solo decodifica el payload para mostrar nombre, email, rol y `empresa_id`. Un **401** en una petición autenticada cierra la sesión y vuelve al login. La sesión sobrevive a recargar la pestaña; no sobrevive a cerrar el navegador.
@@ -364,7 +367,7 @@ En Ver / Editar empleado no se muestran ID ni empresa; siguen usándose internam
 ## Funcionalidades pendientes
 
 - **Menú (evolución futura):** Áreas, Horarios, Dispositivos y Agentes siguen siendo placeholders sin API. Están ocultos de la navegación principal; el código no se eliminó.
-- **Empleados (backend pendiente):** reactivar/listar inactivos, paginación de servidor, indicador de enrolamiento `tieneHuella` (boolean) **sin** exponer `templateBiometrico`. El enrolamiento se hace en el agente local, no en este panel.
+- **Empleados:** listado de inactivos (`incluirInactivos=true`) y reactivación (`POST /api/empleados/{id}/reactivar`) en el panel. Sigue pendiente paginación de servidor. El indicador de enrolamiento `tieneHuella` (boolean) **no** expone `templateBiometrico`. El enrolamiento se hace en el agente local, no en este panel.
 - **Estado del sistema (futuro, requiere API + agente):** identificador de agente, heartbeat, `ultimaConexion`, estado independiente del lector, serial/modelo, última sincronización del agente. No inferir por fichadas recientes. No implementar en frontend hasta que exista contrato seguro.
 
 No hay login mock ni Dashboard mock: autenticación y dashboard consultan la API.

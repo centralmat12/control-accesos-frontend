@@ -1,3 +1,4 @@
+import { baseDatosKindToStatus, sistemaKindToStatus } from '../utils/dashboard-sistema.js'
 import { escapeHtml } from '../utils/format.js'
 import { iconAgent, iconClock, iconDevice, iconStatusOff, iconStatusOk, iconStatusUnknown, iconStatusWarn } from './icons.js'
 import { bindTooltipRoot, tooltipTriggerAttributes } from './tooltip.js'
@@ -18,6 +19,10 @@ const TONES = {
   error: {
     wrap: 'bg-red-50 text-red-800 ring-red-600/15 dark:bg-red-950/40 dark:text-red-200 dark:ring-red-400/20',
     icon: iconStatusOff,
+  },
+  info: {
+    wrap: 'bg-sky-50 text-sky-800 ring-sky-600/15 dark:bg-sky-950/40 dark:text-sky-200 dark:ring-sky-400/20',
+    icon: iconStatusUnknown,
   },
   neutral: {
     wrap: 'bg-slate-100 text-slate-700 ring-slate-500/10 dark:bg-slate-800 dark:text-slate-300 dark:ring-slate-400/20',
@@ -58,7 +63,7 @@ export function apiConsultaStatus({ ok = false, errorMessage = '' } = {}) {
   if (ok) {
     return {
       tone: 'success',
-      label: 'Operativa',
+      label: 'Operativo',
       detail: 'La consulta del panel respondió correctamente.',
     }
   }
@@ -94,6 +99,26 @@ export function datosCargaStatus({ lastSuccessAt = null, clockLabel = '' } = {})
   }
 }
 
+export function sistemaOperativoStatus({
+  kind = '',
+  ok = false,
+  reachable = false,
+  errorMessage = '',
+  detailed = false,
+} = {}) {
+  const resolved = kind || (ok ? 'ok' : reachable ? 'degraded' : 'unknown')
+  return sistemaKindToStatus(resolved, { errorMessage, detailed })
+}
+
+export function baseDatosStatus({
+  connected = null,
+  errorMessage = '',
+  detailed = false,
+  source = '',
+} = {}) {
+  return baseDatosKindToStatus(connected, { source, detailed, errorMessage })
+}
+
 export function agenteSinPermisoStatus() {
   return {
     tone: 'neutral',
@@ -103,37 +128,59 @@ export function agenteSinPermisoStatus() {
   }
 }
 
+export function agenteEmpresaAusenteStatus() {
+  return {
+    tone: 'neutral',
+    label: 'Empresa no disponible',
+    detail: 'La sesión no incluye una empresa válida para consultar el lector o agente.',
+    items: [],
+  }
+}
+
+export function agenteSinConfigurarStatus() {
+  return {
+    tone: 'neutral',
+    label: 'Sin dispositivos configurados',
+    detail: 'No hay un agente configurado para esta empresa.',
+    items: [],
+  }
+}
+
 export function createSystemStatusCard({
-  api,
-  datos,
-  agente,
+  sistema,
+  baseDatos,
+  dispositivos,
 } = {}) {
   const card = document.createElement('section')
   card.className =
     'rounded-xl border border-slate-200 bg-white p-3 shadow-sm dark:border-slate-700 dark:bg-slate-900 sm:p-4'
   card.setAttribute('aria-labelledby', 'dashboard-system-title')
 
+  const dispositivoRow = dispositivos
+    ? rowMarkup({
+        icon: iconAgent(),
+        label: 'Dispositivos',
+        badgeId: 'system-status-dispositivos',
+        status: dispositivos,
+      })
+    : ''
+
   card.innerHTML = `
     <h2 id="dashboard-system-title" class="text-base font-semibold text-slate-900 dark:text-slate-100">Estado del sistema</h2>
     <ul class="mt-2 divide-y divide-slate-100 dark:divide-slate-800">
       ${rowMarkup({
         icon: iconDevice(),
-        label: 'API',
-        badgeId: 'system-status-api',
-        status: api ?? { tone: 'neutral', label: 'Sin información', detail: 'Todavía no se consultó la API.' },
+        label: 'Sistema',
+        badgeId: 'system-status-sistema',
+        status: sistema ?? { tone: 'neutral', label: 'Estado desconocido', detail: 'Todavía no se consultó el sistema.' },
       })}
       ${rowMarkup({
         icon: iconClock(),
-        label: 'Datos',
-        badgeId: 'system-status-datos',
-        status: datos ?? { tone: 'neutral', label: 'Sin información', detail: 'Todavía no hay una carga correcta.' },
+        label: 'Base de datos',
+        badgeId: 'system-status-db',
+        status: baseDatos ?? { tone: 'neutral', label: 'Estado desconocido', detail: 'No hay una confirmación de la base de datos.' },
       })}
-      ${rowMarkup({
-        icon: iconAgent(),
-        label: 'Lector o agente',
-        badgeId: 'system-status-agente',
-        status: agente ?? { tone: 'neutral', label: 'Sin información', detail: 'No hay un último contacto disponible.' },
-      })}
+      ${dispositivoRow}
     </ul>
     <p class="mt-2 text-xs text-slate-500 dark:text-slate-400">Estados correspondientes a la aplicación instalada en Sede Central.</p>
   `

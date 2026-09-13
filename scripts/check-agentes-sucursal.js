@@ -34,6 +34,7 @@ import { setEmpresaContexto } from '../src/api/empresa-context.js'
 import { updateSucursal } from '../src/api/sucursales.js'
 import {
   puedeAdministrarAgentes,
+  puedeConsultarEstadoAgente,
   puedeCrearAgentes,
   puedeDesactivarAgente,
   puedeEditarSucursales,
@@ -65,11 +66,15 @@ function writeSession(user, token = SESSION_TOKEN) {
 }
 
 function jsonResponse(status, payload) {
+  const body = JSON.stringify(payload ?? {})
   return {
     ok: status >= 200 && status < 300,
     status,
     json: async () => payload,
-    text: async () => JSON.stringify(payload ?? {}),
+    text: async () => body,
+    clone() {
+      return jsonResponse(status, payload)
+    },
   }
 }
 
@@ -185,6 +190,18 @@ await check('3. ADMIN no administra agentes ni cambia de tenant', async () => {
   assert.equal(fetchCalls.length, 0)
 
   await assert.rejects(() => getAgentes({ sucursalId: 12, empresaId: 4 }), (error) => {
+    assert.equal(error.status, 403)
+    return true
+  })
+  assert.equal(fetchCalls.length, 0)
+})
+
+await check('3b. ADMIN y RRHH no consultan GET /api/agentes', async () => {
+  assert.equal(puedeAdministrarAgentes(admin(9), 9), false)
+  assert.equal(puedeCrearAgentes(admin(9), 9), false)
+  writeSession(admin(9))
+  installFetch(async () => jsonResponse(200, []))
+  await assert.rejects(() => getAgentes({ sucursalId: 12, empresaId: 9 }), (error) => {
     assert.equal(error.status, 403)
     return true
   })
@@ -389,6 +406,8 @@ await check('11. Los roles no autorizados no ven acciones de agentes', () => {
   assert.equal(puedeRotarSecretAgente(admin(9), 9), false)
   assert.equal(puedeDesactivarAgente(admin(9), 9), false)
   assert.equal(puedeEditarSucursales(admin(9), 9), true)
+  assert.equal(puedeConsultarEstadoAgente(admin(9)), false)
+  assert.equal(puedeConsultarEstadoAgente(rrhh(9)), false)
   assert.equal(puedeAdministrarAgentes(rrhh(9), 9), false)
   assert.equal(puedeAdministrarAgentes(superadmin(), 4), true)
   assert.equal(puedeCrearAgentes(superadmin(), 4), true)

@@ -1,6 +1,7 @@
 import { apiUrl } from '../config/api.js'
 import { isSuperadmin } from '../config/roles.js'
 import { logApiNetworkError, logApiResponse } from '../utils/activity-log.js'
+import { sanitizePublicErrorMessage } from '../utils/public-error.js'
 import {
   AUTH_CAMBIAR_PASSWORD_PATH,
   getCurrentUser,
@@ -14,22 +15,28 @@ import {
 } from './auth.js'
 import { getEmpresaContexto } from './empresa-context.js'
 
+export { sanitizePublicErrorMessage } from '../utils/public-error.js'
+
 export async function readErrorMessage(response, fallback) {
   const text = (await response.text()).trim()
   if (!text) return fallback
 
   try {
     const parsed = JSON.parse(text)
-    if (typeof parsed === 'string' && parsed.trim()) return parsed.trim()
+    if (typeof parsed === 'string' && parsed.trim()) {
+      return sanitizePublicErrorMessage(parsed, fallback)
+    }
     if (parsed && typeof parsed === 'object') {
       const message = parsed.mensaje ?? parsed.message ?? parsed.title ?? parsed.detalle
-      if (typeof message === 'string' && message.trim()) return message.trim()
+      if (typeof message === 'string' && message.trim()) {
+        return sanitizePublicErrorMessage(message, fallback)
+      }
     }
   } catch {
-    return text
+    return sanitizePublicErrorMessage(text, fallback)
   }
 
-  return text
+  return fallback
 }
 
 export function createApiError(message, status, code) {

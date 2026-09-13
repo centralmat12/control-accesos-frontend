@@ -30,6 +30,7 @@ import {
   desbloquearUsuario,
   estadoCuentaUsuario,
   estadoPasswordUsuario,
+  filterUsuariosByOperador,
   getUsuarios,
   restablecerPasswordUsuario,
   createUsuario,
@@ -43,6 +44,7 @@ import {
   empresaIdDeTenant,
   puedeAbrirNuevoUsuario,
   puedeAdministrarAgentes,
+  puedeVerSeccionEmpresas,
   puedeCrearAgentes,
   puedeCrearEmpresas,
   puedeCrearSucursales,
@@ -84,7 +86,7 @@ import { createKeyedLock, createViewLifecycle, runLockedConfirmAction } from '..
 
 const USUARIOS_COL_WIDTH = {
   Estado: 'w-28 min-w-28',
-  Contraseña: 'w-36 min-w-36',
+  'Cambio de clave': 'w-36 min-w-36',
   Bloqueo: 'w-36 min-w-36',
   Acciones: 'w-32 min-w-32',
 }
@@ -104,7 +106,7 @@ export function usuariosTableHeadMarkup(columns = USUARIOS_TABLE_COLUMNS) {
 }
 
 const USUARIO_FILA_ACCION_CLASS =
-  'inline-flex items-center justify-center rounded-lg px-2.5 py-1.5 text-xs font-semibold text-blue-700 hover:bg-blue-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 disabled:cursor-not-allowed disabled:opacity-60 dark:text-blue-300 dark:hover:bg-slate-800'
+  'inline-flex items-center justify-center rounded-lg bg-blue-50 px-2.5 py-1.5 text-xs font-semibold text-blue-700 ring-1 ring-inset ring-blue-200 transition-all duration-150 ease-out hover:bg-blue-100 hover:ring-blue-300 hover:shadow-sm active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-blue-500/10 dark:text-blue-300 dark:ring-blue-500/40 dark:hover:bg-blue-500/20 dark:hover:ring-blue-400/60 motion-reduce:transform-none motion-reduce:transition-none'
 
 export function usuarioFilaAccionesMarkup(operador, usuario) {
   if (!puedeEditarUsuarioObjetivo(operador, usuario)) {
@@ -174,30 +176,34 @@ export async function renderAdministracion(container) {
   const user = getCurrentUser()
   const canCreateUsuarios = puedeAbrirNuevoUsuario(user)
   const canCreateEmpresas = puedeCrearEmpresas(user)
+  const canViewEmpresasSection = puedeVerSeccionEmpresas(user)
   const canListUsuarios = puedeListarUsuarios(user)
   const tenantEmpresaId = empresaIdDeTenant(user)
   const usuarioDisabledMessage =
     isAdmin(user) && !tenantEmpresaId
       ? 'La sesión ADMIN no incluye una empresa válida.'
       : API_ENABLEMENT_HINT
-  const empresaDisabledMessage = isAdmin(user)
-    ? 'La API autoriza el alta de empresas únicamente al rol SuperAdmin.'
-    : API_ENABLEMENT_HINT
   const view = document.createElement('div')
   view.className = 'space-y-6'
 
   view.innerHTML = `
     ${pageHeadingMarkup({
-      title: 'Gestioná usuarios y empresas',
-      description: 'Administrá sus accesos, roles, estados y estructura organizativa.',
+      title: canViewEmpresasSection ? 'Gestioná usuarios y empresas' : 'Gestioná usuarios',
+      description: canViewEmpresasSection
+        ? 'Administrá sus accesos, roles, estados y estructura organizativa.'
+        : 'Administrá sus accesos, roles y estados.',
     })}
     <div class="inline-flex w-fit max-w-full flex-wrap gap-1 rounded-xl border border-slate-200 bg-slate-50 p-1 dark:border-slate-700 dark:bg-slate-800/60" role="tablist" aria-label="Secciones de administración">
       <button type="button" data-section="${SECTIONS.usuarios}" role="tab" class="inline-flex rounded-lg border px-3 py-1.5 text-sm font-medium">
         Usuarios
       </button>
-      <button type="button" data-section="${SECTIONS.empresas}" role="tab" class="inline-flex rounded-lg border px-3 py-1.5 text-sm font-medium">
+      ${
+        canViewEmpresasSection
+          ? `<button type="button" data-section="${SECTIONS.empresas}" role="tab" class="inline-flex rounded-lg border px-3 py-1.5 text-sm font-medium">
         Empresas
-      </button>
+      </button>`
+          : ''
+      }
     </div>
     <div id="admin-panel"></div>
   `
@@ -256,10 +262,15 @@ export async function renderAdministracion(container) {
     passwordTemporalOpen = false
   }
 
+  function resolveSection(next) {
+    if (next === SECTIONS.empresas && !canViewEmpresasSection) return SECTIONS.usuarios
+    return next === SECTIONS.empresas ? SECTIONS.empresas : SECTIONS.usuarios
+  }
+
   function setSection(next) {
     if (!isViewAlive()) return
-    section = next
-    if (next !== SECTIONS.empresas) {
+    section = resolveSection(next)
+    if (section !== SECTIONS.empresas) {
       selectedEmpresa = null
       selectedSucursal = null
     }
@@ -274,13 +285,13 @@ export async function renderAdministracion(container) {
       // Nombres de empresa para el listado global de SuperAdmin.
       if (isSuperadmin(user) && !empresasLoaded) void loadEmpresas({ silent: true })
     }
-    if (section === SECTIONS.empresas && !selectedEmpresa && !empresasLoaded) {
+    if (section === SECTIONS.empresas && canViewEmpresasSection && !selectedEmpresa && !empresasLoaded) {
       void loadEmpresas()
     }
   }
 
   function renderPanel() {
-    if (section === SECTIONS.usuarios) {
+    if (section !== SECTIONS.empresas || !canViewEmpresasSection) {
       renderUsuarios()
       return
     }
@@ -326,7 +337,7 @@ export async function renderAdministracion(container) {
         ? 'Usuarios de la empresa seleccionada en el encabezado.'
         : 'Sin empresa seleccionada se listan los usuarios de todas las empresas.'
     }
-    return 'La API limita el listado a los usuarios de tu empresa.'
+    return ''
   }
 
   function renderUsuarios() {
@@ -335,7 +346,6 @@ export async function renderAdministracion(container) {
       <div class="space-y-4">
         <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div class="min-w-0">
-            <p class="text-sm text-slate-500">Usuarios del panel web.</p>
             ${scopeHint ? `<p class="mt-1 text-xs text-slate-500">${escapeHtml(scopeHint)}</p>` : ''}
           </div>
           ${createActionControl({
@@ -385,10 +395,10 @@ export async function renderAdministracion(container) {
   }
 
   function passwordEstadoMarkup(usuario) {
-    return estadoPasswordUsuario(usuario) === 'Cambio requerido'
-      ? badgeHtml('Cambio requerido', 'warning')
-      : badgeHtml('Normal', 'neutral')
-  }
+  return estadoPasswordUsuario(usuario) === 'Cambio requerido'
+    ? badgeHtml('Cambio requerido', 'warning')
+    : badgeHtml('No requerido', 'neutral')
+}
 
   function usuarioAccionesMarkup(usuario) {
     return usuarioFilaAccionesMarkup(user, usuario)
@@ -437,7 +447,9 @@ export async function renderAdministracion(container) {
       return
     }
 
-    if (usuarios.length === 0) {
+    const visibles = filterUsuariosByOperador(usuarios, user)
+
+    if (visibles.length === 0) {
       results.replaceChildren(
         createFeedbackState({
           title: 'No hay usuarios',
@@ -460,7 +472,7 @@ export async function renderAdministracion(container) {
             </tr>
           </thead>
           <tbody class="divide-y divide-slate-100">
-            ${usuarios
+            ${visibles
               .map(
                 (usuario) => `
                   <tr class="hover:bg-slate-50 dark:hover:bg-slate-800/60">
@@ -837,6 +849,10 @@ export async function renderAdministracion(container) {
   }
 
   function renderEmpresasList() {
+    if (!canViewEmpresasSection) {
+      setSection(SECTIONS.usuarios)
+      return
+    }
     panel.innerHTML = `
       <div class="space-y-4">
         <div class="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
@@ -844,12 +860,15 @@ export async function renderAdministracion(container) {
             <label for="admin-empresas-search" class="mb-1.5 block text-sm font-medium text-slate-700">Buscar</label>
             <input id="admin-empresas-search" type="search" placeholder="Nombre, razón social, CUIT o ID" class="${CONTROL_CLASS}" />
           </div>
-          ${createActionControl({
-            id: 'admin-empresa-new',
-            label: 'Nueva empresa',
-            enabled: canCreateEmpresas,
-            disabledMessage: empresaDisabledMessage,
-          })}
+          ${
+            canCreateEmpresas
+              ? createActionControl({
+                  id: 'admin-empresa-new',
+                  label: 'Nueva empresa',
+                  enabled: true,
+                })
+              : ''
+          }
         </div>
         <div id="admin-empresas-results"></div>
       </div>
@@ -1545,6 +1564,7 @@ export async function renderAdministracion(container) {
   }
 
   async function loadEmpresas({ silent = false } = {}) {
+    if (!isSuperadmin(user)) return
     empresasLoaded = false
     empresasError = false
     paintEmpresasResults()

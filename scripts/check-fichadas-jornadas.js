@@ -532,7 +532,7 @@ check('Columnas 11. CSV completo con columnas ocultas', () => {
     'Legajo',
     'Fecha',
     'Hora',
-    'Tipo informado',
+    'Movimiento',
     'Método',
     'Observación',
   ])
@@ -670,8 +670,8 @@ check('Fichadas limpia textos permanentes y usa tooltips accesibles', () => {
   assert.equal(movimientos.includes('Esta vista conserva las marcaciones originales informadas por el dispositivo'), false)
   assert.equal(jornadas.includes('El horario previsto es el horario actual del empleado, no un historial de la fecha de la fichada.'), false)
   assert.equal(jornadas.includes('Las jornadas que atraviesan medianoche pueden requerir una regla adicional'), false)
-  assert.match(columns, /Muestra las marcaciones originales informadas por el dispositivo/)
-  assert.match(columns, /Las jornadas nocturnas pueden requerir reglas adicionales/)
+  assert.match(columns, /Muestra las fichadas informadas por el lector/)
+  assert.match(columns, /El ingreso y el egreso se calculan/)
   assert.match(columns, /Tipo y Método se aplican a los movimientos originales/)
 })
 

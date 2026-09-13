@@ -1,5 +1,12 @@
 /**
- * Empleados — API real.
+ * Empleados — API real (ControlFichajes.API).
+ *
+ * GET /api/empleados (sin query o incluirInactivos=false) sigue devolviendo solo activos.
+ * GET /api/empleados?incluirInactivos=true incluye inactivos de la empresa autorizada.
+ * GET /api/empleados/{id} y PATCH /api/empleados/{id} siguen exigiendo Activo; un inactivo da 404.
+ * DELETE /api/empleados/{id} es baja lógica (Activo = false).
+ * POST /api/empleados/{id}/reactivar pone Activo = true. 409 si ya está activo.
+ * EmpleadoPatchDto no incluye `activo`. El DTO de lectura incluye Activo.
  *
  * Actualización: PATCH /api/empleados/{id} con EmpleadoPatchDto (campos opcionales).
  * No enviar id, empresaId, activo ni datos biométricos.
@@ -68,8 +75,9 @@ async function request(path, options = {}) {
   })
 }
 
-export async function getEmpleados() {
-  const { url, response } = await request('/api/empleados')
+export async function getEmpleados({ incluirInactivos = false } = {}) {
+  const path = incluirInactivos === true ? '/api/empleados?incluirInactivos=true' : '/api/empleados'
+  const { url, response } = await request(path)
 
   if (!response.ok) {
     console.error('Empleados: respuesta HTTP no exitosa', { url, status: response.status })
@@ -178,5 +186,28 @@ export async function deactivateEmpleado(id) {
   if (!response.ok) {
     console.error('Empleados: baja HTTP no exitosa', { url, status: response.status })
     throw new Error(await readErrorMessage(response, `No se pudo desactivar el empleado (${response.status}).`))
+  }
+}
+
+export async function reactivateEmpleado(id) {
+  const { url, response } = await request(`/api/empleados/${id}/reactivar`, {
+    method: 'POST',
+  })
+
+  if (response.status === 404) {
+    throw new Error(await readErrorMessage(response, 'Empleado no encontrado.'))
+  }
+
+  if (response.status === 403) {
+    throw new Error('No tenés permiso para activar este empleado.')
+  }
+
+  if (response.status === 409) {
+    throw new Error(await readErrorMessage(response, 'El empleado ya está activo.'))
+  }
+
+  if (!response.ok) {
+    console.error('Empleados: reactivación HTTP no exitosa', { url, status: response.status })
+    throw new Error(await readErrorMessage(response, `No se pudo activar el empleado (${response.status}).`))
   }
 }

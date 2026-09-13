@@ -649,7 +649,8 @@ await check('37. Encabezado y skeleton de usuarios usan las mismas columnas', ()
   assert.equal(heads.length, USUARIOS_TABLE_COLUMNS.length)
   assert.equal(USUARIOS_TABLE_COLUMNS.length, 8)
   assert.equal(USUARIOS_TABLE_COLUMNS.includes('Acciones'), true)
-  assert.equal(USUARIOS_TABLE_COLUMNS.includes('Contraseña'), true)
+  assert.equal(USUARIOS_TABLE_COLUMNS.includes('Cambio de clave'), true)
+  assert.equal(USUARIOS_TABLE_COLUMNS.includes('Contraseña'), false)
   assert.equal(USUARIOS_TABLE_COLUMNS.includes('Bloqueo'), true)
   assert.match(markup, /text-center/)
   assert.match(markup, /text-left/)
@@ -684,6 +685,69 @@ await check('40-42. Alta, listado y módulos existentes no se reescriben', () =>
   assert.match(read('src/views/fichadas.js'), /renderFichadas/)
   assert.match(read('src/api/agentes.js'), /rotarSecret/)
   assert.match(read('src/components/column-picker.js'), /createDropdownBase/)
+})
+
+await check('Cambio propio: encabezado, modal y sin ID de otro usuario', () => {
+  const header = read('src/components/header.js')
+  const app = read('src/app.js')
+  const view = read('src/views/cambiar-password.js')
+  const form = read('src/components/cambiar-password-form.js')
+  const auth = read('src/api/auth.js')
+
+  const menu = read('src/components/account-menu.js')
+  assert.match(header, /createAccountMenu\(/)
+  assert.doesNotMatch(header, /id="change-password-button"/)
+  assert.doesNotMatch(header, /id="logout-button"/)
+  assert.match(menu, /Cambiar contraseña/)
+  assert.match(menu, /account-menu-button/)
+  assert.match(menu, /id = 'account-menu-change-password'/)
+  assert.match(menu, /id = 'account-menu-logout'/)
+  assert.match(menu, /setAttribute\('aria-label', 'Abrir menú de cuenta'\)/)
+  assert.match(menu, /setAttribute\('aria-haspopup', 'menu'\)/)
+  assert.match(menu, /setAttribute\('role', 'menu'\)/)
+  assert.match(menu, /setAttribute\('role', 'menuitem'\)/)
+  assert.match(menu, /claimOpenDropdown/)
+  assert.match(menu, /title = 'Menú de cuenta'/)
+  assert.match(read('src/config/roles.js'), /export function cuentaRolLabel/)
+  assert.match(app, /openCambiarPasswordModal/)
+  assert.match(view, /openFormModal/)
+  assert.match(view, /Cambiar mi contraseña/)
+  assert.match(view, /renderCambioPasswordObligatorio/)
+  assert.match(form, /validateUsuarioPasswordPolicy/)
+  assert.match(form, /bindPasswordVisibilityToggle/)
+  assert.match(form, /dataset\.submitting/)
+  assert.match(form, /validateAll/)
+  assert.match(auth, /passwordActual/)
+  assert.match(auth, /nuevaPassword/)
+  assert.match(auth, /confirmarPassword/)
+  assert.equal(/usuarioId/.test(auth.slice(auth.indexOf('export async function cambiarPassword'))), false)
+})
+
+await check('Cambio propio 400 no cierra la sesión; el éxito sí', async () => {
+  writeSession(admin(), 'session-jwt')
+  installFetch(() => jsonResponse(400, { mensaje: 'No se pudo cambiar la contraseña.' }))
+  await assert.rejects(
+    () =>
+      cambiarPassword({
+        passwordActual: 'ViejaClave12!',
+        nuevaPassword: 'NuevaClave2026!',
+        confirmarPassword: 'NuevaClave2026!',
+      }),
+    /No se pudo cambiar la contraseña/,
+  )
+  assert.equal(sessionStorage.getItem('ca.auth.token'), 'session-jwt')
+
+  installFetch(() => jsonResponse(200, { mensaje: 'Contraseña cambiada correctamente.' }))
+  await cambiarPassword({
+    passwordActual: 'ViejaClave12!',
+    nuevaPassword: 'NuevaClave2026!',
+    confirmarPassword: 'NuevaClave2026!',
+  })
+  const body = JSON.parse(requestOf().options.body)
+  assert.deepEqual(Object.keys(body).sort(), ['confirmarPassword', 'nuevaPassword', 'passwordActual'])
+  finishPasswordChange()
+  assert.equal(sessionStorage.getItem('ca.auth.token'), null)
+  assert.equal(consumeLoginNotice(), PASSWORD_CHANGED_LOGIN_MESSAGE)
 })
 
 if (failed) {

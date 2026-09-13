@@ -14,6 +14,7 @@ import {
   USUARIO_LIST_FIELDS,
   buildUsuariosQuery,
   createUsuario,
+  filterUsuariosByOperador,
   getUsuarios,
   mapUsuario,
 } from '../src/api/usuarios.js'
@@ -362,6 +363,50 @@ await check('423 indica bloqueo de cuenta y 429 indica límite de intentos', asy
 await check('500 de login no se trata como intento de contraseña en el cliente', async () => {
   installFetch(() => jsonResponse(500, { mensaje: 'error interno' }))
   await assert.rejects(() => login({ email: 'a@example.com', password: 'secreto12' }), /No se pudo iniciar sesión \(500\)/)
+})
+
+await check('ADMIN no ve SuperAdmin aunque la API los incluya', async () => {
+  writeSession(admin(9))
+  installFetch(() =>
+    jsonResponse(200, [
+      usuarioApi({ id: 1, empresaId: 9, rol: 'ADMIN' }),
+      usuarioApi({ id: 2, empresaId: 9, rol: 'RRHH' }),
+      usuarioApi({ id: 3, empresaId: 9, rol: 'SuperAdmin' }),
+      usuarioApi({ id: 4, empresaId: 9, rol: 'SUPERADMIN' }),
+      usuarioApi({ id: 5, empresaId: 9, rol: 'superadmin' }),
+      usuarioApi({ id: 6, empresaId: 2, rol: 'RRHH' }),
+    ]),
+  )
+
+  const usuarios = await getUsuarios()
+  assert.deepEqual(
+    usuarios.map((item) => item.id),
+    [1, 2],
+  )
+  assert.equal(usuarios.some((item) => /superadmin/i.test(item.rol)), false)
+})
+
+await check('SuperAdmin ve todos, incluidos otros SuperAdmin', () => {
+  const lista = [
+    usuarioApi({ id: 1, empresaId: 9, rol: 'ADMIN' }),
+    usuarioApi({ id: 2, empresaId: 9, rol: 'RRHH' }),
+    usuarioApi({ id: 3, empresaId: 9, rol: 'SuperAdmin' }),
+    usuarioApi({ id: 4, empresaId: 2, rol: 'superadmin' }),
+  ]
+  assert.deepEqual(
+    filterUsuariosByOperador(lista, superadmin()).map((item) => item.id),
+    [1, 2, 3, 4],
+  )
+  assert.deepEqual(
+    filterUsuariosByOperador(lista, admin(9)).map((item) => item.id),
+    [1, 2],
+  )
+})
+
+await check('El listado aplica el filtro del operador al pintar', () => {
+  const adminView = read('src/views/administracion.js')
+  assert.match(adminView, /filterUsuariosByOperador\(usuarios, user\)/)
+  assert.match(read('src/api/usuarios.js'), /La API también debería excluir SuperAdmin/)
 })
 
 await check('No hay hashes ni JWT en el código de listado', () => {

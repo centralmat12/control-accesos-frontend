@@ -1,4 +1,9 @@
+import { sanitizePublicErrorMessage } from '../utils/public-error.js'
+
 const DEFAULT_DURATION_MS = 4_500
+const DEDUP_WINDOW_MS = 2_000
+
+let lastToast = { message: '', tone: '', at: 0 }
 
 const TONES = {
   success: {
@@ -46,6 +51,19 @@ function toastRegion() {
 }
 
 export function showToast({ message, tone = 'info', duration = DEFAULT_DURATION_MS }) {
+  const raw = String(message ?? '').trim()
+  const body =
+    tone === 'error' || tone === 'warning'
+      ? sanitizePublicErrorMessage(raw, 'No se pudo completar la operación.')
+      : raw
+  if (!body) return { element: null, dismiss: () => {} }
+
+  const now = Date.now()
+  if (lastToast.message === body && lastToast.tone === tone && now - lastToast.at < DEDUP_WINDOW_MS) {
+    return { element: null, dismiss: () => {} }
+  }
+  lastToast = { message: body, tone, at: now }
+
   const config = TONES[tone] ?? TONES.info
   const toast = document.createElement('div')
   toast.className = `pointer-events-auto flex translate-y-[-0.25rem] items-start gap-3 rounded-xl border p-3 opacity-0 shadow-lg transition duration-200 ${config.classes}`
@@ -61,10 +79,10 @@ export function showToast({ message, tone = 'info', duration = DEFAULT_DURATION_
   const title = document.createElement('p')
   title.className = 'text-xs font-semibold uppercase tracking-wide text-slate-500'
   title.textContent = config.label
-  const text = document.createElement('p')
-  text.className = 'mt-0.5 text-sm'
-  text.textContent = message
-  content.append(title, text)
+  const bodyEl = document.createElement('p')
+  bodyEl.className = 'mt-0.5 text-sm'
+  bodyEl.textContent = body
+  content.append(title, bodyEl)
 
   const close = document.createElement('button')
   close.type = 'button'
