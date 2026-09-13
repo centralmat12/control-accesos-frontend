@@ -1,0 +1,343 @@
+name: Deploy frontend
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Escribí exactamente DEPLOY para confirmar el despliegue a producción'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-frontend-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy production
+    runs-on: ubuntu-latest
+    env:
+      TARGET_REF: ${{ github.ref }}
+      CONFIRM: ${{ github.event.inputs.confirm }}
+      DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+      DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+      DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+      DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+      DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+      DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+      DEPLOY_URL: ${{ secrets.DEPLOY_URL }}
+    steps:
+      - name: Verificar rama y confirmación
+        run: |
+          set -euo pipefail
+          if [ "$TARGET_REF" != "refs/heads/main" ]; then
+            echo "Este workflow solo despliega la rama main."
+            exit 1
+          fi
+          if [ "$CONFIRM" != "DEPLOY" ]; then
+            echo "Confirmación inválida. Escribí exactamente DEPLOY."
+            exit 1
+          fi
+
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Instalar dependencias
+        run: npm ci
+
+      - name: Checks
+        run: npm run check
+
+      - name: Build
+        env:
+          VITE_API_BASE_URL: ''
+        run: npm run build
+
+      - name: Verificar dist
+        id: dist
+        run: |
+          set -euo pipefail
+          test -f dist/index.html
+          test -d dist/assets
+          ASSET_JS="$(grep -oE '/assets/[^\"[:space:]]+\.js' dist/index.html | head -n 1 || true)"
+          if [ -z "$ASSET_JS" ]; then
+            echo "No se encontró una referencia /assets/*.js en dist/index.html."
+            exit 1
+          fi
+          echo "asset_js=$ASSET_JS" >> "$GITHUB_OUTPUT"
+
+      - name: Publicar
+        id: publish
+        env:
+          ASSET_JS: ${{ steps.dist.outputs.asset_js }}
+        run: |
+          set -euo pipefail
+          KEYFILE=""
+          ROLLED_BACK=0
+          RESULT="failed"
+          cleanup() {
+            if [ -n "${KEYFILE:-}" ]; then
+              rm -f "$KEYFILE"
+            fi
+            {
+              echo "result=$RESULT"
+              echo "rolled_back=$ROLLED_BACK"
+            } >> "$GITHUB_OUTPUT"
+          }
+          trap cleanup EXIT
+
+          require_secret() {
+            local name="$1"
+            local value="$2"
+            if [ -z "$value" ]; then
+              echo "Falta el secret $name."
+              exit 1
+            fi
+          }
+
+          require_secret DEPLOY_HOST "$DEPLOY_HOST"
+          require_secret DEPLOY_PORT "$DEPLOY_PORT"
+          require_secret DEPLOY_USER "$DEPLOY_USER"
+          require_secret DEPLOY_SSH_KEY "$DEPLOY_SSH_KEY"
+          require_secret DEPLOY_KNOWN_HOSTS "$DEPLOY_KNOWN_HOSTS"
+          require_secret DEPLOY_PATH "$DEPLOY_PATH"
+          require_secret DEPLOY_URL "$DEPLOY_URL"
+
+          case "$DEPLOY_PATH" in
+            ''|'/'|'/var/www')
+              echo "DEPLOY_PATH no es una ruta de publicación válida."
+              exit 1
+              ;;
+          esac
+          case "$DEPLOY_PATH" in
+            *'$'*|*'{'*|'}'*)
+              echo "DEPLOY_PATH contiene un valor sin resolver."
+              exit 1
+              ;;
+          esac
+          if [ "${DEPLOY_PATH#/}" = "$DEPLOY_PATH" ]; then
+            echo "DEPLOY_PATH debe ser una ruta absoluta."
+            exit 1
+          fi
+          if [ "${DEPLOY_PATH#/var/www/}" = "$DEPLOY_PATH" ] || [ "$DEPLOY_PATH" = "/var/www/" ]; then
+            echo "DEPLOY_PATH está fuera del árbol de publicación esperado."
+            exit 1
+          fi
+
+          if ! [[ "$DEPLOY_PORT" =~ ^[0-9]+$ ]]; then
+            echo "DEPLOY_PORT no es un puerto válido."
+            exit 1
+          fi
+
+          mkdir -p "$HOME/.ssh"
+          chmod 700 "$HOME/.ssh"
+          KEYFILE="$(mktemp)"
+          chmod 600 "$KEYFILE"
+          printf '%s\n' "$DEPLOY_SSH_KEY" > "$KEYFILE"
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > "$HOME/.ssh/known_hosts"
+          chmod 600 "$HOME/.ssh/known_hosts"
+
+          SSH_OPTS=(
+            -i "$KEYFILE"
+            -p "$DEPLOY_PORT"
+            -o IdentitiesOnly=yes
+            -o BatchMode=yes
+            -o StrictHostKeyChecking=yes
+            -o UserKnownHostsFile="$HOME/.ssh/known_hosts"
+            -o ConnectTimeout=20
+          )
+          SCP_OPTS=(
+            -i "$KEYFILE"
+            -P "$DEPLOY_PORT"
+            -o IdentitiesOnly=yes
+            -o BatchMode=yes
+            -o StrictHostKeyChecking=yes
+            -o UserKnownHostsFile="$HOME/.ssh/known_hosts"
+            -o ConnectTimeout=20
+          )
+          REMOTE="${DEPLOY_USER}@${DEPLOY_HOST}"
+
+          ssh "${SSH_OPTS[@]}" "$REMOTE" 'printf ok'
+
+          BUNDLE="$(mktemp --suffix=.tar.gz)"
+          tar -C dist -czf "$BUNDLE" .
+          STAGE_ID="${GITHUB_SHA}"
+          BACKUP_NAME="frontend-$(date -u +%Y%m%dT%H%M%SZ)-${GITHUB_SHA:0:12}.tar.gz"
+
+          ssh "${SSH_OPTS[@]}" "$REMOTE" \
+            "STAGE_ID=$(printf '%q' "$STAGE_ID") BACKUP_NAME=$(printf '%q' "$BACKUP_NAME") DEPLOY_PATH=$(printf '%q' "$DEPLOY_PATH") bash -s" <<'REMOTE'
+          set -euo pipefail
+          case "$DEPLOY_PATH" in
+            ''|'/'|'/var/www') echo "Ruta de publicación inválida."; exit 1 ;;
+          esac
+          if [ ! -d "$DEPLOY_PATH" ] || [ ! -w "$DEPLOY_PATH" ]; then
+            echo "No hay permiso de escritura en la ruta de publicación."
+            exit 1
+          fi
+          WORK="$HOME/.control-accesos-deploy"
+          BACKUP_DIR="$WORK/backups"
+          STAGE_ROOT="$WORK/staging"
+          STAGE="$STAGE_ROOT/$STAGE_ID"
+          mkdir -p "$BACKUP_DIR" "$STAGE"
+          touch "$DEPLOY_PATH/.deploy-write-test"
+          rm -f "$DEPLOY_PATH/.deploy-write-test"
+          tar -C "$DEPLOY_PATH" -czf "$BACKUP_DIR/$BACKUP_NAME" .
+          mapfile -t OLD_BACKUPS < <(ls -1t "$BACKUP_DIR"/frontend-*.tar.gz 2>/dev/null || true)
+          if [ "${#OLD_BACKUPS[@]}" -gt 3 ]; then
+            printf '%s\n' "${OLD_BACKUPS[@]:3}" | xargs -r rm -f
+          fi
+          printf '%s\n' "$BACKUP_DIR/$BACKUP_NAME"
+          REMOTE
+
+          scp "${SCP_OPTS[@]}" "$BUNDLE" "$REMOTE:.control-accesos-deploy/staging/${STAGE_ID}/bundle.tar.gz"
+          rm -f "$BUNDLE"
+
+          ssh "${SSH_OPTS[@]}" "$REMOTE" \
+            "STAGE_ID=$(printf '%q' "$STAGE_ID") DEPLOY_PATH=$(printf '%q' "$DEPLOY_PATH") bash -s" <<'REMOTE'
+          set -euo pipefail
+          STAGE="$HOME/.control-accesos-deploy/staging/$STAGE_ID"
+          EXTRACT="$STAGE/tree"
+          rm -rf "$EXTRACT"
+          mkdir -p "$EXTRACT"
+          tar -tzf "$STAGE/bundle.tar.gz" | grep -qx 'index.html'
+          tar -tzf "$STAGE/bundle.tar.gz" | grep -qE '(^|/)assets/'
+          tar -C "$EXTRACT" -xzf "$STAGE/bundle.tar.gz"
+          test -f "$EXTRACT/index.html"
+          test -d "$EXTRACT/assets"
+          test -n "$(ls -A "$EXTRACT/assets")"
+          REMOTE
+
+          publish_tree() {
+            ssh "${SSH_OPTS[@]}" "$REMOTE" \
+              "TREE_REL=$(printf '%q' "$1") DEPLOY_PATH=$(printf '%q' "$DEPLOY_PATH") bash -s" <<'REMOTE'
+            set -euo pipefail
+            SOURCE="$HOME/$TREE_REL"
+            test -f "$SOURCE/index.html"
+            test -d "$SOURCE/assets"
+            mkdir -p "$DEPLOY_PATH/assets"
+            cp -a "$SOURCE/assets/." "$DEPLOY_PATH/assets/"
+            shopt -s dotglob nullglob
+            for item in "$SOURCE"/*; do
+              base="$(basename "$item")"
+              if [ "$base" = "index.html" ] || [ "$base" = "assets" ]; then
+                continue
+              fi
+              cp -a "$item" "$DEPLOY_PATH/"
+            done
+            cp -a "$SOURCE/index.html" "$DEPLOY_PATH/index.html"
+            while IFS= read -r -d '' file; do
+              rel="${file#./}"
+              if [ ! -e "$SOURCE/$rel" ]; then
+                rm -f "$DEPLOY_PATH/$rel"
+              fi
+            done < <(cd "$DEPLOY_PATH" && find . -type f -print0)
+            find "$DEPLOY_PATH" -mindepth 1 -type d -empty -delete
+            REMOTE
+          }
+
+          restore_backup() {
+            ssh "${SSH_OPTS[@]}" "$REMOTE" \
+              "BACKUP_NAME=$(printf '%q' "$BACKUP_NAME") DEPLOY_PATH=$(printf '%q' "$DEPLOY_PATH") bash -s" <<'REMOTE'
+            set -euo pipefail
+            BACKUP="$HOME/.control-accesos-deploy/backups/$BACKUP_NAME"
+            RESTORE="$HOME/.control-accesos-deploy/restore-$$"
+            rm -rf "$RESTORE"
+            mkdir -p "$RESTORE"
+            tar -C "$RESTORE" -xzf "$BACKUP"
+            if [ -d "$RESTORE/assets" ]; then
+              mkdir -p "$DEPLOY_PATH/assets"
+              cp -a "$RESTORE/assets/." "$DEPLOY_PATH/assets/"
+            fi
+            shopt -s dotglob nullglob
+            for item in "$RESTORE"/*; do
+              base="$(basename "$item")"
+              if [ "$base" = "index.html" ] || [ "$base" = "assets" ]; then
+                continue
+              fi
+              cp -a "$item" "$DEPLOY_PATH/"
+            done
+            if [ -f "$RESTORE/index.html" ]; then
+              cp -a "$RESTORE/index.html" "$DEPLOY_PATH/index.html"
+            fi
+            while IFS= read -r -d '' file; do
+              rel="${file#./}"
+              if [ ! -e "$RESTORE/$rel" ]; then
+                rm -f "$DEPLOY_PATH/$rel"
+              fi
+            done < <(cd "$DEPLOY_PATH" && find . -type f -print0)
+            find "$DEPLOY_PATH" -mindepth 1 -type d -empty -delete
+            rm -rf "$RESTORE"
+            REMOTE
+          }
+
+          if ! publish_tree ".control-accesos-deploy/staging/${STAGE_ID}/tree"; then
+            ROLLED_BACK=1
+            restore_backup
+            echo "La publicación falló y se restauró el respaldo."
+            exit 1
+          fi
+
+          SMOKE_URL="${DEPLOY_URL}/?v=${GITHUB_SHA}"
+          BODY="$(mktemp)"
+          if ! curl -sS -L --fail --retry 8 --retry-all-errors --retry-delay 2 \
+            -A "control-accesos-frontend-deploy" \
+            -o "$BODY" \
+            "$SMOKE_URL"; then
+            ROLLED_BACK=1
+            restore_backup
+            rm -f "$BODY"
+            echo "El smoke test de red falló y se restauró el respaldo."
+            exit 1
+          fi
+
+          if ! grep -qiE '<(!doctype )?html' "$BODY"; then
+            ROLLED_BACK=1
+            restore_backup
+            rm -f "$BODY"
+            echo "El smoke test no devolvió HTML y se restauró el respaldo."
+            exit 1
+          fi
+          if ! grep -F "$ASSET_JS" "$BODY" >/dev/null; then
+            ROLLED_BACK=1
+            restore_backup
+            rm -f "$BODY"
+            echo "El HTML publicado no coincide con el asset del build. Se restauró el respaldo."
+            exit 1
+          fi
+          rm -f "$BODY"
+
+          ssh "${SSH_OPTS[@]}" "$REMOTE" \
+            "STAGE_ID=$(printf '%q' "$STAGE_ID") bash -s" <<'REMOTE'
+          set -euo pipefail
+          rm -rf "$HOME/.control-accesos-deploy/staging/$STAGE_ID"
+          REMOTE
+
+          RESULT="success"
+
+      - name: Resumen
+        if: always() && steps.publish.outcome != 'skipped'
+        env:
+          PUBLISH_RESULT: ${{ steps.publish.outputs.result }}
+          ROLLED_BACK: ${{ steps.publish.outputs.rolled_back }}
+        run: |
+          set -euo pipefail
+          echo "Commit: ${GITHUB_SHA}"
+          echo "Fecha UTC: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          echo "URL: ${DEPLOY_URL}"
+          echo "Resultado: ${PUBLISH_RESULT:-unknown}"
+          if [ "${ROLLED_BACK:-0}" = "1" ]; then
+            echo "Rollback: sí"
+          else
+            echo "Rollback: no"
+          fi

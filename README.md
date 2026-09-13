@@ -262,6 +262,32 @@ DEV_API_PROXY_TARGET=http://161.153.193.159:8080
 
 **No subir `.env.local` al repositorio.** Está cubierto por `*.local` en `.gitignore`. El archivo versionado es `.env.example`, sin secretos.
 
+## Despliegue del frontend
+
+La publicación en producción es **manual** y corre en GitHub Actions (`Deploy frontend`). No hay despliegue automático en cada push.
+
+- Solo se acepta la rama `main`.
+- Hay que escribir exactamente `DEPLOY` en el input de confirmación.
+- El build de CI deja `VITE_API_BASE_URL` vacío para que el panel use `/api` en el mismo origen (Nginx reenvía `/api/` al backend local). El workflow **no** despliega ni modifica el backend ni Nginx.
+
+Secrets de repositorio (nombres; los valores no van en el código):
+
+- `DEPLOY_HOST`
+- `DEPLOY_PORT`
+- `DEPLOY_USER`
+- `DEPLOY_SSH_KEY`
+- `DEPLOY_KNOWN_HOSTS`
+- `DEPLOY_PATH`
+- `DEPLOY_URL`
+
+Interpretación del job:
+
+- **Éxito:** checks y build OK, archivos publicados, smoke test HTML con el asset del commit, sin rollback.
+- **Fallo:** se detiene; si la publicación o el smoke test fallan después de haber tocado el document root, se restaura el respaldo automático (se conservan como máximo 3).
+- **Rollback:** el resumen indica si se revirtió a la copia anterior.
+
+Cloudflare no se purga desde este workflow. El smoke test usa un query string con el SHA del commit y compara el HTML con el JS hasheado de `dist`.
+
 ## Estado actual
 
 | Funcionalidad | Estado |
