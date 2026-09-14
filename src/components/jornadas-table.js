@@ -1,5 +1,9 @@
 import { displayValue, escapeHtml, formatDate } from '../utils/format.js'
 import { allColumnIds, visibleColumns } from '../utils/fichadas-columns.js'
+import {
+  countObservacionesJornada,
+  describeObservacionesJornada,
+} from '../utils/fichada-observacion.js'
 import { jornadaEstadoBadge } from './badge.js'
 import { iconEye } from './icons.js'
 
@@ -34,20 +38,33 @@ export function jornadaCellHtml(item, columnId, index) {
     case 'intermedias':
       return `<td class="${TD_CLASS}">${displayValue(item.fichadasIntermediasLabel)}</td>`
     case 'estado':
-      return `<td class="px-4 py-3">${jornadaEstadoBadge(item.estado)}</td>`
-    case 'detalle':
+      return `<td class="min-w-[8.5rem] whitespace-nowrap px-4 py-3">${jornadaEstadoBadge(item.estado)}</td>`
+    case 'detalle': {
+      const observacionesCount = countObservacionesJornada(item)
+      const observacionesLabel = describeObservacionesJornada(observacionesCount)
+      const countBadge =
+        observacionesCount > 0
+          ? `<span
+              class="inline-flex min-w-[1.15rem] items-center justify-center rounded-full bg-violet-600 px-1.5 py-0.5 text-[10px] font-semibold leading-none text-white dark:bg-violet-500"
+              aria-label="${escapeHtml(`${observacionesLabel} en esta jornada`)}"
+            >${observacionesCount}</span>`
+          : ''
+      const observacionesAria =
+        observacionesCount > 0 ? `. ${observacionesLabel}` : ''
       return `<td class="px-4 py-3">
             <button
               type="button"
               data-action="ver-movimientos"
               data-index="${index}"
-              class="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-800"
-              aria-label="Ver movimientos de ${escapeHtml(item.empleado ?? 'la jornada')} del ${escapeHtml(item.fecha ?? '')}"
+              class="inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-800"
+              aria-label="Ver movimientos de ${escapeHtml(item.empleado ?? 'la jornada')} del ${escapeHtml(item.fecha ?? '')}${escapeHtml(observacionesAria)}"
             >
               ${iconEye()}
               <span>Ver movimientos</span>
+              ${countBadge}
             </button>
           </td>`
+    }
     default:
       return ''
   }
@@ -71,7 +88,12 @@ function placeholderRow(colspan, placeholder) {
 
 export function createJornadasTable(
   jornadas,
-  { onVerMovimientos, visibleColumnIds = allColumnIds('jornadas'), placeholder, onPlaceholderAction } = {},
+  {
+    onVerMovimientos,
+    visibleColumnIds = allColumnIds('jornadas'),
+    placeholder,
+    onPlaceholderAction,
+  } = {},
 ) {
   const columns = visibleColumns('jornadas', visibleColumnIds)
   const colspan = columns.length
@@ -127,10 +149,11 @@ export function createJornadasTable(
       return
     }
     const button = event.target.closest('[data-action="ver-movimientos"]')
-    if (!button || !section.contains(button)) return
-    const index = Number(button.dataset.index)
-    const jornada = jornadas[index]
-    if (jornada) onVerMovimientos?.(jornada)
+    if (button && section.contains(button)) {
+      const index = Number(button.dataset.index)
+      const jornada = jornadas[index]
+      if (jornada) onVerMovimientos?.(jornada)
+    }
   })
 
   return section

@@ -15,6 +15,8 @@ const TONES = {
     'bg-blue-50 text-blue-800 ring-blue-600/15 dark:bg-blue-950/60 dark:text-blue-200 dark:ring-blue-400/20',
   yellow:
     'bg-yellow-50 text-yellow-800 ring-yellow-600/20 dark:bg-yellow-950/60 dark:text-yellow-200 dark:ring-yellow-400/25',
+  violet:
+    'bg-violet-50 text-violet-800 ring-violet-600/20 dark:bg-violet-950/70 dark:text-violet-200 dark:ring-violet-400/25',
 }
 
 export const FEATURE_STATUS = {
@@ -52,16 +54,20 @@ export function jornadaEstadoBadge(estado) {
     'En curso': 'blue',
     Pendiente: 'warning',
   }
+  const dots = {
+    Completa: 'bg-emerald-600 dark:bg-emerald-400',
+    'En curso': 'bg-blue-600 dark:bg-blue-400',
+    Pendiente: 'bg-amber-500 dark:bg-amber-400',
+  }
   const descriptions = {
     Completa: 'Jornada completa: ingreso y egreso calculados.',
     'En curso': 'Jornada en curso: el egreso todavía no es definitivo.',
     Pendiente: 'Jornada pendiente: falta el egreso calculado.',
   }
   const label = String(estado ?? '').trim() || 'Pendiente'
-  return badgeHtml(label, tones[label] ?? 'neutral', {
-    title: descriptions[label] ?? label,
-    ariaLabel: descriptions[label] ?? label,
-  })
+  const tone = tones[label] ?? 'neutral'
+  const description = descriptions[label] ?? label
+  return `<span class="inline-flex items-center gap-1.5 whitespace-nowrap rounded-full px-2.5 py-1 text-xs font-medium ring-1 ring-inset ${TONES[tone] ?? TONES.neutral}" title="${escapeHtml(description)}" aria-label="${escapeHtml(description)}"><span class="h-1.5 w-1.5 shrink-0 rounded-full ${dots[label] ?? 'bg-slate-500'}" aria-hidden="true"></span>${escapeHtml(label)}</span>`
 }
 
 /**

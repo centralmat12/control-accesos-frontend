@@ -204,7 +204,9 @@ export function formFieldMarkup({
   const control =
     tag === 'select'
       ? `<select id="${escapeHtml(id)}" name="${escapeHtml(name)}" ${requiredAttr} ${disabledAttr} aria-describedby="${describedBy}" class="${inputClass}">${optionsHtml}</select>`
-      : `<input id="${escapeHtml(id)}" name="${escapeHtml(name)}" type="${escapeHtml(type)}" ${maxAttr} ${autoAttr} ${modeAttr} ${placeholderAttr} ${valueAttr} ${requiredAttr} ${disabledAttr} aria-describedby="${describedBy}" class="${inputClass}" />`
+      : tag === 'textarea'
+        ? `<textarea id="${escapeHtml(id)}" name="${escapeHtml(name)}" rows="4" ${maxAttr} ${placeholderAttr} ${requiredAttr} ${disabledAttr} aria-describedby="${describedBy}" class="${inputClass}">${escapeHtml(String(value ?? ''))}</textarea>`
+        : `<input id="${escapeHtml(id)}" name="${escapeHtml(name)}" type="${escapeHtml(type)}" ${maxAttr} ${autoAttr} ${modeAttr} ${placeholderAttr} ${valueAttr} ${requiredAttr} ${disabledAttr} aria-describedby="${describedBy}" class="${inputClass}" />`
 
   return `
     <div data-form-field="${escapeHtml(name)}">
@@ -226,8 +228,8 @@ export function formStaticFieldMarkup({ id, label, valueHtml, helpText = '', req
       <p class="${FORM_LABEL_CLASS}" id="${escapeHtml(id)}-label">
         ${escapeHtml(label)}${required ? requiredMarkHtml() : ''}
       </p>
-      <div class="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5" aria-labelledby="${escapeHtml(id)}-label" aria-describedby="${helpId}">
-        <p id="${escapeHtml(id)}-value" class="text-sm font-medium text-slate-900">${valueHtml}</p>
+      <div class="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 dark:border-slate-600 dark:bg-slate-800" aria-labelledby="${escapeHtml(id)}-label" aria-describedby="${helpId}">
+        <p id="${escapeHtml(id)}-value" class="text-sm font-medium text-slate-900 dark:text-slate-100">${valueHtml}</p>
       </div>
       <p id="${helpId}" class="${FORM_HELP_CLASS}">${escapeHtml(helpText)}</p>
       <p id="${errorId}" class="${FORM_ERROR_CLASS} hidden" aria-live="polite"></p>

@@ -6,9 +6,14 @@ import {
   formatDate,
   formatTime,
 } from '../utils/format.js'
-import { TIPO_INFORMADO_TOOLTIP, INTERMEDIATE_MOVIMIENTO_TOOLTIP } from '../utils/movimientos.js'
+import { TIPO_INFORMADO_TOOLTIP } from '../utils/movimientos.js'
+import {
+  hasObservacionHumana,
+  observacionAddAriaLabel,
+} from '../utils/fichada-observacion.js'
 import { allColumnIds, visibleColumns } from '../utils/fichadas-columns.js'
 import { badgeHtml, movementBadge } from './badge.js'
+import { observacionHumanaBadgeButton } from './observacion-badge.js'
 import { bindTooltipRoot } from './tooltip.js'
 
 const TH_CLASS = 'px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500'
@@ -21,23 +26,32 @@ function metodoBadge(metodo) {
   return badgeHtml(label, isBiometric ? 'info' : 'neutral')
 }
 
-function observacionCell(item) {
-  if (item.esPosibleDuplicado) {
-    return badgeHtml(item.observacionLabel, 'yellow', {
-      title: item.observacionLabel,
-      ariaLabel: item.observacionLabel,
-    })
+function observacionCell(item, { canEditObservacion } = {}) {
+  const hasNote = hasObservacionHumana(item)
+
+  if (!hasNote && !canEditObservacion) {
+    return '<span class="text-slate-400">—</span>'
   }
-  if (item.esMovimientoIntermedio) {
-    return badgeHtml('Movimiento intermedio', 'neutral', {
-      tooltip: INTERMEDIATE_MOVIMIENTO_TOOLTIP,
-      ariaLabel: 'Movimiento intermedio',
-    })
+
+  if (!hasNote) {
+    return `<button
+      type="button"
+      data-action="observacion-fichada"
+      data-id="${escapeHtml(String(item.id ?? ''))}"
+      class="mt-1 inline-flex items-center rounded-md px-1.5 py-0.5 text-xs font-medium text-blue-700 hover:bg-blue-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 dark:text-blue-300 dark:hover:bg-blue-950/40"
+      aria-label="${escapeHtml(observacionAddAriaLabel(item))}"
+    >+ Agregar</button>`
   }
-  return '<span class="text-slate-400">—</span>'
+
+  return observacionHumanaBadgeButton({
+    item,
+    canEdit: canEditObservacion,
+    action: 'observacion-fichada',
+    layout: 'table',
+  })
 }
 
-export function movimientoCellHtml(item, columnId) {
+export function movimientoCellHtml(item, columnId, options = {}) {
   switch (columnId) {
     case 'empleado':
       return `<td class="${TD_NAME}">${displayValue(item.empleado)}</td>`
@@ -55,7 +69,7 @@ export function movimientoCellHtml(item, columnId) {
     case 'metodo':
       return `<td class="px-4 py-3">${metodoBadge(item.metodo)}</td>`
     case 'observacion':
-      return `<td class="px-4 py-3">${observacionCell(item)}</td>`
+      return `<td class="px-4 py-3">${observacionCell(item, options)}</td>`
     default:
       return ''
   }
@@ -79,7 +93,13 @@ function placeholderRow(colspan, placeholder) {
 
 export function createFichadasTable(
   fichadas,
-  { visibleColumnIds = allColumnIds('movimientos'), placeholder, onPlaceholderAction } = {},
+  {
+    visibleColumnIds = allColumnIds('movimientos'),
+    placeholder,
+    onPlaceholderAction,
+    onObservacion,
+    canEditObservacion = false,
+  } = {},
 ) {
   const columns = visibleColumns('movimientos', visibleColumnIds)
   const colspan = columns.length
@@ -103,7 +123,7 @@ export function createFichadasTable(
           .map(
             (item) => `
         <tr class="transition-colors hover:bg-slate-50 dark:hover:bg-slate-800/70">
-          ${columns.map((column) => movimientoCellHtml(item, column.id)).join('')}
+          ${columns.map((column) => movimientoCellHtml(item, column.id, { canEditObservacion })).join('')}
         </tr>
       `,
           )
@@ -124,6 +144,15 @@ export function createFichadasTable(
 
   if (placeholder?.actionLabel && onPlaceholderAction) {
     section.querySelector('[data-action="table-placeholder"]')?.addEventListener('click', onPlaceholderAction)
+  }
+  if (onObservacion) {
+    section.addEventListener('click', (event) => {
+      const button = event.target.closest('[data-action="observacion-fichada"]')
+      if (!button || !section.contains(button)) return
+      const id = String(button.dataset.id ?? '')
+      const fichada = fichadas.find((item) => String(item?.id) === id)
+      if (fichada) onObservacion(fichada)
+    })
   }
   bindTooltipRoot(section)
 
