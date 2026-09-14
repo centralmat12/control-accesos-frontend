@@ -11,6 +11,11 @@ import {
 } from './fichadas-columns.js'
 import { describePeriodo } from './period.js'
 import { describeDetalleLinea } from './movimientos.js'
+import {
+  observacionExportColumns,
+  observacionExportValue,
+  shouldAppendObservacionExportColumns,
+} from './fichada-observacion.js'
 import { buildCsv } from './csv.js'
 
 export const FICHADAS_EXPORT_TITLE = 'Reporte de fichadas'
@@ -124,6 +129,9 @@ function movimientoField(item, columnId, { forCsv }) {
       return displayMetodoLabel(item.metodo)
     case 'observacion':
       return item.observacionLabel ?? ''
+    case 'observacionMotivo':
+    case 'observacionDetalle':
+      return observacionExportValue(item, columnId)
     default:
       return ''
   }
@@ -211,8 +219,11 @@ export function buildFichadasViewSelection({
 export function buildFichadasExportSnapshot(selection, { mode = 'view' } = {}) {
   const view = selection?.view === 'jornadas' ? 'jornadas' : 'movimientos'
   const records = Array.isArray(selection?.records) ? selection.records : []
-  const columns =
+  const baseColumns =
     mode === 'full' ? columnCatalog(view) : selectedCatalogColumns(view, selection?.columnIds ?? [])
+  const columns = shouldAppendObservacionExportColumns(view, records)
+    ? [...baseColumns, ...observacionExportColumns()]
+    : baseColumns
   const headers = columns.map((column) => columnExportLabel(view, column))
   const hasRecords = records.length > 0
   const hasColumns = columns.length > 0

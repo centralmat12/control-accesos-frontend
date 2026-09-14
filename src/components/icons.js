@@ -79,9 +79,16 @@ export function iconLogout() {
   </svg>`
 }
 
-export function iconPencil() {
-  return `<svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+export function iconPencil(className = 'h-4 w-4') {
+  return `<svg class="${className}" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
     <path stroke-linecap="round" stroke-linejoin="round" d="M16.862 3.487a1.875 1.875 0 1 1 2.651 2.652L7.5 18.15 3 19.5l1.35-4.5 12.512-11.513z" />
+  </svg>`
+}
+
+export function iconNote(className = 'h-3.5 w-3.5') {
+  return `<svg class="${className}" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+    <path stroke-linecap="round" stroke-linejoin="round" d="M7 3h8l5 5v13a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1Z" />
+    <path stroke-linecap="round" stroke-linejoin="round" d="M15 3v5h5M9 13h6M9 17h4" />
   </svg>`
 }
 

@@ -8,6 +8,7 @@ import { createEmpleadoCombobox } from '../components/empleado-combobox.js'
 import { createColumnPicker } from '../components/column-picker.js'
 import { BTN_SECONDARY_CLASS } from '../components/button-styles.js'
 import { createFichadasTable } from '../components/fichadas-table.js'
+import { openFichadaObservacionModal } from '../components/fichada-observacion-form.js'
 import { createFeedbackState, createSelectEmpresaState } from '../components/feedback-state.js'
 import { printReport } from '../components/fichadas-print.js'
 import { openFichadasCsvExportModal } from '../components/fichadas-csv-export.js'
@@ -51,6 +52,11 @@ import {
 } from '../utils/movimientos.js'
 import { DEFAULT_PAGE_SIZE, PAGE_SIZE_OPTIONS, paginateItems } from '../utils/paginate.js'
 import { resolvePeriodRange } from '../utils/period.js'
+import {
+  puedeEditarObservacionFichada,
+  replaceFichadaObservacionInList,
+  shouldApplyObservacionResponse,
+} from '../utils/fichada-observacion.js'
 
 const CONTROL_CLASS =
   'h-11 w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none placeholder:text-slate-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100'
@@ -295,7 +301,11 @@ export async function renderFichadas(container) {
   let pageSize = DEFAULT_PAGE_SIZE
   let loadSeq = 0
   let jornadaDetalleModal = null
+  let observacionModal = null
+  let observacionModalFichadaId = null
+  let observacionSession = 0
   let csvExportModal = null
+  let returnToJornada = null
   const columnStorage = window.localStorage
   const isMobileColumns = isMobileColumnViewport(window.innerWidth)
   const columnPrefs = {
@@ -442,9 +452,66 @@ export async function renderFichadas(container) {
     })
   }
 
+  function isSameJornada(a, b) {
+    if (!a || !b || a.fecha !== b.fecha) return false
+    if (a.empleadoId != null && b.empleadoId != null && String(a.empleadoId) === String(b.empleadoId)) {
+      return true
+    }
+    return String(a.empleado ?? '') === String(b.empleado ?? '') && String(a.legajo ?? '') === String(b.legajo ?? '')
+  }
+
+  function resolveJornada(ref) {
+    if (!ref) return null
+    const jornadas = currentDataset(getFilters()).jornadas
+    return jornadas.find((item) => isSameJornada(item, ref)) ?? ref
+  }
+
   function openDetalle(jornada) {
     jornadaDetalleModal?.close({ force: true })
-    jornadaDetalleModal = openJornadaDetalle(jornada)
+    const live = resolveJornada(jornada)
+    jornadaDetalleModal = openJornadaDetalle(live, {
+      canEditObservacion: puedeEditarObservacionFichada(getCurrentUser()),
+      onEditObservacion: (fichada) => {
+        returnToJornada = {
+          empleadoId: live?.empleadoId,
+          empleado: live?.empleado,
+          legajo: live?.legajo,
+          fecha: live?.fecha,
+        }
+        jornadaDetalleModal?.close({ force: true })
+        jornadaDetalleModal = null
+        openObservacion(fichada)
+      },
+    })
+  }
+
+  function openObservacion(fichada) {
+    observacionSession += 1
+    const session = observacionSession
+    observacionModal?.close({ force: true })
+    observacionModalFichadaId = fichada?.id ?? null
+    observacionModal = openFichadaObservacionModal({
+      fichada,
+      canEdit: puedeEditarObservacionFichada(getCurrentUser()),
+      onClose: () => {
+        if (session !== observacionSession) return
+        if (observacionModalFichadaId === fichada?.id) observacionModalFichadaId = null
+        const pending = returnToJornada
+        returnToJornada = null
+        if (pending) openDetalle(pending)
+      },
+      onSaved: (saved) => {
+        const decision = shouldApplyObservacionResponse({
+          requestFichadaId: fichada.id,
+          responseFichadaId: saved?.fichadaId,
+          openFichadaId: observacionModalFichadaId,
+          modalOpen: Boolean(observacionModal),
+        })
+        if (!decision.updateRow) return
+        fichadas = replaceFichadaObservacionInList(fichadas, fichada.id, saved)
+        renderResults()
+      },
+    })
   }
 
   function renderResults() {
@@ -508,7 +575,11 @@ export async function renderFichadas(container) {
     countLabel.textContent = `Mostrando ${paged.from}–${paged.to} de ${paged.total} ${noun}`
     results.replaceChildren(
       isMovimientos
-        ? createFichadasTable(paged.items, { visibleColumnIds: columnPrefs.movimientos })
+        ? createFichadasTable(paged.items, {
+            visibleColumnIds: columnPrefs.movimientos,
+            canEditObservacion: puedeEditarObservacionFichada(getCurrentUser()),
+            onObservacion: openObservacion,
+          })
         : createJornadasTable(paged.items, {
             visibleColumnIds: columnPrefs.jornadas,
             onVerMovimientos: openDetalle,
@@ -780,6 +851,9 @@ export async function renderFichadas(container) {
     columnPicker.destroy()
     empleadoCombobox.destroy()
     csvExportModal?.close({ force: true })
+    returnToJornada = null
+    observacionSession += 1
     jornadaDetalleModal?.close({ force: true })
+    observacionModal?.close({ force: true })
   }
 }

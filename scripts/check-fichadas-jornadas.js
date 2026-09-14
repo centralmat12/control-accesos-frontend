@@ -373,10 +373,9 @@ check('14. Apertura repetida del detalle sin listeners duplicados', () => {
   assert.match(modalSrc, /document\.removeEventListener\('keydown', onKeyDown\)/)
 })
 
-check('15. Ninguna llamada POST, PUT, PATCH o DELETE', () => {
+check('15. El listado no usa POST, PUT ni DELETE; PATCH solo guarda observación', () => {
   const files = [
     'src/views/fichadas.js',
-    'src/api/fichadas.js',
     'src/utils/jornadas.js',
     'src/utils/movimientos.js',
     'src/utils/fichadas-columns.js',
@@ -395,7 +394,14 @@ check('15. Ninguna llamada POST, PUT, PATCH o DELETE', () => {
     assert.equal(src.includes('method: \'POST\''), false, file)
     assert.equal(src.includes('method: "POST"'), false, file)
   }
-  assert.match(read('src/api/fichadas.js'), /\/api\/fichadas\?/)
+  const api = read('src/api/fichadas.js')
+  assert.match(api, /\/api\/fichadas\?/)
+  assert.equal(/\bPOST\b/.test(api), false)
+  assert.equal(/\bPUT\b/.test(api), false)
+  assert.equal(/\bDELETE\b/.test(api), false)
+  assert.match(api, /method: 'PATCH'/)
+  assert.match(api, /\/observacion/)
+  assert.equal((api.match(/method: 'PATCH'/g) || []).length, 1)
 })
 
 check('El horario previsto no se usa como egreso', () => {
@@ -684,10 +690,12 @@ check('Tooltip de movimiento intermedio accesible', () => {
   assert.match(tooltip, /setAttribute\('role', 'tooltip'\)/)
   assert.match(tooltip, /aria-describedby/)
   assert.equal(tooltip.includes("addEventListener('keydown'") && tooltip.includes('documentBound'), true)
-  const table = read('src/components/fichadas-table.js')
-  assert.match(table, /tooltip: INTERMEDIATE_MOVIMIENTO_TOOLTIP/)
+  const detalle = read('src/components/jornada-detalle.js')
+  assert.match(detalle, /tooltip: INTERMEDIATE_MOVIMIENTO_TOOLTIP/)
+  assert.match(detalle, /Movimiento intermedio/)
   assert.match(read('src/components/badge.js'), /data-tooltip/)
-  assert.equal(table.includes('Marcación entre el ingreso y el egreso calculados'), false)
+  assert.equal(read('src/components/fichadas-table.js').includes('INTERMEDIATE_MOVIMIENTO_TOOLTIP'), false)
+  assert.equal(detalle.includes('Marcación entre el ingreso y el egreso calculados'), false)
 })
 
 check('Botones secundarios de Fichadas usan btn-secondary', () => {
