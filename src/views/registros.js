@@ -1,6 +1,7 @@
 import { badgeHtml } from '../components/badge.js'
 import { BTN_SECONDARY_CLASS } from '../components/button-styles.js'
 import { createFeedbackState } from '../components/feedback-state.js'
+import { FORM_INPUT_CLASS } from '../components/form-field.js'
 import { showToast } from '../components/toast.js'
 import {
   ACTIVITY_LOG_EVENT,
@@ -10,9 +11,6 @@ import {
   getActivityLogs,
 } from '../utils/activity-log.js'
 import { escapeHtml, formatClockTime, formatDate } from '../utils/format.js'
-
-const CONTROL_CLASS =
-  'w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none placeholder:text-slate-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 disabled:cursor-not-allowed disabled:opacity-60'
 
 function levelTone(level) {
   if (level === LOG_LEVELS.OK) return 'success'
@@ -55,12 +53,12 @@ export function renderRegistros(container) {
             id="registros-search"
             type="search"
             placeholder="Acción o detalle"
-            class="${CONTROL_CLASS}"
+            class="${FORM_INPUT_CLASS}"
           />
         </div>
         <div class="min-w-0">
           <label for="registros-nivel" class="mb-1.5 block text-sm font-medium text-slate-700">Nivel</label>
-          <select id="registros-nivel" class="${CONTROL_CLASS}">
+          <select id="registros-nivel" class="${FORM_INPUT_CLASS}">
             <option value="todos">Todos</option>
             <option value="INFO">INFO</option>
             <option value="OK">OK</option>
