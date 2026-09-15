@@ -7,6 +7,7 @@ import { pageHeadingMarkup } from '../components/page-heading.js'
 import { createEmpleadoCombobox } from '../components/empleado-combobox.js'
 import { createColumnPicker } from '../components/column-picker.js'
 import { BTN_SECONDARY_CLASS } from '../components/button-styles.js'
+import { FORM_LABEL_CLASS } from '../components/form-field.js'
 import { createFichadasTable } from '../components/fichadas-table.js'
 import { openFichadaObservacionModal } from '../components/fichada-observacion-form.js'
 import { createFeedbackState, createSelectEmpresaState } from '../components/feedback-state.js'
@@ -173,7 +174,7 @@ export async function renderFichadas(container) {
       <div class="flex flex-col gap-3 lg:flex-row lg:items-end">
         <div id="fichadas-empleado-wrap" class="min-w-0 w-full lg:min-w-[16rem] lg:flex-[2]"></div>
         <div class="w-full lg:w-44 lg:shrink-0">
-          <label for="fichadas-periodo" class="mb-1.5 block text-sm font-medium text-slate-700 dark:text-slate-300">Período</label>
+          <label for="fichadas-periodo" class="${FORM_LABEL_CLASS}">Período</label>
           <select id="fichadas-periodo" class="${CONTROL_CLASS}">
             <option value="todos">Todos / Sin filtro de fecha</option>
             <option value="hoy">Hoy</option>
@@ -187,7 +188,7 @@ export async function renderFichadas(container) {
         </div>
         <div class="flex w-full min-w-0 flex-col gap-3 sm:flex-row sm:items-end lg:flex-[1.4]">
           <div class="min-w-0 flex-1">
-            <label for="fichadas-tipo" class="mb-1.5 block text-sm font-medium text-slate-700 dark:text-slate-300">Tipo</label>
+            <label for="fichadas-tipo" class="${FORM_LABEL_CLASS}">Tipo</label>
             <select id="fichadas-tipo" class="${CONTROL_CLASS}" aria-describedby="fichadas-tipo-metodo-info">
               <option value="todos">Todos</option>
               <option value="Entrada">Entrada</option>
@@ -195,7 +196,7 @@ export async function renderFichadas(container) {
             </select>
           </div>
           <div class="min-w-0 flex-1">
-            <label for="fichadas-metodo" class="mb-1.5 block text-sm font-medium text-slate-700 dark:text-slate-300">Método</label>
+            <label for="fichadas-metodo" class="${FORM_LABEL_CLASS}">Método</label>
             <select id="fichadas-metodo" class="${CONTROL_CLASS}" aria-describedby="fichadas-tipo-metodo-info">
               <option value="todos">Todos</option>
               <option value="Biometrico">Biométrico</option>
@@ -211,11 +212,11 @@ export async function renderFichadas(container) {
       </div>
       <div id="fichadas-custom-dates" class="mt-3 hidden grid gap-3 sm:grid-cols-2">
         <div>
-          <label for="fichadas-desde" class="mb-1.5 block text-sm font-medium text-slate-700 dark:text-slate-300">Desde</label>
+          <label for="fichadas-desde" class="${FORM_LABEL_CLASS}">Desde</label>
           <input id="fichadas-desde" type="date" class="${CONTROL_CLASS}" />
         </div>
         <div>
-          <label for="fichadas-hasta" class="mb-1.5 block text-sm font-medium text-slate-700 dark:text-slate-300">Hasta</label>
+          <label for="fichadas-hasta" class="${FORM_LABEL_CLASS}">Hasta</label>
           <input id="fichadas-hasta" type="date" class="${CONTROL_CLASS}" />
         </div>
       </div>

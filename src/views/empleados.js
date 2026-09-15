@@ -23,6 +23,7 @@ import { createEmpleadosTable, fullName } from '../components/empleados-table.js
 import { createFeedbackState, createSelectEmpresaState } from '../components/feedback-state.js'
 import { createPagination } from '../components/pagination.js'
 import { BTN_SECONDARY_CLASS } from '../components/button-styles.js'
+import { FORM_INPUT_CLASS } from '../components/form-field.js'
 import { openFormModal, openModal } from '../components/modal.js'
 import { refreshEnhancedSelect } from '../components/dropdown.js'
 import { createDetailSkeleton, createTableSkeleton } from '../components/skeleton.js'
@@ -33,8 +34,7 @@ import { empleadosFiltersArePristine, filterEmpleados, sortEmpleados } from '../
 import { summarizeEmpleadoDatos } from '../utils/empleado-alerts.js'
 import { DEFAULT_PAGE_SIZE, PAGE_SIZE_OPTIONS, paginateItems } from '../utils/paginate.js'
 
-const CONTROL_CLASS =
-  'h-11 w-full min-w-0 max-w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none placeholder:text-slate-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 disabled:cursor-not-allowed disabled:opacity-60'
+const CONTROL_CLASS = `h-11 min-w-0 max-w-full ${FORM_INPUT_CLASS}`
 
 const FILTER_FIELD_CLASS = 'flex min-w-0 w-full flex-col'
 const FILTER_LABEL_CLASS = 'mb-1.5 block text-sm font-medium text-slate-700'
