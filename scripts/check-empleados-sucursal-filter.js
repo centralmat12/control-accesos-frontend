@@ -8,6 +8,8 @@ import {
   uniqueDepartamentosById,
 } from '../src/api/departamentos.js'
 import {
+  SUCURSAL_FILTER_ALL_ARIA,
+  SUCURSAL_FILTER_ALL_VISIBLE,
   SUCURSAL_UNASSIGNED,
   sucursalFilterSummary,
   uniqueSortedSucursales,
@@ -56,7 +58,9 @@ check('Opciones únicas, ordenadas y sin duplicados', () => {
 })
 
 check('Resumen de selección', () => {
-  assert.equal(sucursalFilterSummary({ sucursalIds: [], includeUnassigned: false }), 'Todas las sucursales')
+  assert.equal(sucursalFilterSummary({ sucursalIds: [], includeUnassigned: false }), SUCURSAL_FILTER_ALL_VISIBLE)
+  assert.equal(SUCURSAL_FILTER_ALL_VISIBLE, 'Todas')
+  assert.equal(SUCURSAL_FILTER_ALL_ARIA, 'Todas las sucursales')
   assert.equal(sucursalFilterSummary({ sucursalIds: [2], includeUnassigned: false }), '1 sucursal seleccionada')
   assert.equal(sucursalFilterSummary({ sucursalIds: [2, 5], includeUnassigned: true }), '3 sucursales seleccionadas')
 })
@@ -173,7 +177,9 @@ check('La vista usa IDs, checkbox accesible, limpiar y destroy', () => {
   const view = read('src/views/empleados.js')
   const multi = read('src/components/sucursal-multi-select.js')
   assert.match(view, /createSucursalMultiSelect/)
-  assert.match(view, /Limpiar filtros/)
+  assert.match(view, /aria-label="Limpiar filtros"/)
+  assert.match(view, />\s*Limpiar\s*</)
+  assert.equal(/>\s*Limpiar filtros\s*</.test(view), false)
   assert.match(view, /sucursalFilter\.destroy\(\)/)
   assert.match(view, /sucursalIds/)
   assert.match(view, /filterDepartamentosForSucursalSelection/)
@@ -185,19 +191,36 @@ check('La vista usa IDs, checkbox accesible, limpiar y destroy', () => {
   assert.equal(/empleados-sucursal"/.test(view), false)
 })
 
-check('Filtros de empleados en una línea compacta', () => {
+check('Filtros de empleados no desbordan el contenedor', () => {
   const view = read('src/views/empleados.js')
   assert.match(view, /sm:flex-row sm:items-end sm:justify-between/)
   assert.match(view, /id="empleados-new"/)
   assert.equal(view.includes('mb-4 flex justify-end'), false)
-  assert.match(view, /md:min-w-\[300px\]/)
-  assert.match(view, /md:min-w-\[180px\] md:max-w-\[220px\]/)
-  assert.match(view, /md:min-w-\[170px\] md:max-w-\[200px\]/)
-  assert.match(view, /md:items-end/)
-  assert.match(view, /xl:flex-nowrap/)
+  assert.match(view, /id="empleados-filters"/)
+  assert.match(view, /FILTERS_GRID_CLASS/)
+  assert.match(view, /grid min-w-0 grid-cols-1/)
+  assert.match(view, /minmax\(0,1\.6fr\)/)
+  assert.match(view, /minmax\(0,1fr\)/)
+  assert.equal(view.includes('xl:flex-nowrap'), false)
+  assert.equal(view.includes('md:flex-nowrap'), false)
+  assert.equal(/md:min-w-\[300px\]/.test(view), false)
+  assert.equal(/md:min-w-\[180px\]/.test(view), false)
+  assert.equal(/md:min-w-\[170px\]/.test(view), false)
+  assert.equal(/md:w-\[200px\]/.test(view), false)
+  assert.equal(/md:w-\[185px\]/.test(view), false)
+  assert.equal(/overflow-x-auto/.test(view), false)
+  assert.match(view, /CONTROL_CLASS[\s\S]*min-w-0/)
   assert.match(view, /empleados-summary/)
   assert.match(view, /aria-label="Limpiar filtros"/)
   assert.match(view, /h-11/)
+  assert.match(view, /placeholder="Nombre, DNI o legajo"/)
+  assert.match(view, /aria-label="Buscar por nombre, DNI o legajo"/)
+  assert.match(view, /aria-label="Estado de datos"/)
+  assert.match(view, />Datos</)
+  assert.equal(view.includes('Estado de datos</label>'), false)
+  assert.match(view, /sr-only">Estado de datos/)
+  assert.match(read('src/components/sucursal-multi-select.js'), /SUCURSAL_FILTER_ALL_ARIA/)
+  assert.match(read('src/components/sucursal-multi-select.js'), /label: SUCURSAL_FILTER_ALL_VISIBLE/)
 })
 
 check('Limpiar filtros habilitado y deshabilitado', () => {

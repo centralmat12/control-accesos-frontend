@@ -34,7 +34,12 @@ import { summarizeEmpleadoDatos } from '../utils/empleado-alerts.js'
 import { DEFAULT_PAGE_SIZE, PAGE_SIZE_OPTIONS, paginateItems } from '../utils/paginate.js'
 
 const CONTROL_CLASS =
-  'h-11 w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none placeholder:text-slate-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 disabled:cursor-not-allowed disabled:opacity-60'
+  'h-11 w-full min-w-0 max-w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none placeholder:text-slate-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 disabled:cursor-not-allowed disabled:opacity-60'
+
+const FILTER_FIELD_CLASS = 'flex min-w-0 w-full flex-col'
+const FILTER_LABEL_CLASS = 'mb-1.5 block text-sm font-medium text-slate-700'
+const FILTERS_GRID_CLASS =
+  'grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-[minmax(0,1.6fr)_repeat(4,minmax(0,1fr))_auto]'
 
 function sessionEmpresaId() {
   return getOperativeEmpresaId(getCurrentUser())
@@ -88,53 +93,63 @@ export async function renderEmpleados(container, { initialQuery } = {}) {
     </div>
     <div id="empleados-banner"></div>
     <div id="empleados-summary" class="grid gap-3 sm:grid-cols-3"></div>
-    <section class="rounded-xl border border-slate-200 bg-white px-3 py-3 shadow-sm sm:px-4">
-      <div class="flex flex-col gap-3 md:flex-row md:flex-wrap md:items-end xl:flex-nowrap">
-        <div class="min-w-0 flex-1 md:min-w-[300px]">
-          <label for="empleados-search" class="mb-1.5 block text-sm font-medium text-slate-700">Buscar</label>
+    <section class="min-w-0 max-w-full overflow-x-visible rounded-xl border border-slate-200 bg-white px-3 py-3 shadow-sm sm:px-4">
+      <div id="empleados-filters" class="${FILTERS_GRID_CLASS}">
+        <div class="${FILTER_FIELD_CLASS} sm:col-span-2 md:col-span-1">
+          <label for="empleados-search" class="${FILTER_LABEL_CLASS}">Buscar</label>
           <input
             id="empleados-search"
             type="search"
-            placeholder="Nombre, apellido, DNI o legajo"
+            placeholder="Nombre, DNI o legajo"
+            aria-label="Buscar por nombre, DNI o legajo"
             class="${CONTROL_CLASS}"
           />
         </div>
-        <div class="w-full min-w-0 md:w-[200px] md:min-w-[180px] md:max-w-[220px]">
-          <label id="empleados-sucursal-label" class="mb-1.5 block text-sm font-medium text-slate-700">Sucursal</label>
-          <div id="empleados-sucursal-host"></div>
+        <div class="${FILTER_FIELD_CLASS}">
+          <label id="empleados-sucursal-label" class="${FILTER_LABEL_CLASS}">Sucursal</label>
+          <div id="empleados-sucursal-host" class="min-w-0 w-full [&_button]:min-w-0"></div>
         </div>
-        <div class="w-full min-w-0 md:w-[200px] md:min-w-[180px] md:max-w-[220px]">
-          <label for="empleados-departamento" class="mb-1.5 block text-sm font-medium text-slate-700">Departamento</label>
-          <select id="empleados-departamento" class="${CONTROL_CLASS}" disabled aria-describedby="empleados-departamento-hint">
+        <div class="${FILTER_FIELD_CLASS}">
+          <label for="empleados-departamento" class="${FILTER_LABEL_CLASS}">Departamento</label>
+          <select
+            id="empleados-departamento"
+            class="${CONTROL_CLASS}"
+            disabled
+            aria-label="Departamento"
+            aria-describedby="empleados-departamento-hint"
+          >
             <option value="${DEPARTAMENTO_ALL}">Todos</option>
           </select>
           <p id="empleados-departamento-hint" class="sr-only">Según las sucursales seleccionadas</p>
         </div>
-        <div class="w-full min-w-0 md:w-[185px] md:min-w-[170px] md:max-w-[200px]">
-          <label for="empleados-actividad" class="mb-1.5 block text-sm font-medium text-slate-700">Estado</label>
-          <select id="empleados-actividad" class="${CONTROL_CLASS}">
+        <div class="${FILTER_FIELD_CLASS}">
+          <label for="empleados-actividad" class="${FILTER_LABEL_CLASS}">Estado</label>
+          <select id="empleados-actividad" class="${CONTROL_CLASS}" aria-label="Estado del empleado">
             <option value="activos" selected>Activos</option>
             <option value="inactivos">Inactivos</option>
             <option value="todos">Todos</option>
           </select>
         </div>
-        <div class="w-full min-w-0 md:w-[185px] md:min-w-[170px] md:max-w-[200px]">
-          <label for="empleados-estado" class="mb-1.5 block text-sm font-medium text-slate-700">Estado de datos</label>
-          <select id="empleados-estado" class="${CONTROL_CLASS}">
+        <div class="${FILTER_FIELD_CLASS}">
+          <label for="empleados-estado" class="${FILTER_LABEL_CLASS}">
+            <span aria-hidden="true">Datos</span>
+            <span class="sr-only">Estado de datos</span>
+          </label>
+          <select id="empleados-estado" class="${CONTROL_CLASS}" aria-label="Estado de datos">
             <option value="todos">Todos</option>
             <option value="completo">Completo</option>
             <option value="pendientes">Con pendientes</option>
           </select>
         </div>
-        <div class="flex w-full shrink-0 md:w-auto md:items-end">
+        <div class="flex min-w-0 w-full items-end sm:col-span-2 md:col-span-1">
           <button
             type="button"
             id="empleados-clear-filters"
-            class="${BTN_SECONDARY_CLASS} h-11 w-full md:w-auto"
+            class="${BTN_SECONDARY_CLASS} h-11 w-full min-w-0 max-w-full xl:w-auto"
             aria-label="Limpiar filtros"
             disabled
           >
-            Limpiar filtros
+            Limpiar
           </button>
         </div>
       </div>

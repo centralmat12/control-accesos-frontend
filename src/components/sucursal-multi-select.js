@@ -17,9 +17,12 @@ export function uniqueSortedSucursales(sucursales) {
   return [...seen.values()].sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'))
 }
 
+export const SUCURSAL_FILTER_ALL_VISIBLE = 'Todas'
+export const SUCURSAL_FILTER_ALL_ARIA = 'Todas las sucursales'
+
 export function sucursalFilterSummary({ sucursalIds = [], includeUnassigned = false } = {}) {
   const count = sucursalIds.length + (includeUnassigned ? 1 : 0)
-  if (count === 0) return 'Todas las sucursales'
+  if (count === 0) return SUCURSAL_FILTER_ALL_VISIBLE
   if (count === 1) return '1 sucursal seleccionada'
   return `${count} sucursales seleccionadas`
 }
@@ -41,7 +44,7 @@ export function createSucursalMultiSelect({
 
   const dropdown = createDropdownBase({
     id,
-    label: 'Todas las sucursales',
+    label: SUCURSAL_FILTER_ALL_VISIBLE,
     labelledBy,
     onOpenChange: (open) => {
       if (open) paintPanel()
@@ -59,9 +62,14 @@ export function createSucursalMultiSelect({
   }
 
   function paintSummary() {
-    const text = sucursalFilterSummary(getValue())
+    const value = getValue()
+    const text = sucursalFilterSummary(value)
+    const count = value.sucursalIds.length + (value.includeUnassigned ? 1 : 0)
     dropdown.setSummary(text)
-    dropdown.trigger.setAttribute('aria-label', `Sucursal: ${text}`)
+    dropdown.trigger.setAttribute(
+      'aria-label',
+      `Sucursal: ${count === 0 ? SUCURSAL_FILTER_ALL_ARIA : text}`,
+    )
   }
 
   function optionRow({ value, label, checked }) {
