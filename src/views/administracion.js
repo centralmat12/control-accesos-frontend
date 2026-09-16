@@ -81,7 +81,7 @@ import {
 } from '../components/usuario-edit-panel.js'
 import { createUsuarioForm } from '../components/usuario-form.js'
 import { isAdmin, isSuperadmin, rolesAsignablesParaAlta, usuarioRolLabel } from '../config/roles.js'
-import { displayValue, escapeHtml, formatApiDateTime, formatDateTime } from '../utils/format.js'
+import { displayValue, escapeHtml, formatApiDateTime } from '../utils/format.js'
 import { createKeyedLock, createViewLifecycle, runLockedConfirmAction } from '../utils/view-guard.js'
 
 const USUARIOS_COL_WIDTH = {
@@ -1239,12 +1239,9 @@ export async function renderAdministracion(container) {
   }
 
   function formatUltimoAcceso(value) {
-    if (!value) return '—'
-    try {
-      return escapeHtml(formatDateTime(value))
-    } catch {
-      return '—'
-    }
+    // ultimoAcceso is API UtcNow; formatApiDateTime applies the temporary UTC patch.
+    const label = formatApiDateTime(value)
+    return label ? escapeHtml(label) : '—'
   }
 
   function openAgentesAdmin(sucursal) {
