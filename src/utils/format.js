@@ -11,28 +11,73 @@ const timeFormatter = new Intl.DateTimeFormat('es-AR', {
   timeStyle: 'short',
 })
 
-export function formatDateTime(isoString) {
-  return dateTimeFormatter.format(new Date(isoString))
+/** True when the string already carries an explicit zone (`Z` or ±HH:MM). */
+const EXPLICIT_ZONE_RE = /(?:Z|[+-]\d{2}:\d{2})$/i
+
+/**
+ * Temporary compatibility for API UTC timestamps that lost `Kind` after MySQL
+ * and arrive without `Z` (e.g. `2026-09-15T22:30:00`).
+ *
+ * Only use for fields known to be written with `DateTime.UtcNow` (or equivalent).
+ * Do NOT use for `fechaHora` of fichadas (agent local wall clock).
+ * Not a permanent contract fix — prefer real UTC/`DateTimeOffset` on the API.
+ */
+export function parseApiUtcDate(value) {
+  if (value == null || value === '') return null
+  if (value instanceof Date) {
+    return Number.isNaN(value.getTime()) ? null : value
+  }
+
+  const normalized = String(value).trim()
+  if (!normalized) return null
+
+  const hasExplicitZone = EXPLICIT_ZONE_RE.test(normalized)
+  const date = new Date(hasExplicitZone ? normalized : `${normalized}Z`)
+  return Number.isNaN(date.getTime()) ? null : date
 }
 
+/**
+ * Local / inherited wall-clock timestamps (notably fichada `fechaHora` from the
+ * biometric agent). Must not append `Z` or shift by timezone offset.
+ */
+export function parseApiLocalDate(value) {
+  if (value == null || value === '') return null
+  if (value instanceof Date) {
+    return Number.isNaN(value.getTime()) ? null : value
+  }
+
+  const date = new Date(value)
+  return Number.isNaN(date.getTime()) ? null : date
+}
+
+export function formatDateTime(isoString) {
+  const date = parseApiLocalDate(isoString)
+  if (!date) return ''
+  return dateTimeFormatter.format(date)
+}
+
+/** Formats confirmed API-UTC instants in the browser timezone. */
 export function formatApiDateTime(value) {
-  if (value == null || value === '') return ''
-  const date = value instanceof Date ? value : new Date(value)
-  if (Number.isNaN(date.getTime())) return ''
+  const date = parseApiUtcDate(value)
+  if (!date) return ''
   return dateTimeFormatter.format(date)
 }
 
 export function formatDate(isoString) {
-  return dateFormatter.format(new Date(isoString))
+  const date = parseApiLocalDate(isoString)
+  if (!date) return ''
+  return dateFormatter.format(date)
 }
 
 export function formatTime(isoString) {
-  return timeFormatter.format(new Date(isoString))
+  const date = parseApiLocalDate(isoString)
+  if (!date) return ''
+  return timeFormatter.format(date)
 }
 
 export function formatClockTime(value = new Date()) {
-  const date = value instanceof Date ? value : new Date(value)
-  if (Number.isNaN(date.getTime())) return ''
+  const date = parseApiLocalDate(value)
+  if (!date) return ''
 
   return date.toLocaleTimeString('es-AR', {
     hour: '2-digit',
@@ -43,8 +88,8 @@ export function formatClockTime(value = new Date()) {
 }
 
 export function toDateKey(value) {
-  const date = value instanceof Date ? value : new Date(value)
-  if (Number.isNaN(date.getTime())) return ''
+  const date = parseApiLocalDate(value)
+  if (!date) return ''
   const year = date.getFullYear()
   const month = String(date.getMonth() + 1).padStart(2, '0')
   const day = String(date.getDate()).padStart(2, '0')

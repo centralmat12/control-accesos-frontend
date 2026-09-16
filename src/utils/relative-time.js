@@ -1,10 +1,13 @@
+import { parseApiUtcDate } from './format.js'
+
 const MINUTE_MS = 60_000
 
+/**
+ * Parses agent contact timestamps. API `ultimoAcceso` is written with UtcNow;
+ * use the temporary UTC parser (not local `fechaHora` semantics).
+ */
 export function parseContactDate(value) {
-  if (value == null || value === '') return null
-  const date = value instanceof Date ? value : new Date(value)
-  if (Number.isNaN(date.getTime())) return null
-  return date
+  return parseApiUtcDate(value)
 }
 
 export function elapsedMinutes(from, now = new Date()) {
