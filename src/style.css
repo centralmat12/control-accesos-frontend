@@ -186,6 +186,71 @@
 }
 
 @layer components {
+  .dashboard-alerts-panel {
+    border-width: 2px;
+    border-style: solid;
+    border-color: var(--color-amber-500);
+    background-color: var(--color-red-50);
+  }
+
+  html.dark .dashboard-alerts-panel {
+    border-color: var(--color-amber-500);
+    background-color: var(--color-red-950);
+  }
+
+  .dashboard-alerts-card {
+    border-width: 1px;
+    border-style: solid;
+    border-color: var(--color-amber-600);
+    background-color: var(--color-red-100);
+  }
+
+  html.dark .dashboard-alerts-card {
+    border-color: var(--color-amber-500);
+    background-color: var(--color-red-900);
+  }
+
+  .dashboard-alerts-card:hover {
+    border-color: var(--color-amber-500);
+    background-color: var(--color-red-200);
+  }
+
+  html.dark .dashboard-alerts-card:hover {
+    border-color: var(--color-amber-400);
+    background-color: var(--color-red-800);
+  }
+
+  .dashboard-alerts-scroll {
+    scrollbar-color: var(--color-amber-600) var(--color-red-100);
+    scrollbar-width: thin;
+  }
+
+  html.dark .dashboard-alerts-scroll {
+    scrollbar-color: var(--color-amber-500) var(--color-red-950);
+  }
+
+  .dashboard-alerts-scroll::-webkit-scrollbar {
+    width: 0.5rem;
+  }
+
+  .dashboard-alerts-scroll::-webkit-scrollbar-track {
+    background: var(--color-red-100);
+    border-radius: 999px;
+  }
+
+  html.dark .dashboard-alerts-scroll::-webkit-scrollbar-track {
+    background: var(--color-red-950);
+  }
+
+  .dashboard-alerts-scroll::-webkit-scrollbar-thumb {
+    background: var(--color-amber-600);
+    border-radius: 999px;
+  }
+
+  html.dark .dashboard-alerts-scroll::-webkit-scrollbar-thumb {
+    background: var(--color-amber-500);
+  }
+
   .btn-secondary {
     display: inline-flex;
     cursor: pointer;
@@ -269,6 +334,36 @@
     .btn-secondary:active:not(:disabled) {
       transform: none;
     }
+  }
+}
+
+.enrolar-huella-panel {
+  display: grid;
+  grid-template-rows: 0fr;
+}
+
+.enrolar-huella-panel[data-open='true'] {
+  grid-template-rows: 1fr;
+}
+
+.enrolar-huella-panel-inner {
+  overflow: hidden;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .enrolar-huella-panel {
+    transition: grid-template-rows 180ms ease;
+  }
+
+  .enrolar-huella-chevron {
+    transition: transform 180ms ease;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .enrolar-huella-panel,
+  .enrolar-huella-chevron {
+    transition: none;
   }
 }
 

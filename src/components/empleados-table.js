@@ -1,5 +1,8 @@
-import { displayValue } from '../utils/format.js'
+import { displayValue, escapeHtml } from '../utils/format.js'
+import { listLegajoWarnings } from '../utils/empleado-data.js'
 import { employeeStatusBadge } from './badge.js'
+import { iconAlertTriangle } from './icons.js'
+import { bindTooltipRoot, tooltipTriggerAttributes } from './tooltip.js'
 
 export function fullName(empleado) {
   return [empleado.nombre, empleado.apellido].filter(Boolean).join(' ')
@@ -8,6 +11,34 @@ export function fullName(empleado) {
 function sortIndicator(active, direction) {
   if (!active) return '<span class="text-slate-300" aria-hidden="true">↕</span>'
   return `<span class="text-slate-700" aria-hidden="true">${direction === 'desc' ? '↓' : '↑'}</span>`
+}
+
+export function legajoCellHtml(empleado, catalog = []) {
+  const shown = displayValue(empleado.legajo)
+  const warnings = listLegajoWarnings(empleado, catalog)
+  if (warnings.length === 0) return shown
+
+  const indicators = warnings
+    .map(
+      (warning) => `
+      <span
+        class="inline-flex shrink-0 text-amber-600 dark:text-amber-400"
+        role="img"
+        aria-label="${escapeHtml(warning.message)}"
+        ${tooltipTriggerAttributes(warning.message)}
+      >
+        ${iconAlertTriangle('h-4 w-4')}
+      </span>
+    `,
+    )
+    .join('')
+
+  return `
+    <span class="inline-flex items-center gap-1.5">
+      <span>${shown}</span>
+      ${indicators}
+    </span>
+  `
 }
 
 function sortHeader(key, label, sortKey, sortDir) {
@@ -30,10 +61,11 @@ function sortHeader(key, label, sortKey, sortDir) {
 
 export function createEmpleadosTable(
   empleados,
-  { onView, onSort, sortKey = 'nombre', sortDir = 'asc', highlightId } = {},
+  { onView, onSort, sortKey = 'nombre', sortDir = 'asc', highlightId, catalog } = {},
 ) {
   const section = document.createElement('section')
   section.className = 'overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm'
+  const usageCatalog = Array.isArray(catalog) ? catalog : empleados
 
   const rows = empleados
     .map((empleado) => {
@@ -53,7 +85,7 @@ export function createEmpleadosTable(
 
       return `
         <tr class="transition-colors ${rowClass}">
-          <td class="${primaryCell}">${displayValue(empleado.legajo)}</td>
+          <td class="${primaryCell}">${legajoCellHtml(empleado, usageCatalog)}</td>
           <td class="${nameCell}">${displayValue(fullName(empleado))}</td>
           <td class="whitespace-nowrap px-4 py-3 text-sm text-slate-600">${displayValue(empleado.dni)}</td>
           <td class="whitespace-nowrap px-4 py-3 text-sm text-slate-600">${displayValue(empleado.departamento)}</td>
@@ -92,6 +124,8 @@ export function createEmpleadosTable(
       </table>
     </div>
   `
+
+  bindTooltipRoot(section)
 
   section.addEventListener('click', (event) => {
     const sortButton = event.target.closest('[data-sort]')

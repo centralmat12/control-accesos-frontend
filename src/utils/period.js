@@ -1,5 +1,9 @@
 import { todayDateKey, toDateKey } from './format.js'
 
+export const FICHADAS_PERIODO_TODOS = 'todos'
+export const FICHADAS_PERIODO_HOY = 'hoy'
+export const FICHADAS_PERIODO_INICIAL = FICHADAS_PERIODO_HOY
+
 const LAST_DAYS = {
   7: 7,
   15: 15,
@@ -26,11 +30,11 @@ export function exclusiveHastaIso(inclusiveDateKey) {
 export function resolvePeriodRange(periodo, customDesde, customHasta) {
   const today = todayDateKey()
 
-  if (!periodo || periodo === 'todos') {
+  if (!periodo || periodo === FICHADAS_PERIODO_TODOS) {
     return {}
   }
 
-  if (periodo === 'hoy') {
+  if (periodo === FICHADAS_PERIODO_HOY) {
     return {
       desde: startOfDayIso(today),
       hasta: exclusiveHastaIso(today),
@@ -57,7 +61,7 @@ export function resolvePeriodRange(periodo, customDesde, customHasta) {
 }
 
 export function describePeriodo(periodo, customDesde, customHasta) {
-  if (periodo === 'hoy') return 'Período: hoy'
+  if (periodo === FICHADAS_PERIODO_HOY) return 'Período: hoy'
   if (LAST_DAYS[periodo]) return `Período: últimos ${LAST_DAYS[periodo]} días`
   if (periodo === 'personalizado') {
     if (customDesde && customHasta) return `Período: ${customDesde} a ${customHasta}`

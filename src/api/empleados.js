@@ -9,6 +9,9 @@
  * EmpleadoPatchDto no incluye `activo`. El DTO de lectura incluye Activo.
  *
  * Actualización: PATCH /api/empleados/{id} con EmpleadoPatchDto (campos opcionales).
+ * POST /api/empleados y PATCH /api/empleados/{id}: si la API responde 409
+ * por legajo duplicado, el cliente muestra un mensaje específico.
+ * La detección preventiva en el frontend no reemplaza unicidad (EmpresaId, Legajo).
  * No enviar id, empresaId, activo ni datos biométricos.
  *
  * GET /api/empleados proyecta `tieneHuella` (bool). Solo se alerta
@@ -18,7 +21,8 @@
  * No usar POST /api/empleados/enrolar (solo el agente local).
  */
 import { pick } from '../utils/pick.js'
-import { apiFetch, readErrorMessage } from './http.js'
+import { LEGAJO_API_CONFLICT } from '../utils/empleado-data.js'
+import { apiFetch, createApiError, readErrorMessage } from './http.js'
 
 function pickOptionalBoolean(item, ...keys) {
   for (const key of keys) {
@@ -126,6 +130,10 @@ export async function createEmpleado(dto) {
     throw new Error(await readErrorMessage(response, 'Los datos del empleado no son válidos.'))
   }
 
+  if (response.status === 409) {
+    throw createApiError(LEGAJO_API_CONFLICT, 409)
+  }
+
   if (!response.ok) {
     console.error('Empleados: alta HTTP no exitosa', { url, status: response.status })
     throw new Error(await readErrorMessage(response, `No se pudo crear el empleado (${response.status}).`))
@@ -160,6 +168,10 @@ export async function patchEmpleado(id, dto) {
 
   if (response.status === 400) {
     throw new Error(await readErrorMessage(response, 'Los datos del empleado no son válidos.'))
+  }
+
+  if (response.status === 409) {
+    throw createApiError(LEGAJO_API_CONFLICT, 409)
   }
 
   if (!response.ok) {

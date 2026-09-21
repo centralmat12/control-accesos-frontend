@@ -1,6 +1,6 @@
 import { baseDatosKindToStatus, sistemaKindToStatus } from '../utils/dashboard-sistema.js'
 import { escapeHtml } from '../utils/format.js'
-import { iconAgent, iconClock, iconDevice, iconStatusOff, iconStatusOk, iconStatusUnknown, iconStatusWarn } from './icons.js'
+import { iconAgent, iconAlertTriangle, iconClock, iconDevice, iconStatusOff, iconStatusOk, iconStatusUnknown, iconStatusWarn } from './icons.js'
 import { bindTooltipRoot, tooltipTriggerAttributes } from './tooltip.js'
 
 const TONES = {
@@ -45,16 +45,37 @@ function statusBadge({ tone, label, detail, id }) {
   `
 }
 
-function rowMarkup({ icon, label, status, badgeId }) {
+function rowInnerMarkup({ icon, label, status, badgeId }) {
   return `
-    <li class="flex items-center justify-between gap-3 py-1.5">
       <p class="flex min-w-0 items-center gap-2 text-sm font-medium text-slate-800 dark:text-slate-200">
         <span class="text-slate-500 dark:text-slate-400" aria-hidden="true">${icon}</span>
         ${escapeHtml(label)}
       </p>
       <div class="shrink-0">
         ${statusBadge({ ...status, id: badgeId })}
-      </div>
+      </div>`
+}
+
+function rowMarkup({ icon, label, status, badgeId, interactive = false, actionLabel = '' }) {
+  const inner = rowInnerMarkup({ icon, label, status, badgeId })
+  if (interactive) {
+    return `
+    <li>
+      <button
+        type="button"
+        data-system-alertas-action
+        class="flex w-full items-center justify-between gap-3 rounded-md py-1.5 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+        aria-label="${escapeHtml(actionLabel || `Ver ${status?.label ?? label}`)}"
+      >
+        ${inner}
+      </button>
+    </li>
+  `
+  }
+
+  return `
+    <li class="flex items-center justify-between gap-3 py-1.5">
+      ${inner}
     </li>
   `
 }
@@ -146,15 +167,39 @@ export function agenteSinConfigurarStatus() {
   }
 }
 
+export function systemStatusRowLabels({ dispositivos } = {}) {
+  const labels = ['Sistema', 'Base de datos']
+  if (dispositivos) labels.push('Dispositivos')
+  labels.push('Alertas y pendientes')
+  return labels
+}
+
+function alertasRowIcon(status) {
+  if (status?.tone === 'success') return iconStatusOk()
+  if (status?.tone === 'warning' || status?.tone === 'danger') return iconAlertTriangle('h-4 w-4')
+  if (status?.tone === 'error') return iconStatusOff()
+  return iconStatusUnknown()
+}
+
 export function createSystemStatusCard({
   sistema,
   baseDatos,
   dispositivos,
+  alertas,
+  lastUpdateLabel = 'Última actualización: sin datos',
+  onAlertasAction,
 } = {}) {
   const card = document.createElement('section')
   card.className =
-    'rounded-xl border border-slate-200 bg-white p-3 shadow-sm dark:border-slate-700 dark:bg-slate-900 sm:p-4'
+    'flex h-full min-h-0 flex-col justify-between rounded-xl border border-slate-200 bg-white p-3 shadow-sm dark:border-slate-700 dark:bg-slate-900 sm:p-4'
   card.setAttribute('aria-labelledby', 'dashboard-system-title')
+
+  const alertasStatus = alertas ?? {
+    tone: 'neutral',
+    label: 'Verificando…',
+    detail: 'Se están consultando las alertas y los pendientes.',
+    interactive: false,
+  }
 
   const dispositivoRow = dispositivos
     ? rowMarkup({
@@ -165,9 +210,18 @@ export function createSystemStatusCard({
       })
     : ''
 
+  const alertasRow = rowMarkup({
+    icon: alertasRowIcon(alertasStatus),
+    label: 'Alertas y pendientes',
+    badgeId: 'system-status-alertas',
+    status: alertasStatus,
+    interactive: alertasStatus.interactive === true,
+    actionLabel: alertasStatus.actionLabel,
+  })
+
   card.innerHTML = `
-    <h2 id="dashboard-system-title" class="text-base font-semibold text-slate-900 dark:text-slate-100">Estado del sistema</h2>
-    <ul class="mt-2 divide-y divide-slate-100 dark:divide-slate-800">
+    <h2 id="dashboard-system-title" class="shrink-0 text-base font-semibold text-slate-900 dark:text-slate-100">Estado del sistema</h2>
+    <ul class="mt-2 flex min-h-0 flex-1 flex-col justify-evenly divide-y divide-slate-100 dark:divide-slate-800">
       ${rowMarkup({
         icon: iconDevice(),
         label: 'Sistema',
@@ -181,9 +235,17 @@ export function createSystemStatusCard({
         status: baseDatos ?? { tone: 'neutral', label: 'Estado desconocido', detail: 'No hay una confirmación de la base de datos.' },
       })}
       ${dispositivoRow}
+      ${alertasRow}
     </ul>
-    <p class="mt-2 text-xs text-slate-500 dark:text-slate-400">Estados correspondientes a la aplicación instalada en Sede Central.</p>
+    <p data-system-last-update class="mt-3 shrink-0 text-xs text-slate-500 dark:text-slate-400">${escapeHtml(lastUpdateLabel)}</p>
   `
+
+  if (alertasStatus.interactive === true && typeof onAlertasAction === 'function') {
+    card.querySelector('[data-system-alertas-action]')?.addEventListener('click', (event) => {
+      event.preventDefault()
+      onAlertasAction()
+    })
+  }
 
   bindTooltipRoot(card)
   return card

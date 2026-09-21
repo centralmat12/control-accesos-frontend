@@ -34,9 +34,11 @@ check('La API de empleados documenta listado optativo y reactivación', () => {
   assert.equal(api.includes('localStorage'), false)
 })
 
-check('Dashboard y fichadas no piden inactivos', () => {
-  assert.match(read('src/views/dashboard.js'), /getEmpleados\(\)/)
-  assert.equal(read('src/views/dashboard.js').includes('incluirInactivos'), false)
+check('Dashboard pide el catálogo completo una sola vez; fichadas no pide inactivos', () => {
+  const dashboard = read('src/views/dashboard.js')
+  assert.match(dashboard, /getEmpleados\(\{ incluirInactivos: true \}\)/)
+  assert.match(dashboard, /empleadoEstaActivo/)
+  assert.equal(dashboard.includes('getEmpleadoById'), false)
   assert.equal(read('src/views/fichadas.js').includes('incluirInactivos'), false)
 })
 

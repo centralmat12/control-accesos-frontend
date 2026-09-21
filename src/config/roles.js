@@ -27,7 +27,10 @@ export const USUARIO_ROL_LABELS = Object.freeze({
 })
 
 export function normalizeRole(userOrRole) {
-  const raw = typeof userOrRole === 'string' ? userOrRole : userOrRole?.rol
+  const raw =
+    typeof userOrRole === 'string'
+      ? userOrRole
+      : (userOrRole?.rol ?? userOrRole?.role ?? userOrRole?.Role)
   return String(raw ?? '')
     .trim()
     .toUpperCase()

@@ -2,7 +2,33 @@ export const DNI_MIN_LENGTH = 7
 export const DNI_MAX_LENGTH = 8
 export const CUIL_LENGTH = 11
 
-const ALPHANUMERIC_BLOCK = /^[\p{L}\p{M}\p{N}]+(?:-[\p{L}\p{M}\p{N}]+)*$/u
+export const LEGAJO_DIGITS_RE = /^\d+$/
+export const LEGAJO_INVALID_MESSAGE =
+  'Ingresá solamente números, sin letras, espacios ni guiones.'
+export const LEGAJO_LIST_WARNING =
+  'Legajo inválido: debe reemplazarse por un valor numérico'
+export const LEGAJO_EDIT_ALERT =
+  'El legajo actual no es válido. Reemplazalo por un valor compuesto únicamente por números antes de guardar.'
+export const LEGAJO_LIST_DUPLICATE =
+  'Legajo duplicado: también está asignado a otro empleado'
+export const LEGAJO_EDIT_DUPLICATE_ALERT =
+  'Este legajo está asignado a más de un empleado. Ingresá un legajo único antes de guardar.'
+export const LEGAJO_CREATE_DUPLICATE =
+  'El legajo ingresado ya está asignado a otro empleado.'
+export const LEGAJO_API_CONFLICT =
+  'No se pudo guardar: el legajo ya está asignado a otro empleado.'
+export const LEGAJO_USE_SUGGESTED_LABEL = 'Usar sugerido'
+export const LEGAJO_SUGGESTION_MIN_DIGITS = 4
+
+export function suggestedLegajoLabel(value) {
+  return `Legajo sugerido: ${value}`
+}
+
+/**
+ * La detección de duplicados es preventiva y solo usa empleados en memoria.
+ * No reemplaza una futura restricción única en API/base para (EmpresaId, Legajo).
+ */
+
 const PERSON_NAME = /^[\p{L}\p{M}]+(?:[ '\u2019-][\p{L}\p{M}]+)*$/u
 const LETTER_WORDS = /^[\p{L}\p{M}]+(?: [\p{L}\p{M}]+)*$/u
 const ALPHANUMERIC_WORDS = /^[\p{L}\p{M}\p{N}]+(?: [\p{L}\p{M}\p{N}]+)*$/u
@@ -38,17 +64,146 @@ export function normalizeEmpleadoValues(values) {
   }
 }
 
+export function normalizeLegajoValue(value) {
+  if (value == null) return ''
+  return String(value).trim()
+}
+
+export function isBlankLegajo(value) {
+  return !normalizeLegajoValue(value)
+}
+
+export function isValidNumericLegajo(value) {
+  return LEGAJO_DIGITS_RE.test(normalizeLegajoValue(value))
+}
+
+export function isInvalidHistoricalLegajo(value) {
+  const normalized = normalizeLegajoValue(value)
+  return Boolean(normalized) && !LEGAJO_DIGITS_RE.test(normalized)
+}
+
 export function validateLegajo(value) {
-  const normalized = normalizeFieldValue('legajo', value)
+  const normalized = normalizeLegajoValue(value)
   if (!normalized) return ''
-  if (normalized.startsWith('-') || normalized.endsWith('-')) {
-    return 'El legajo no puede comenzar o terminar con guion.'
-  }
-  if (!ALPHANUMERIC_BLOCK.test(normalized)) {
-    return 'El legajo solo admite bloques de letras y números separados por un guion.'
-  }
-  if (normalized.length > 20) return 'El legajo no puede superar 20 caracteres.'
+  if (!LEGAJO_DIGITS_RE.test(normalized)) return LEGAJO_INVALID_MESSAGE
   return ''
+}
+
+export function empleadoNombreCompleto(empleado) {
+  return [empleado?.nombre, empleado?.apellido].filter(Boolean).join(' ').trim()
+}
+
+export function legajoDuplicateKey(value) {
+  const normalized = normalizeLegajoValue(value)
+  if (!normalized) return null
+  return normalized.toLowerCase()
+}
+
+export function buildLegajoUsageIndex(empleados) {
+  const index = new Map()
+  for (const empleado of empleados ?? []) {
+    const key = legajoDuplicateKey(empleado?.legajo)
+    if (!key) continue
+    const bucket = index.get(key)
+    if (bucket) bucket.push(empleado)
+    else index.set(key, [empleado])
+  }
+  return index
+}
+
+export function findDuplicateEmpleados(legajo, empleados, excludeId = null) {
+  const key = legajoDuplicateKey(legajo)
+  if (!key) return []
+  const exclude = excludeId == null || excludeId === '' ? null : Number(excludeId)
+  return (empleados ?? []).filter((empleado) => {
+    if (legajoDuplicateKey(empleado?.legajo) !== key) return false
+    if (exclude != null && Number.isFinite(exclude) && Number(empleado?.id) === exclude) return false
+    return true
+  })
+}
+
+export function inspectLegajo(value, { empleados = [], excludeId = null } = {}) {
+  const formatError = validateLegajo(value)
+  const others = findDuplicateEmpleados(value, empleados, excludeId)
+  return {
+    formatError,
+    duplicate: others.length > 0,
+    others,
+    blocksSave: Boolean(formatError) || others.length > 0,
+  }
+}
+
+function belongsToEmpresa(empleado, empresaId) {
+  const scopeId = Number(empresaId)
+  if (!Number.isFinite(scopeId) || scopeId <= 0) return true
+  const empEmpresa = Number(empleado?.empresaId)
+  if (!Number.isFinite(empEmpresa) || empEmpresa <= 0) return true
+  return empEmpresa === scopeId
+}
+
+function parseNumericLegajo(raw) {
+  const digits = String(raw).replace(/^0+(?=\d)/, '')
+  try {
+    return BigInt(digits)
+  } catch {
+    return null
+  }
+}
+
+export function formatCorrelativeLegajo(value) {
+  const text = String(value ?? '')
+  if (!text) return ''
+  return text.length >= LEGAJO_SUGGESTION_MIN_DIGITS ? text : text.padStart(LEGAJO_SUGGESTION_MIN_DIGITS, '0')
+}
+
+/**
+ * Primer correlativo libre desde 1, con padding a 4 dígitos (`0001`).
+ * Usa un Set numérico: `1`, `01`, `001` y `0001` ocupan el mismo valor.
+ * No usa máximo + 1 si hay huecos. Ignora EMP-010, POLY-002 y no numéricos.
+ * Incluye activos e inactivos. Si el catálogo no está disponible, no inventa un valor.
+ */
+export function getRecommendedLegajo(empleados, { empresaId, excludeId } = {}) {
+  if (!Array.isArray(empleados)) return null
+
+  const exclude = excludeId == null || excludeId === '' ? null : Number(excludeId)
+  const used = new Set()
+  for (const empleado of empleados) {
+    if (exclude != null && Number.isFinite(exclude) && Number(empleado?.id) === exclude) continue
+    if (!belongsToEmpresa(empleado, empresaId)) continue
+    const raw = normalizeLegajoValue(empleado?.legajo)
+    if (!LEGAJO_DIGITS_RE.test(raw)) continue
+    const n = parseNumericLegajo(raw)
+    if (n == null || n < 1n) continue
+    used.add(n)
+  }
+
+  let next = 1n
+  while (used.has(next)) next += 1n
+  return formatCorrelativeLegajo(next)
+}
+
+export function shouldOfferRecommendedLegajo(value, { empleados = [], excludeId = null } = {}) {
+  if (isBlankLegajo(value)) return true
+  const inspection = inspectLegajo(value, { empleados, excludeId })
+  return Boolean(inspection.formatError || inspection.duplicate)
+}
+
+export function listLegajoWarnings(empleado, empleados = []) {
+  const warnings = []
+  if (isInvalidHistoricalLegajo(empleado?.legajo)) {
+    warnings.push({ kind: 'invalid', message: LEGAJO_LIST_WARNING })
+  }
+  const others = findDuplicateEmpleados(empleado?.legajo, empleados, empleado?.id)
+  if (others.length > 0) {
+    const otherName = empleadoNombreCompleto(others[0])
+    warnings.push({
+      kind: 'duplicate',
+      message: otherName
+        ? `Legajo duplicado: también asignado a ${otherName}`
+        : LEGAJO_LIST_DUPLICATE,
+    })
+  }
+  return warnings
 }
 
 export function validateDni(value) {
@@ -118,7 +273,10 @@ const FIELD_VALIDATORS = {
   sucursal: validateSucursal,
 }
 
-export function validateEmpleadoValues(values, { initialValues, legacyValues = {} } = {}) {
+export function validateEmpleadoValues(
+  values,
+  { initialValues, legacyValues = {}, empleados = [], excludeId = null } = {},
+) {
   const normalized = normalizeEmpleadoValues(values)
   const normalizedInitial = initialValues ? normalizeEmpleadoValues(initialValues) : null
   const errors = {}
@@ -127,7 +285,7 @@ export function validateEmpleadoValues(values, { initialValues, legacyValues = {
     if (name === 'departamento' || name === 'sucursal' || name === 'categoria') return
     const error = validator(normalized[name])
     const unchangedLegacyValue =
-      ['legajo', 'departamento', 'categoria', 'sucursal'].includes(name) &&
+      ['departamento', 'categoria', 'sucursal'].includes(name) &&
       normalizedInitial &&
       normalized[name] === normalizedInitial[name]
     const acceptedCatalogValue = (legacyValues[name] ?? []).some(
@@ -135,6 +293,11 @@ export function validateEmpleadoValues(values, { initialValues, legacyValues = {
     )
     if (error && !unchangedLegacyValue && !acceptedCatalogValue) errors[name] = error
   })
+
+  const inspection = inspectLegajo(normalized.legajo, { empleados, excludeId })
+  if (inspection.duplicate) {
+    errors.legajoDuplicado = LEGAJO_CREATE_DUPLICATE
+  }
 
   if (values.horarioError) {
     errors.horario = values.horarioError

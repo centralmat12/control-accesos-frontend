@@ -2,14 +2,28 @@ import { displayValue, escapeHtml, formatHorarioDisplay } from '../utils/format.
 import {
   CUIL_LENGTH,
   DNI_MAX_LENGTH,
+  LEGAJO_EDIT_ALERT,
+  LEGAJO_EDIT_DUPLICATE_ALERT,
+  LEGAJO_INVALID_MESSAGE,
+  LEGAJO_USE_SUGGESTED_LABEL,
+  getRecommendedLegajo,
+  inspectLegajo,
+  isInvalidHistoricalLegajo,
   normalizeFieldValue,
   normalizeEmpleadoValues,
+  shouldOfferRecommendedLegajo,
+  suggestedLegajoLabel,
   validateEmpleadoValues,
 } from '../utils/empleado-data.js'
+import { getCurrentUser } from '../api/auth.js'
+import { createDepartamento } from '../api/departamentos.js'
+import { getOperativeEmpresaId } from '../api/empresa-context.js'
 import { getSucursales } from '../api/sucursales.js'
-import { iconPencil, iconStatusOff, iconStatusOk } from './icons.js'
+import { puedeCrearDepartamentos, puedeMostrarAltaDepartamento } from '../config/administracion.js'
+import { iconPencil, iconPlus, iconStatusOff, iconStatusOk } from './icons.js'
+import { createDepartamentoForm } from './departamento-form.js'
 import { biometricStatusBadge, employeeStatusBadge } from './badge.js'
-import { openModal } from './modal.js'
+import { openFormModal, openModal } from './modal.js'
 import {
   bindSucursalDepartamentoCascade,
   fillSucursalOptions,
@@ -17,10 +31,14 @@ import {
   selectedOptionLabel,
   setDepartamentoIdle,
 } from './sucursal-departamento-selects.js'
+import { refreshEnhancedSelect } from './dropdown.js'
 import { showToast } from './toast.js'
+import { bindTooltipRoot } from './tooltip.js'
 import { BTN_DANGER_CLASS, BTN_POSITIVE_CLASS, BTN_SECONDARY_CLASS } from './button-styles.js'
 import {
+  FORM_ERROR_CLASS,
   FORM_HELP_CLASS,
+  FORM_INFO_CLASS,
   FORM_INPUT_CLASS,
   FORM_LABEL_CLASS,
   fieldIds,
@@ -39,6 +57,16 @@ const EDITABLE_FIELDS = [
   { key: 'horario', label: 'Horario' },
 ]
 const HORARIO_STORED = /^([01]\d|2[0-3]):([0-5]\d)\s*(?:-|a)\s*([01]\d|2[0-3]):([0-5]\d)$/i
+const ADD_DEPARTAMENTO_LABEL = 'Agregar departamento'
+const ADD_DEPARTAMENTO_NO_EMPRESA =
+  'Seleccioná una empresa activa para agregar un departamento.'
+const ADD_DEPARTAMENTO_BTN_CLASS =
+  'inline-flex h-11 w-full shrink-0 items-center justify-center rounded-lg bg-blue-600 text-white hover:bg-blue-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:bg-blue-600/70 disabled:opacity-60 sm:w-11 dark:focus-visible:ring-offset-slate-900'
+
+function parsePositiveId(value) {
+  const id = Number(value)
+  return Number.isFinite(id) && id > 0 ? id : null
+}
 
 function optionalValue(value) {
   const trimmed = String(value ?? '').trim()
@@ -218,6 +246,7 @@ function sanitizeDigits(input, maxDigits) {
 
 export function createEmpleadoForm({
   empresaId,
+  empleados = [],
   initialValues = null,
   submitLabel = 'Guardar',
   requireEmpresa = true,
@@ -228,10 +257,35 @@ export function createEmpleadoForm({
   const horarioIds = fieldIds('empleado-horario')
   const sucursalIds = fieldIds('empleado-sucursalId')
   const departamentoIds = fieldIds('empleado-departamentoId')
+  const user = getCurrentUser()
+  const operativeEmpresaId = parsePositiveId(empresaId) ?? getOperativeEmpresaId(user)
+  const showAddDepartamento = puedeMostrarAltaDepartamento(user)
+  const canSubmitDepartamento = puedeCrearDepartamentos(user, operativeEmpresaId)
+  const addDepartamentoHint = canSubmitDepartamento ? ADD_DEPARTAMENTO_LABEL : ADD_DEPARTAMENTO_NO_EMPRESA
+  const catalogReady = Array.isArray(empleados)
+  const catalog = catalogReady ? empleados : []
+  const isCreate = !initialValues
+  const recommendedLegajo = getRecommendedLegajo(catalogReady ? empleados : null, {
+    empresaId: operativeEmpresaId,
+    excludeId: initialValues?.id,
+  })
+  const createPrefill = isCreate ? recommendedLegajo || undefined : undefined
+  const useSuggestedClass =
+    'mt-1 inline-flex rounded-md text-sm font-semibold text-blue-700 underline-offset-2 hover:text-blue-800 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 dark:text-blue-300 dark:hover:text-blue-200 dark:focus-visible:ring-offset-slate-900'
 
   wrapper.innerHTML = `
     <form id="empleado-form" class="space-y-4" lang="es-AR" novalidate>
       <p id="empleado-form-error" class="hidden rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800" role="alert"></p>
+      ${
+        initialValues
+          ? `<p id="empleado-legajo-legacy-alert" class="${
+              isInvalidHistoricalLegajo(initialValues.legajo) ? '' : 'hidden '
+            }rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900" role="alert">${escapeHtml(LEGAJO_EDIT_ALERT)}</p>
+      <p id="empleado-legajo-duplicate-alert" class="${
+        inspectLegajo(initialValues.legajo, { empleados: catalog, excludeId: initialValues.id }).duplicate ? '' : 'hidden '
+      }rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900" role="alert">${escapeHtml(LEGAJO_EDIT_DUPLICATE_ALERT)}</p>`
+          : ''
+      }
       <div class="grid gap-4 sm:grid-cols-2">
         ${formFieldMarkup({
           id: 'empleado-nombre',
@@ -273,8 +327,20 @@ export function createEmpleadoForm({
           id: 'empleado-legajo',
           name: 'legajo',
           label: 'Legajo',
+          type: 'text',
+          inputMode: 'numeric',
+          pattern: '[0-9]*',
           maxLength: 20,
-          helpText: 'Ingresá el identificador interno asignado al empleado.',
+          value: createPrefill,
+          helpText: LEGAJO_INVALID_MESSAGE,
+          afterErrorHtml: isCreate
+            ? ''
+            : `<div id="empleado-legajo-suggestion" class="mt-1 hidden">
+                <p id="empleado-legajo-suggested" class="${FORM_INFO_CLASS}"></p>
+                <button type="button" id="empleado-legajo-use-suggested" class="${useSuggestedClass}">
+                  ${escapeHtml(LEGAJO_USE_SUGGESTED_LABEL)}
+                </button>
+              </div>`,
         })}
         ${formFieldMarkup({
           id: 'empleado-sucursalId',
@@ -284,15 +350,43 @@ export function createEmpleadoForm({
           helpText: 'Seleccioná la sucursal donde trabaja el empleado.',
           optionsHtml: '<option value="">Seleccionar...</option>',
         })}
-        ${formFieldMarkup({
-          id: 'empleado-departamentoId',
-          name: 'departamentoId',
-          label: 'Departamento',
-          tag: 'select',
-          disabled: true,
-          helpText: 'Seleccioná el departamento correspondiente.',
-          optionsHtml: '<option value="">Seleccioná una sucursal</option>',
-        })}
+        <div data-form-field="departamentoId">
+          <label for="empleado-departamentoId" class="${FORM_LABEL_CLASS}">Departamento</label>
+          <div class="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-stretch">
+            <select
+              id="empleado-departamentoId"
+              name="departamentoId"
+              disabled
+              data-ca-native="true"
+              aria-describedby="${departamentoIds.helpId}"
+              class="min-w-0 flex-1 ${FORM_INPUT_CLASS}"
+            >
+              <option value="">Seleccioná una sucursal</option>
+            </select>
+            ${
+              showAddDepartamento
+                ? `<button
+                    type="button"
+                    id="empleado-add-departamento"
+                    class="${ADD_DEPARTAMENTO_BTN_CLASS}"
+                    aria-label="${escapeHtml(ADD_DEPARTAMENTO_LABEL)}"
+                    data-tooltip="${escapeHtml(addDepartamentoHint)}"
+                    ${canSubmitDepartamento ? '' : 'disabled'}
+                  >
+                    ${iconPlus('h-5 w-5')}
+                    <span class="sm:sr-only">${escapeHtml(ADD_DEPARTAMENTO_LABEL)}</span>
+                  </button>`
+                : ''
+            }
+          </div>
+          <p id="${departamentoIds.helpId}" class="${FORM_HELP_CLASS}">Seleccioná el departamento correspondiente.</p>
+          ${
+            showAddDepartamento && !canSubmitDepartamento
+              ? `<p id="empleado-add-departamento-hint" class="${FORM_HELP_CLASS}">${escapeHtml(ADD_DEPARTAMENTO_NO_EMPRESA)}</p>`
+              : ''
+          }
+          <p id="${departamentoIds.errorId}" class="${FORM_ERROR_CLASS} hidden" aria-live="polite"></p>
+        </div>
         <div class="sm:col-span-2" data-form-field="horario">
           <p class="${FORM_LABEL_CLASS}" id="empleado-horario-label">Horario</p>
           <div class="grid gap-4 sm:grid-cols-2">
@@ -346,18 +440,39 @@ export function createEmpleadoForm({
 
   const form = wrapper.querySelector('#empleado-form')
   const formError = wrapper.querySelector('#empleado-form-error')
+  const legajoLegacyAlert = wrapper.querySelector('#empleado-legajo-legacy-alert')
+  const legajoDuplicateAlert = wrapper.querySelector('#empleado-legajo-duplicate-alert')
   const submitButton = wrapper.querySelector('#empleado-form-submit')
   const cancelButton = wrapper.querySelector('#empleado-form-cancel')
   const sucursalSelect = form.querySelector('[name="sucursalId"]')
   const departamentoSelect = form.querySelector('[name="departamentoId"]')
+  const addDepartamentoButton = form.querySelector('#empleado-add-departamento')
   const horarioDesde = form.querySelector('[name="horarioDesde"]')
   const horarioHasta = form.querySelector('[name="horarioHasta"]')
+  let sucursalCatalog = []
+  let departamentoModalClose = null
 
   setDepartamentoIdle(departamentoSelect, null, { includeAll: false })
   if (initialValues) fillEmpleadoForm(form, initialValues)
 
+  function currentLegajoInspection() {
+    return inspectLegajo(readValues(form).legajo, {
+      empleados: catalog,
+      excludeId: initialValues?.id,
+    })
+  }
+
   function currentErrors() {
-    return validateEmpleadoValues(readValues(form), { initialValues })
+    return validateEmpleadoValues(readValues(form), {
+      initialValues,
+      empleados: catalog,
+      excludeId: initialValues?.id,
+    })
+  }
+
+  function legajoFieldError() {
+    const errors = currentErrors()
+    return [errors.legajo, errors.legajoDuplicado].filter(Boolean).join('\n')
   }
 
   const fields = wireFormFields(
@@ -393,8 +508,10 @@ export function createEmpleadoForm({
         name: 'legajo',
         helpId: fieldIds('empleado-legajo').helpId,
         errorId: fieldIds('empleado-legajo').errorId,
+        live: true,
+        keepHelpVisible: true,
         normalizeOnBlur: (value) => normalizeFieldValue('legajo', value),
-        getError: () => currentErrors().legajo ?? '',
+        getError: () => legajoFieldError(),
       },
       {
         name: 'sucursalId',
@@ -420,6 +537,8 @@ export function createEmpleadoForm({
     {
       onAfterChange: () => {
         showFormError('')
+        syncLegajoGuard()
+        syncRecommendUi()
       },
     },
   )
@@ -441,6 +560,99 @@ export function createEmpleadoForm({
       })
     },
   })
+
+  async function applyCreatedDepartamento(created) {
+    const sucursalId = parseEntityId(created?.sucursalId)
+    const departamentoId = parseEntityId(created?.id)
+    if (!sucursalId || !departamentoId) return
+
+    sucursalSelect.value = String(sucursalId)
+    refreshEnhancedSelect(sucursalSelect)
+    await cascade.reloadDepartamentos({ preserveDepartamentoId: departamentoId })
+    fields.refresh('sucursalId')
+    fields.refresh('departamentoId')
+  }
+
+  function openDepartamentoAlta() {
+    if (!showAddDepartamento || !canSubmitDepartamento || form.dataset.submitting === 'true') return
+    if (addDepartamentoButton?.disabled) return
+
+    const formEl = createDepartamentoForm({
+      sucursales: sucursalCatalog,
+      sucursalId: parseEntityId(sucursalSelect.value),
+      onCancel: () => departamentoModalClose?.(),
+      onSubmit: async (dto) => {
+        const created = await createDepartamento({
+          ...dto,
+          empresaId: operativeEmpresaId,
+        })
+        departamentoModalClose?.({ force: true })
+        await applyCreatedDepartamento(created)
+      },
+    })
+
+    const modal = openFormModal({
+      title: ADD_DEPARTAMENTO_LABEL,
+      content: formEl,
+      labelledBy: 'departamento-create-title',
+      stacked: true,
+      onClose: () => {
+        departamentoModalClose = null
+      },
+    })
+    departamentoModalClose = modal.close
+  }
+
+  addDepartamentoButton?.addEventListener('click', openDepartamentoAlta)
+  bindTooltipRoot(wrapper)
+
+  function syncLegajoGuard() {
+    const inspection = currentLegajoInspection()
+    if (legajoLegacyAlert) {
+      legajoLegacyAlert.classList.toggle('hidden', !inspection.formatError)
+    }
+    if (legajoDuplicateAlert) {
+      legajoDuplicateAlert.classList.toggle('hidden', !inspection.duplicate)
+    }
+    if (form.dataset.submitting !== 'true') {
+      submitButton.disabled = inspection.blocksSave
+    }
+  }
+
+  function syncRecommendUi() {
+    const box = form.querySelector('#empleado-legajo-suggestion')
+    const label = form.querySelector('#empleado-legajo-suggested')
+    const useButton = form.querySelector('#empleado-legajo-use-suggested')
+    if (!box || !label || !useButton) return
+
+    const offer =
+      Boolean(recommendedLegajo) &&
+      shouldOfferRecommendedLegajo(readValues(form).legajo, {
+        empleados: catalog,
+        excludeId: initialValues?.id,
+      })
+    box.classList.toggle('hidden', !offer)
+    if (offer) label.textContent = suggestedLegajoLabel(recommendedLegajo)
+  }
+
+  const useSuggestedButton = form.querySelector('#empleado-legajo-use-suggested')
+  useSuggestedButton?.addEventListener('click', () => {
+    if (!recommendedLegajo || form.dataset.submitting === 'true') return
+    const input = form.querySelector('[name="legajo"]')
+    if (!input) return
+    input.value = recommendedLegajo
+    fields.markInteracted('legajo')
+    fields.refresh('legajo')
+    syncLegajoGuard()
+    syncRecommendUi()
+    input.focus()
+  })
+
+  if (currentLegajoInspection().blocksSave && initialValues) {
+    fields.markInteracted('legajo')
+  }
+  syncLegajoGuard()
+  syncRecommendUi()
 
   form.addEventListener(
     'input',
@@ -480,7 +692,23 @@ export function createEmpleadoForm({
 
     const result = fields.validateAll()
     if (result.hasErrors) {
+      syncLegajoGuard()
+      syncRecommendUi()
       result.firstInvalid?.focus()
+      return
+    }
+
+    const values = readValues(form)
+    const inspection = inspectLegajo(values.legajo, {
+      empleados: catalog,
+      excludeId: initialValues?.id,
+    })
+    if (inspection.blocksSave) {
+      fields.markInteracted('legajo')
+      fields.refresh('legajo')
+      syncLegajoGuard()
+      syncRecommendUi()
+      form.querySelector('[name="legajo"]')?.focus()
       return
     }
 
@@ -489,7 +717,6 @@ export function createEmpleadoForm({
     submitButton.textContent = 'Guardando...'
     cancelButton.disabled = true
 
-    const values = readValues(form)
     const { horarioError: _ignored, categoria: _categoria, ...draft } = values
 
     try {
@@ -506,6 +733,7 @@ export function createEmpleadoForm({
         delete form.dataset.submitting
         submitButton.textContent = submitLabel
         cancelButton.disabled = false
+        syncLegajoGuard()
       }
     }
   })
@@ -516,6 +744,7 @@ export function createEmpleadoForm({
     try {
       const sucursales = await getSucursales()
       if (!form.isConnected) return
+      sucursalCatalog = sucursales
       fillSucursalOptions(sucursalSelect, sucursales, {
         currentId: initialValues?.sucursalId,
       })
@@ -527,6 +756,7 @@ export function createEmpleadoForm({
     } catch (error) {
       if (error.message === 'Sesión expirada o no autorizada.') return
       if (!form.isConnected) return
+      sucursalCatalog = []
       fillSucursalOptions(sucursalSelect, [])
       setDepartamentoIdle(departamentoSelect, null, { includeAll: false })
       const message = error.message || 'No se pudieron cargar las sucursales.'
@@ -646,11 +876,13 @@ function promptEmpleadoChangesConfirm(changes) {
 
 export function createEmpleadoRecord({
   empleado,
+  empleados = [],
   empresaLabel = '',
   persistUpdate,
   onUpdated,
   onDeactivate,
   onReactivate,
+  initialMode = 'view',
 }) {
   void empresaLabel
   const root = document.createElement('div')
@@ -668,6 +900,26 @@ export function createEmpleadoRecord({
 
   function showView() {
     const view = document.createElement('div')
+    const inspection = inspectLegajo(current.legajo, {
+      empleados,
+      excludeId: current.id,
+    })
+    if (inspection.formatError) {
+      const alert = document.createElement('p')
+      alert.className =
+        'mb-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900'
+      alert.setAttribute('role', 'alert')
+      alert.textContent = LEGAJO_EDIT_ALERT
+      view.append(alert)
+    }
+    if (inspection.duplicate) {
+      const alert = document.createElement('p')
+      alert.className =
+        'mb-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900'
+      alert.setAttribute('role', 'alert')
+      alert.textContent = LEGAJO_EDIT_DUPLICATE_ALERT
+      view.append(alert)
+    }
     view.append(createEmpleadoDetail(current))
 
     const actions = document.createElement('div')
@@ -763,7 +1015,8 @@ export function createEmpleadoRecord({
     view.append(notice)
 
     const form = createEmpleadoForm({
-      empresaId: Number(current.empresaId),
+      empresaId: parsePositiveId(current.empresaId) ?? getOperativeEmpresaId(getCurrentUser()),
+      empleados,
       initialValues: current,
       submitLabel: 'Guardar cambios',
       requireEmpresa: false,
@@ -788,7 +1041,8 @@ export function createEmpleadoRecord({
     root.replaceChildren(view)
   }
 
-  showView()
+  if (initialMode === 'edit' && current?.activo !== false) showEdit()
+  else showView()
   return root
 }
 
