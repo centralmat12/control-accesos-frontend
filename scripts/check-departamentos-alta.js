@@ -91,35 +91,61 @@ function mockFetch(handler) {
   }
 }
 
-check('ADMIN puede crear departamento y no sucursal', () => {
-  const user = admin(9)
-  assert.equal(puedeMostrarAltaDepartamento(user), true)
-  assert.equal(puedeCrearDepartamentos(user, 9), true)
-  assert.equal(puedeCrearSucursales(user, 9), false)
-})
-
-check('RRHH puede crear departamento y no sucursal', () => {
-  const user = rrhh(9)
-  assert.equal(puedeMostrarAltaDepartamento(user), true)
-  assert.equal(puedeCrearDepartamentos(user, 9), true)
-  assert.equal(puedeCrearSucursales(user, 9), false)
-})
-
-check('SuperAdmin se reconoce sin importar mayúsculas y sin confundir sucursales', () => {
+check('SuperAdmin puede crear departamentos', () => {
   assert.equal(isSuperadmin({ rol: 'SuperAdmin' }), true)
   assert.equal(isSuperadmin({ rol: 'superadmin' }), true)
   assert.equal(isSuperadmin({ role: 'SUPERADMIN' }), true)
   assert.equal(puedeMostrarAltaDepartamento(superadmin()), true)
-  assert.equal(puedeMostrarAltaDepartamento({ rol: 'SuperAdmin' }), true)
   assert.equal(puedeCrearDepartamentos(superadmin(), 7), true)
   assert.equal(puedeCrearDepartamentos(superadmin(), null), false)
-  assert.equal(puedeCrearSucursales(admin(9), 9), false)
-  assert.equal(puedeCrearSucursales(rrhh(9), 9), false)
 })
 
-check('ADMIN y RRHH no crean departamentos de otra empresa', () => {
-  assert.equal(puedeCrearDepartamentos(admin(9), 4), false)
-  assert.equal(puedeCrearDepartamentos(rrhh(9), 4), false)
+check('ADMIN puede crear departamentos dentro de su empresa', () => {
+  const user = admin(9)
+  assert.equal(puedeMostrarAltaDepartamento(user), true)
+  assert.equal(puedeCrearDepartamentos(user, 9), true)
+  assert.equal(puedeCrearDepartamentos(user, 4), false)
+  assert.equal(puedeCrearSucursales(user, 9), false)
+})
+
+check('RRHH no ve la acción para crear departamentos', () => {
+  const user = rrhh(9)
+  assert.equal(puedeMostrarAltaDepartamento(user), false)
+  assert.equal(puedeCrearDepartamentos(user, 9), false)
+  const form = read('src/components/empleado-form.js')
+  assert.match(form, /showAddDepartamento/)
+  assert.match(form, /puedeMostrarAltaDepartamento/)
+  assert.match(form, /showAddDepartamento\s*\n\s*\? `<button/)
+  assert.equal(form.includes('No disponible'), false)
+})
+
+check('RRHH puede seleccionar y guardar un departamento existente', () => {
+  const form = read('src/components/empleado-form.js')
+  assert.match(form, /name="departamentoId"/)
+  assert.match(form, /id="empleado-departamentoId"/)
+  assert.match(form, /departamentoId: parseEntityId\(departamentoSelect\?\.value\)/)
+  assert.match(form, /if \(after.departamentoId\) dto.departamentoId = after.departamentoId/)
+  assert.equal(/departamentoSelect\.disabled/.test(form), false)
+  assert.equal(/name="departamentoId"[\s\S]{0,400}puedeCrearDepartamentos/.test(form), false)
+})
+
+check('La creación de sucursales continúa limitada al SuperAdmin', () => {
+  assert.equal(puedeCrearSucursales(superadmin(), 7), true)
+  assert.equal(puedeCrearSucursales(admin(9), 9), false)
+  assert.equal(puedeCrearSucursales(rrhh(9), 9), false)
+  const form = read('src/components/empleado-form.js')
+  assert.equal(form.includes('Agregar sucursal'), false)
+  assert.equal(form.includes('createSucursal'), false)
+})
+
+check('Ningún rol distinto obtiene permiso accidentalmente', () => {
+  assert.equal(puedeCrearDepartamentos(rrhh(9), 9), false)
+  assert.equal(puedeMostrarAltaDepartamento(rrhh(9)), false)
+  assert.equal(puedeCrearDepartamentos({ rol: 'AGENTE_SUCURSAL', empresaId: 9 }, 9), false)
+  assert.equal(puedeMostrarAltaDepartamento({ rol: 'AGENTE_SUCURSAL', empresaId: 9 }), false)
+  assert.equal(puedeCrearDepartamentos({ rol: 'INVITADO', empresaId: 9 }, 9), false)
+  assert.equal(puedeMostrarAltaDepartamento({ rol: 'INVITADO', empresaId: 9 }), false)
+  assert.equal(puedeCrearDepartamentos({ rol: 'ADMIN' }, 9), false)
 })
 
 check('Validación recorta, rechaza vacío y respeta 100 caracteres', () => {
@@ -208,8 +234,20 @@ await checkAsync('SuperAdmin envía X-Empresa-Id de la empresa activa', async ()
   assert.deepEqual(JSON.parse(fetchCalls[0].options.body), { nombre: 'Calidad', sucursalId: 3 })
 })
 
-await checkAsync('Tras 201 el departamento mapeado queda disponible para seleccionar', async () => {
+await checkAsync('RRHH no genera POST /api/departamentos', async () => {
   writeSession(rrhh(9))
+  mockFetch(() => jsonResponse(201, { id: 88, nombre: 'Legales', sucursalId: 2 }))
+  await assert.rejects(() => createDepartamento({ nombre: 'Legales', sucursalId: 2, empresaId: 9 }), (error) => {
+    assert.equal(error.status, 403)
+    return true
+  })
+  assert.equal(fetchCalls.length, 0)
+  const form = read('src/components/empleado-form.js')
+  assert.match(form, /if \(!showAddDepartamento \|\| !canSubmitDepartamento/)
+})
+
+await checkAsync('Tras 201 el departamento mapeado queda disponible para seleccionar', async () => {
+  writeSession(admin(9))
   mockFetch(() => jsonResponse(201, { id: 88, nombre: 'Legales', sucursalId: 2 }))
   const created = await createDepartamento({ nombre: 'Legales', sucursalId: 2, empresaId: 9 })
   assert.equal(created.id, 88)

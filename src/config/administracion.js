@@ -30,7 +30,8 @@
  * - GET/PUT /api/sucursales → PerteneceAUsuario (JWT empresa_id o X-Empresa-Id de SuperAdmin)
  * - GET/POST /api/departamentos → [Authorize] token_use=web (DefaultPolicy).
  *   POST valida PerteneceAUsuario sobre Sucursal.EmpresaId (no SoloSuperadmin).
- *   SuperAdmin: X-Empresa-Id; ADMIN/RRHH: claim empresa_id.
+ *   SuperAdmin: X-Empresa-Id; ADMIN: claim empresa_id.
+ *   El frontend no ofrece alta de departamentos a RRHH (solo seleccionar existentes).
  * - GET/POST /api/agentes, GET /api/agentes/{id}, POST /api/agentes/{id}/rotar-secret,
  *   PATCH /api/agentes/{id}/desactivar → SoloSuperadmin (token_use=web) en la API actual.
  *   GET /api/agentes es SoloSuperadmin. El Dashboard no lo llama para ADMIN/RRHH
@@ -77,7 +78,7 @@ export const API_ADMIN_ENDPOINTS = Object.freeze({
   crearSucursalesComoAdmin: false,
   crearDepartamentosComoSuperadmin: true,
   crearDepartamentosComoAdmin: true,
-  crearDepartamentosComoRrhh: true,
+  crearDepartamentosComoRrhh: false,
   editarSucursalesComoSuperadmin: true,
   editarSucursalesComoAdmin: true,
   listarAgentesComoSuperadmin: true,
@@ -265,18 +266,16 @@ export function puedeCrearSucursales(user, empresaId) {
 }
 
 export function puedeMostrarAltaDepartamento(user) {
-  if (isAgenteSucursal(user)) return false
+  if (isAgenteSucursal(user) || isRrhh(user)) return false
   if (isSuperadmin(user)) return API_ADMIN_ENDPOINTS.crearDepartamentosComoSuperadmin === true
   if (isAdmin(user)) {
     return API_ADMIN_ENDPOINTS.crearDepartamentosComoAdmin === true && Boolean(empresaIdDeTenant(user))
-  }
-  if (isRrhh(user)) {
-    return API_ADMIN_ENDPOINTS.crearDepartamentosComoRrhh === true && Boolean(empresaIdDeTenant(user))
   }
   return false
 }
 
 export function puedeCrearDepartamentos(user, empresaId) {
+  if (isRrhh(user) || isAgenteSucursal(user)) return false
   if (!puedeMostrarAltaDepartamento(user)) return false
 
   const scopedEmpresaId = empresaId == null ? null : parsePositiveId(empresaId)
