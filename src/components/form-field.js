@@ -8,7 +8,8 @@ export const FORM_INPUT_INVALID_CLASS = 'border-red-300'
 export const FORM_LABEL_CLASS = 'mb-1.5 block text-sm font-medium text-slate-700 dark:text-slate-300'
 export const FORM_HELP_CLASS = 'mt-1 text-xs text-slate-500 dark:text-slate-400'
 export const FORM_HELP_FOCUS_CLASS = 'text-slate-700 dark:text-slate-200'
-export const FORM_ERROR_CLASS = 'mt-1 text-sm text-red-600 dark:text-red-300'
+export const FORM_INFO_CLASS = 'mt-1 text-xs text-blue-700 dark:text-blue-300'
+export const FORM_ERROR_CLASS = 'mt-1 whitespace-pre-line text-sm text-red-600 dark:text-red-300'
 
 export function classTokens(classNames) {
   return String(classNames ?? '')
@@ -184,10 +185,12 @@ export function formFieldMarkup({
   maxLength,
   autocomplete,
   inputMode,
+  pattern,
   extraInputClass = '',
   optionsHtml = '',
   disabled = false,
   value,
+  afterErrorHtml = '',
 }) {
   const { helpId, errorId } = fieldIds(id)
   const extraHelpId = extraHelpText ? `${id}-help-format` : ''
@@ -197,6 +200,7 @@ export function formFieldMarkup({
   const maxAttr = maxLength ? `maxlength="${Number(maxLength)}"` : ''
   const autoAttr = autocomplete ? `autocomplete="${escapeHtml(autocomplete)}"` : ''
   const modeAttr = inputMode ? `inputmode="${escapeHtml(inputMode)}"` : ''
+  const patternAttr = pattern ? `pattern="${escapeHtml(pattern)}"` : ''
   const placeholderAttr = placeholder ? `placeholder="${escapeHtml(placeholder)}"` : ''
   const valueAttr = tag !== 'select' && value != null ? `value="${escapeHtml(String(value))}"` : ''
   const inputClass = `${FORM_INPUT_CLASS} ${extraInputClass}`.trim()
@@ -206,7 +210,7 @@ export function formFieldMarkup({
       ? `<select id="${escapeHtml(id)}" name="${escapeHtml(name)}" ${requiredAttr} ${disabledAttr} aria-describedby="${describedBy}" class="${inputClass}">${optionsHtml}</select>`
       : tag === 'textarea'
         ? `<textarea id="${escapeHtml(id)}" name="${escapeHtml(name)}" rows="4" ${maxAttr} ${placeholderAttr} ${requiredAttr} ${disabledAttr} aria-describedby="${describedBy}" class="${inputClass}">${escapeHtml(String(value ?? ''))}</textarea>`
-        : `<input id="${escapeHtml(id)}" name="${escapeHtml(name)}" type="${escapeHtml(type)}" ${maxAttr} ${autoAttr} ${modeAttr} ${placeholderAttr} ${valueAttr} ${requiredAttr} ${disabledAttr} aria-describedby="${describedBy}" class="${inputClass}" />`
+        : `<input id="${escapeHtml(id)}" name="${escapeHtml(name)}" type="${escapeHtml(type)}" ${maxAttr} ${autoAttr} ${modeAttr} ${patternAttr} ${placeholderAttr} ${valueAttr} ${requiredAttr} ${disabledAttr} aria-describedby="${describedBy}" class="${inputClass}" />`
 
   return `
     <div data-form-field="${escapeHtml(name)}">
@@ -217,6 +221,7 @@ export function formFieldMarkup({
       ${helpText ? `<p id="${helpId}" class="${FORM_HELP_CLASS}">${escapeHtml(helpText)}</p>` : ''}
       ${extraHelpText ? `<p id="${extraHelpId}" class="${FORM_HELP_CLASS}">${escapeHtml(extraHelpText)}</p>` : ''}
       <p id="${errorId}" class="${FORM_ERROR_CLASS} hidden" aria-live="polite"></p>
+      ${afterErrorHtml}
     </div>
   `
 }

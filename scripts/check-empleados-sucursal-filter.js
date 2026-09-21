@@ -327,7 +327,7 @@ check('Estado se combina con búsqueda, sucursal, departamento y estado de datos
   )
   assert.deepEqual(
     filterEmpleados(mixed, { estado: 'pendientes', estadoActividad: 'todos' }).map((item) => item.id),
-    [3],
+    [1, 3],
   )
   assert.deepEqual(
     filterEmpleados(mixed, { estado: 'pendientes', estadoActividad: 'inactivos' }).map((item) => item.id),

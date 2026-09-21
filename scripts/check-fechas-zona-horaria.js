@@ -133,10 +133,24 @@ check('7. Calendario y filtros desde/hasta no desplazan el día', () => {
   assert.equal(exclusiveHastaIso('2026-09-15'), '2026-09-16T00:00:00')
   assert.equal(toDateKey('2026-09-15T12:00:00'), '2026-09-15')
 
+  const evening = new Date(2026, 8, 15, 23, 30, 0)
+  assert.equal(toDateKey(evening), '2026-09-15')
+  const isoDay = evening.toISOString().slice(0, 10)
+  if (isoDay !== '2026-09-15') {
+    assert.notEqual(toDateKey(evening), isoDay)
+  }
+
+  const formatSrc = read('src/utils/format.js')
+  assert.match(formatSrc, /export function todayDateKey\([\s\S]*?toDateKey\(new Date\(\)\)/)
+  assert.equal(formatSrc.includes('toISOString().slice(0, 10)'), false)
+  assert.equal(formatSrc.includes('toISOString().slice(0,10)'), false)
+
   const period = read('src/utils/period.js')
   assert.match(period, /\$\{dateKey\}T00:00:00/)
+  assert.match(period, /todayDateKey\(\)/)
   assert.equal(period.includes('parseApiUtcDate'), false)
   assert.equal(period.includes('Z`'), false)
+  assert.equal(period.includes('toISOString()'), false)
 })
 
 check('8. No existe normalización global que agregue Z a todas las fechas', () => {

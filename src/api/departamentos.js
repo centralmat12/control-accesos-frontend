@@ -3,9 +3,17 @@
  *
  * GET /api/departamentos — scoped por EmpresaId del JWT / X-Empresa-Id.
  * La API no acepta sucursalId como query; cada ítem trae sucursalId y se filtra en el cliente.
+ * POST /api/departamentos — modelo Departamento: nombre, sucursalId.
+ * Autorización: [Authorize] (token_use=web) + PerteneceAUsuario(sucursal.EmpresaId).
+ * SuperAdmin: X-Empresa-Id; ADMIN/RRHH: claim empresa_id. No hay policy SoloSuperadmin.
  */
+import { puedeCrearDepartamentos } from '../config/administracion.js'
 import { pick } from '../utils/pick.js'
-import { apiFetch, readErrorMessage } from './http.js'
+import { getCurrentUser } from './auth.js'
+import { getOperativeEmpresaId } from './empresa-context.js'
+import { apiFetch, createApiError, readErrorMessage } from './http.js'
+
+export const DEPARTAMENTO_NOMBRE_MAX = 100
 
 function parseId(value) {
   const id = Number(value)
@@ -113,4 +121,101 @@ export async function getDepartamentosBySucursal(sucursalId) {
 
   const departamentos = await getDepartamentos()
   return filterDepartamentosForSucursalSelection(departamentos, { sucursalIds: [id] })
+}
+
+export function normalizeDepartamentoNombre(value) {
+  return String(value ?? '').trim()
+}
+
+export function validateDepartamentoAlta({ nombre, sucursalId } = {}) {
+  const errors = {}
+  const trimmed = normalizeDepartamentoNombre(nombre)
+  if (!trimmed) {
+    errors.nombre = 'Ingresá el nombre del departamento.'
+  } else if (trimmed.length > DEPARTAMENTO_NOMBRE_MAX) {
+    errors.nombre = `El nombre no puede superar ${DEPARTAMENTO_NOMBRE_MAX} caracteres.`
+  }
+
+  const sucursal = parseId(sucursalId)
+  if (!sucursal) {
+    errors.sucursalId = 'Seleccioná una sucursal.'
+  }
+
+  return {
+    nombre: trimmed,
+    sucursalId: sucursal,
+    errors,
+    hasErrors: Object.keys(errors).length > 0,
+  }
+}
+
+function looksLikeDuplicateDepartamento(message) {
+  return /duplicate|duplicad|unique|1062|nombre.*sucursal/i.test(String(message ?? ''))
+}
+
+/**
+ * POST /api/departamentos. SuperAdmin: X-Empresa-Id de la empresa operativa.
+ * El body es el modelo Departamento (camelCase): { nombre, sucursalId }.
+ * 201 CreatedAtAction con el departamento creado.
+ */
+export async function createDepartamento({ nombre, sucursalId, empresaId } = {}) {
+  const validated = validateDepartamentoAlta({ nombre, sucursalId })
+  if (validated.hasErrors) {
+    throw createApiError(validated.errors.nombre || validated.errors.sucursalId, 400)
+  }
+
+  const empresa = parseId(empresaId) ?? getOperativeEmpresaId(getCurrentUser())
+  if (!puedeCrearDepartamentos(getCurrentUser(), empresa)) {
+    throw createApiError('No tenés permiso para crear departamentos en esta empresa.', 403)
+  }
+
+  const dto = {
+    nombre: validated.nombre,
+    sucursalId: validated.sucursalId,
+  }
+
+  const { url, response } = await apiFetch('/api/departamentos', {
+    method: 'POST',
+    empresaId: empresa,
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(dto),
+    missingAuthMessage: 'No hay sesión activa. Iniciá sesión para crear departamentos.',
+    logLabel: 'Departamentos',
+  })
+
+  if (response.status === 403) {
+    throw createApiError('No tenés permiso para crear departamentos en esta sucursal.', 403)
+  }
+
+  if (response.status === 400) {
+    throw createApiError(await readErrorMessage(response, 'Los datos del departamento no son válidos.'), 400)
+  }
+
+  if (response.status === 404) {
+    throw createApiError(await readErrorMessage(response, 'No se encontró la sucursal indicada.'), 404)
+  }
+
+  const conflictFallback = 'Ya existe un departamento con ese nombre en esa sucursal.'
+  if (response.status === 409) {
+    throw createApiError(await readErrorMessage(response, conflictFallback), 409)
+  }
+
+  if (!response.ok) {
+    const serverMessage = await readErrorMessage(response, '')
+    if (looksLikeDuplicateDepartamento(serverMessage)) {
+      throw createApiError(conflictFallback, response.status)
+    }
+    console.error('Departamentos: alta HTTP no exitosa', { url, status: response.status })
+    throw createApiError(
+      serverMessage || `No se pudo crear el departamento (${response.status}).`,
+      response.status,
+    )
+  }
+
+  const created = mapDepartamento(await response.json())
+  if (!created) {
+    throw createApiError('La API creó el departamento pero devolvió una respuesta incompleta.', 500)
+  }
+
+  return created
 }

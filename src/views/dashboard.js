@@ -12,13 +12,19 @@ import { getEmpleados } from '../api/empleados.js'
 import { getHealthReady, isHealthReadyEnabled } from '../api/health.js'
 import { FICHADAS_LIMITE, getFichadas } from '../api/fichadas.js'
 import { isSuperadmin } from '../config/roles.js'
+import { empleadoAlertLabel, empleadoEstaActivo, empleadoPerteneceAEmpresaActiva } from '../utils/empleado-alerts.js'
+import { openEnrolarHuellaModal } from '../components/enrolar-huella-modal.js'
 import {
   createDashboardAlerts,
   dashboardContentLayout,
+  dashboardHasAlertas,
+  focusDashboardAlertasPanel,
 } from '../components/dashboard-alerts.js'
+import { formatDashboardLastUpdate } from '../utils/format.js'
 import { BTN_SECONDARY_CLASS } from '../components/button-styles.js'
 import { createFeedbackState, createSelectEmpresaState } from '../components/feedback-state.js'
 import { createRecentPunchesTable } from '../components/recent-punches-table.js'
+import { pageHeadingMarkup } from '../components/page-heading.js'
 import { createDashboardSkeleton } from '../components/skeleton.js'
 import { createStatCard } from '../components/stat-card.js'
 import { iconClock, iconLogin, iconLogout, iconUsers } from '../components/icons.js'
@@ -27,7 +33,7 @@ import {
   createSystemStatusCard,
   sistemaOperativoStatus,
 } from '../components/system-status.js'
-import { buildDashboardAlertas } from '../utils/dashboard-alertas.js'
+import { alertasPendientesStatus, buildDashboardAlertas } from '../utils/dashboard-alertas.js'
 import {
   baseDatosEvidenceSource,
   deriveBaseDatosConnected,
@@ -39,6 +45,7 @@ import {
   attachSucursalNombres,
   dispositivosResumenStatus,
   filterAgentesPorEmpresa,
+  puedeVerFilaDispositivos,
   resumenDispositivosDesdeAgentes,
 } from '../utils/dashboard-dispositivos.js'
 import { logInfo } from '../utils/activity-log.js'
@@ -51,7 +58,11 @@ export function renderDashboard(container, { onNavigate } = {}) {
   view.className = 'space-y-6'
 
   view.innerHTML = `
-    <section class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-end">
+    <section class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+      ${pageHeadingMarkup({
+        title: 'Dashboard',
+        description: 'Resumen general del sistema y la actividad de hoy.',
+      })}
       <div class="flex flex-col items-stretch gap-1.5 sm:items-end">
         <button
           type="button"
@@ -141,9 +152,10 @@ export function renderDashboard(container, { onNavigate } = {}) {
   }
 
   function currentSystemCard() {
-    const detailed = isSuperadmin(getCurrentUser())
-    const showDispositivos = isSuperadmin(getCurrentUser())
+    const user = getCurrentUser()
+    const detailed = isSuperadmin(user)
     const connected = currentDbConnected()
+    const alertas = currentAlertas()
     return createSystemStatusCard({
       sistema: sistemaOperativoStatus({
         kind: sistemaState.loaded ? sistemaState.kind : 'unknown',
@@ -156,7 +168,28 @@ export function renderDashboard(container, { onNavigate } = {}) {
         detailed,
         source: baseDatosEvidenceSource({ health: healthState, evidence: dbEvidence }),
       }),
-      dispositivos: showDispositivos ? dispositivosResumenStatus(deviceState) : null,
+      dispositivos: puedeVerFilaDispositivos(user) ? dispositivosResumenStatus(deviceState) : null,
+      alertas: currentAlertasStatus(alertas),
+      lastUpdateLabel: formatDashboardLastUpdate(lastSuccessAt),
+      onAlertasAction: () => {
+        focusDashboardAlertasPanel()
+      },
+    })
+  }
+
+  function currentAlertasStatus(alertas = currentAlertas()) {
+    const hasCatalog = Array.isArray(lastData?.empleadosCatalog)
+    const pendingCount = Number(alertas?.pendingCount) || 0
+    const hasAlertas = dashboardHasAlertas(alertas)
+    const failed = !hasCatalog && Boolean(lastRequestError)
+    return alertasPendientesStatus({
+      catalogReady: hasCatalog,
+      empleadosConsultaOk: hasCatalog,
+      hasAlertas,
+      pendingCount: pendingCount || (hasAlertas ? alertas.items.length : 0),
+      loading: !hasCatalog && !failed && inFlight,
+      failed,
+      worst: alertas?.worst,
     })
   }
 
@@ -165,6 +198,7 @@ export function renderDashboard(container, { onNavigate } = {}) {
     return buildDashboardAlertas({
       user,
       empleados: lastData?.empleados ?? [],
+      empleadosCatalog: lastData?.empleadosCatalog,
       usuarios: usuariosState,
       dispositivos: deviceState.dispositivos,
       dispositivosConsultaOk:
@@ -174,12 +208,15 @@ export function renderDashboard(container, { onNavigate } = {}) {
         detail: healthState.error,
       },
       isSuperadminViewer: isSuperadmin(user),
+      catalogReady: lastData?.catalogReady === true && lastData?.empleadosConsultaOk === true,
     })
   }
 
   function paintSystemCard() {
     if (!systemHost) return
-    systemHost.replaceChildren(currentSystemCard())
+    const card = currentSystemCard()
+    card.classList.add('h-full')
+    systemHost.replaceChildren(card)
   }
 
   function showUnavailablePanel() {
@@ -268,8 +305,9 @@ export function renderDashboard(container, { onNavigate } = {}) {
 
   function appendStatCards(statsCol, data) {
     const cards = document.createElement('div')
-    cards.className = 'grid gap-4 sm:grid-cols-2'
-    cards.append(
+    cards.className =
+      'grid gap-4 sm:grid-cols-2 lg:h-full lg:min-h-0 lg:flex-1 lg:grid-rows-[repeat(2,minmax(0,1fr))]'
+    const metrics = [
       createStatCard({
         label: 'Empleados activos',
         value: data.empleadosActivos,
@@ -294,7 +332,11 @@ export function renderDashboard(container, { onNavigate } = {}) {
         icon: iconLogout(),
         accent: 'amber',
       }),
-    )
+    ]
+    for (const card of metrics) {
+      card.classList.add('h-full', 'min-h-0')
+      cards.append(card)
+    }
     statsCol.append(cards)
 
     if (data.alcanzoLimite) {
@@ -318,11 +360,11 @@ export function renderDashboard(container, { onNavigate } = {}) {
     grid.setAttribute('data-dashboard-layout', layout)
 
     systemHost = document.createElement('div')
-    systemHost.className = 'order-1 min-w-0 shrink-0'
-    systemHost.replaceChildren(currentSystemCard())
+    systemHost.className = 'order-1 min-w-0 shrink-0 lg:h-full'
+    paintSystemCard()
 
     const statsCol = document.createElement('div')
-    statsCol.className = 'order-2 min-w-0 shrink-0 space-y-4'
+    statsCol.className = 'order-2 min-w-0 shrink-0 space-y-4 lg:flex lg:h-full lg:min-h-0 lg:flex-col'
 
     if (showDataError) {
       statsCol.append(
@@ -352,23 +394,52 @@ export function renderDashboard(container, { onNavigate } = {}) {
 
     if (layout === 'split') {
       grid.className =
-        'flex flex-col gap-6 lg:grid lg:h-[calc(100dvh-11rem)] lg:min-h-[32rem] lg:grid-cols-[minmax(16rem,32%)_minmax(0,1fr)] lg:items-stretch'
+        'flex flex-col gap-6 lg:grid lg:h-[calc(100dvh-11rem)] lg:min-h-[32rem] lg:grid-cols-[minmax(16rem,32%)_minmax(0,1fr)] lg:grid-rows-[auto_minmax(0,1fr)] lg:items-stretch'
 
       const leftCol = document.createElement('div')
-      leftCol.className = 'contents lg:flex lg:min-h-0 lg:flex-col lg:gap-6'
+      leftCol.className = 'contents'
 
       const rightCol = document.createElement('div')
-      rightCol.className = 'contents lg:flex lg:min-h-0 lg:flex-col lg:gap-6'
+      rightCol.className = 'contents'
 
       const alerts = createDashboardAlerts(alertas, {
         onAction: (action) => {
+          if (action?.kind === 'enroll-help') {
+            openEnrollHelp(action)
+            return
+          }
           if (!action?.view) return
-          onNavigate?.(action.view, action.initialQuery ? { initialQuery: action.initialQuery } : {})
+          const options = {}
+          if (action.empleadoId != null) options.empleadoId = action.empleadoId
+          if (action.openEdit) options.openEdit = true
+          if (action.estadoDatos) options.estadoDatos = action.estadoDatos
+          if (action.initialQuery) options.initialQuery = action.initialQuery
+          onNavigate?.(action.view, options)
         },
       })
-      if (alerts) alerts.classList.add('order-3', 'min-h-0', 'min-w-0', 'lg:flex-1')
+      if (alerts) {
+        alerts.classList.add(
+          'order-3',
+          'min-h-0',
+          'min-w-0',
+          'lg:col-start-1',
+          'lg:row-start-2',
+          'lg:self-start',
+        )
+      }
 
-      recentPunches.classList.add('order-4', 'max-h-[min(24rem,70vh)]', 'lg:max-h-none')
+      recentPunches.classList.add(
+        'order-4',
+        'max-h-[min(24rem,70vh)]',
+        'lg:col-start-2',
+        'lg:row-start-2',
+        'lg:h-full',
+        'lg:min-h-0',
+        'lg:max-h-none',
+      )
+
+      systemHost.classList.add('lg:col-start-1', 'lg:row-start-1', 'lg:h-full')
+      statsCol.classList.add('lg:col-start-2', 'lg:row-start-1', 'lg:h-full', 'lg:min-h-0')
 
       leftCol.append(systemHost)
       if (alerts) leftCol.append(alerts)
@@ -381,8 +452,8 @@ export function renderDashboard(container, { onNavigate } = {}) {
 
     grid.className =
       'flex flex-col gap-6 lg:grid lg:h-[calc(100dvh-11rem)] lg:min-h-[32rem] lg:grid-cols-[minmax(16rem,32%)_minmax(0,1fr)] lg:grid-rows-[auto_minmax(0,1fr)] lg:items-stretch'
-    systemHost.classList.add('lg:col-start-1', 'lg:row-start-1')
-    statsCol.classList.add('lg:col-start-2', 'lg:row-start-1')
+    systemHost.classList.add('lg:col-start-1', 'lg:row-start-1', 'lg:h-full')
+    statsCol.classList.add('lg:col-start-2', 'lg:row-start-1', 'lg:h-full', 'lg:min-h-0')
     recentPunches.classList.add(
       'order-3',
       'max-h-[min(24rem,70vh)]',
@@ -403,15 +474,14 @@ export function renderDashboard(container, { onNavigate } = {}) {
   }
 
   async function loadDispositivos(user) {
-    // GET /api/agentes es SoloSuperadmin. ADMIN/RRHH necesitan soporte futuro de la API.
-    if (!isSuperadmin(user)) {
+    if (!puedeVerFilaDispositivos(user)) {
       deviceState = {
         hidden: true,
-        loaded: true,
+        loaded: false,
         reason: 'unsupported',
-        total: 0,
-        conectados: 0,
-        desconectados: 0,
+        total: null,
+        conectados: null,
+        desconectados: null,
         dispositivos: [],
         error: '',
         status: 0,
@@ -542,7 +612,7 @@ export function renderDashboard(container, { onNavigate } = {}) {
 
     try {
       const [empleadosResult, fichadasResult, dispositivosResult, healthResult, usuariosResult] = await Promise.allSettled([
-        getEmpleados(),
+        getEmpleados({ incluirInactivos: true }),
         getFichadas(dashboardFichadasFilters()),
         loadDispositivos(user),
         loadHealth(),
@@ -580,10 +650,18 @@ export function renderDashboard(container, { onNavigate } = {}) {
 
       const empleadosOk = empleadosResult.status === 'fulfilled'
       const fichadasOk = fichadasResult.status === 'fulfilled'
+      const catalog = empleadosOk ? empleadosResult.value : lastData?.empleadosCatalog
+      const catalogReady = empleadosOk ? Array.isArray(catalog) : lastData?.catalogReady === true
+      const activos = Array.isArray(catalog)
+        ? catalog.filter(empleadoEstaActivo)
+        : lastData?.empleados ?? []
       const snapshot = buildDashboardData(
-        empleadosOk ? empleadosResult.value : lastData?.empleados ?? [],
+        activos,
         fichadasOk ? fichadasResult.value : lastData?.ultimasFichadas ?? [],
       )
+      snapshot.empleadosCatalog = catalogReady ? catalog : null
+      snapshot.catalogReady = catalogReady
+      snapshot.empleadosConsultaOk = empleadosOk
 
       if (empleadosOk || fichadasOk) {
         hasSuccessfulData = true
@@ -652,9 +730,34 @@ export function renderDashboard(container, { onNavigate } = {}) {
     }
   }
 
-  refreshButton.addEventListener('click', () => {
+  function refreshDashboard() {
     logInfo('Dashboard', 'Actualización manual del panel.')
     void load()
+  }
+
+  function openEnrollHelp(action) {
+    const empresaId = getOperativeEmpresaId(getCurrentUser())
+    const catalog = lastData?.empleadosCatalog
+    const fromCatalog = Array.isArray(catalog)
+      ? catalog.find((item) => Number(item.id) === Number(action.empleadoId))
+      : null
+    const empleado = fromCatalog || {
+      id: action.empleadoId,
+      empresaId: action.empresaId,
+      nombre: action.empleadoNombre,
+    }
+    if (!empleadoPerteneceAEmpresaActiva(empleado, empresaId)) return
+    openEnrolarHuellaModal({
+      empleado,
+      empleadoId: action.empleadoId,
+      empleadoNombre: fromCatalog ? empleadoAlertLabel(fromCatalog) : action.empleadoNombre,
+      empresaId,
+      onRefresh: refreshDashboard,
+    })
+  }
+
+  refreshButton.addEventListener('click', () => {
+    refreshDashboard()
   })
 
   function onEmpresasCatalogChange() {

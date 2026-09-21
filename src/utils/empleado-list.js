@@ -46,10 +46,10 @@ export function matchesIdFilter(empleado, key, selected) {
   return String(value) === String(selected)
 }
 
-export function matchesEstadoDatos(empleado, estado) {
+export function matchesEstadoDatos(empleado, estado, catalog = []) {
   if (!estado || estado === 'todos') return true
   if (!empleadoEstaActivo(empleado)) return false
-  const pendiente = empleadoTienePendientes(empleado)
+  const pendiente = empleadoTienePendientes(empleado, catalog)
   if (estado === 'pendientes') return pendiente
   if (estado === 'completo') return !pendiente
   return true
@@ -102,7 +102,7 @@ export function filterEmpleados(
         ? matchesSucursalMultiFilter(empleado, multi)
         : matchesIdFilter(empleado, 'sucursalId', sucursal ?? sucursalId ?? 'todos')) &&
       matchesIdFilter(empleado, 'departamentoId', departamentoFilter) &&
-      matchesEstadoDatos(empleado, estado) &&
+      matchesEstadoDatos(empleado, estado, empleados) &&
       matchesEstadoActividad(empleado, estadoActividad),
   )
 }

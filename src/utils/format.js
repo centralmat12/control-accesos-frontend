@@ -75,6 +75,24 @@ export function formatTime(isoString) {
   return timeFormatter.format(date)
 }
 
+export function formatDashboardClock(value) {
+  const date = parseApiLocalDate(value)
+  if (!date) return ''
+  return date.toLocaleTimeString('es-AR', {
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  })
+}
+
+export function formatDashboardLastUpdate(value, now = new Date()) {
+  const date = parseApiLocalDate(value)
+  if (!date) return 'Última actualización: sin datos'
+  const time = formatDashboardClock(date)
+  const dayLabel = toDateKey(date) === toDateKey(now) ? 'hoy' : formatDate(date)
+  return `Última actualización: ${dayLabel}, ${time}`
+}
+
 export function formatClockTime(value = new Date()) {
   const date = parseApiLocalDate(value)
   if (!date) return ''

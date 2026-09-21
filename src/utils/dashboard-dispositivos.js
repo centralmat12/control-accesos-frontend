@@ -1,3 +1,4 @@
+import { isSuperadmin } from '../config/roles.js'
 import { agenteConectividad } from './agente-conectividad.js'
 import { elapsedMinutes, formatElapsedLabel, parseContactDate } from './relative-time.js'
 
@@ -61,8 +62,12 @@ export function resumenDispositivosDesdeAgentes(agentes, now = new Date()) {
   }
 }
 
+export function puedeVerFilaDispositivos(user) {
+  return isSuperadmin(user)
+}
+
 export function dispositivosResumenStatus(estado) {
-  if (estado?.hidden) {
+  if (estado?.hidden || estado?.reason === 'unsupported') {
     return null
   }
 
@@ -74,11 +79,12 @@ export function dispositivosResumenStatus(estado) {
     }
   }
 
-  if (estado.error) {
+  const status = Number(estado.status) || 0
+  if (estado.error || status === 401 || status === 403) {
     return {
       tone: 'neutral',
-      label: 'Estado desconocido',
-      detail: estado.error,
+      label: 'No disponible',
+      detail: estado.error || 'No se pudo consultar el estado de los dispositivos.',
     }
   }
 
@@ -95,7 +101,7 @@ export function dispositivosResumenStatus(estado) {
   if (total <= 0) {
     return {
       tone: 'neutral',
-      label: 'Sin dispositivos configurados',
+      label: 'Sin dispositivos',
       detail: 'No hay dispositivos configurados para esta empresa.',
     }
   }

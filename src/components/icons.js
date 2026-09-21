@@ -29,8 +29,8 @@ export function iconClock() {
   </svg>`
 }
 
-export function iconAlertTriangle() {
-  return `<svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+export function iconAlertTriangle(className = 'h-5 w-5') {
+  return `<svg class="${className}" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
     <path stroke-linecap="round" stroke-linejoin="round" d="M10.3 3.7 2.2 18a2 2 0 0 0 1.74 3h16.12a2 2 0 0 0 1.74-3L13.7 3.7a2 2 0 0 0-3.4 0Z" />
     <path stroke-linecap="round" d="M12 9v4m0 4h.01" />
   </svg>`
@@ -145,6 +145,30 @@ export function iconBuilding() {
 export function iconInfo() {
   return `<svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
     <path stroke-linecap="round" stroke-linejoin="round" d="M12 16v-4m0-4h.01M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
+  </svg>`
+}
+
+export function iconPlus(className = 'h-5 w-5') {
+  return `<svg class="${className}" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+    <path stroke-linecap="round" stroke-linejoin="round" d="M12 5v14M5 12h14" />
+  </svg>`
+}
+
+export function iconFingerprint(className = 'h-6 w-6') {
+  return `<svg class="${className}" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+    <path stroke-linecap="round" stroke-linejoin="round" d="M12 11.5v4.2m0-8.4a4.2 4.2 0 0 1 4.2 4.2V13m-8.4-1.5A4.2 4.2 0 0 1 12 7.3m-2.6 9.8c.5 1.4 1.4 2.6 2.6 3.4m5.8-8.2c.2.7.3 1.4.3 2.2 0 1.7-.5 3.4-1.4 4.8M6.8 13c0 2.4.8 4.6 2.2 6.3M8.6 7.8A6.5 6.5 0 0 1 18.5 13" />
+  </svg>`
+}
+
+export function iconChevronRight(className = 'h-3.5 w-3.5') {
+  return `<svg class="${className}" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true">
+    <path stroke-linecap="round" stroke-linejoin="round" d="m9 6 6 6-6 6" />
+  </svg>`
+}
+
+export function iconChevronDown(className = 'h-4 w-4') {
+  return `<svg class="${className}" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true">
+    <path stroke-linecap="round" stroke-linejoin="round" d="m6 9 6 6 6-6" />
   </svg>`
 }
 

@@ -52,7 +52,12 @@ import {
   summarizeMovimientosVista,
 } from '../utils/movimientos.js'
 import { DEFAULT_PAGE_SIZE, PAGE_SIZE_OPTIONS, paginateItems } from '../utils/paginate.js'
-import { resolvePeriodRange } from '../utils/period.js'
+import {
+  FICHADAS_PERIODO_HOY,
+  FICHADAS_PERIODO_INICIAL,
+  FICHADAS_PERIODO_TODOS,
+  resolvePeriodRange,
+} from '../utils/period.js'
 import {
   puedeEditarObservacionFichada,
   replaceFichadaObservacionInList,
@@ -176,8 +181,8 @@ export async function renderFichadas(container) {
         <div class="w-full lg:w-44 lg:shrink-0">
           <label for="fichadas-periodo" class="${FORM_LABEL_CLASS}">Período</label>
           <select id="fichadas-periodo" class="${CONTROL_CLASS}">
-            <option value="todos">Todos / Sin filtro de fecha</option>
-            <option value="hoy">Hoy</option>
+            <option value="${FICHADAS_PERIODO_TODOS}">Todos / Sin filtro de fecha</option>
+            <option value="${FICHADAS_PERIODO_HOY}" ${FICHADAS_PERIODO_INICIAL === FICHADAS_PERIODO_HOY ? 'selected' : ''}>Hoy</option>
             <option value="7">Últimos 7 días</option>
             <option value="15">Últimos 15 días</option>
             <option value="30">Últimos 30 días</option>
@@ -273,6 +278,7 @@ export async function renderFichadas(container) {
   const results = view.querySelector('#fichadas-results')
   const paginationContainer = view.querySelector('#fichadas-pagination')
   const periodoSelect = view.querySelector('#fichadas-periodo')
+  periodoSelect.value = FICHADAS_PERIODO_INICIAL
   const tipoSelect = view.querySelector('#fichadas-tipo')
   const metodoSelect = view.querySelector('#fichadas-metodo')
   const empleadoWrap = view.querySelector('#fichadas-empleado-wrap')
@@ -703,7 +709,7 @@ export async function renderFichadas(container) {
   }
 
   function clearFilters() {
-    periodoSelect.value = 'todos'
+    periodoSelect.value = FICHADAS_PERIODO_INICIAL
     tipoSelect.value = 'todos'
     metodoSelect.value = 'todos'
     empleadoCombobox.reset()

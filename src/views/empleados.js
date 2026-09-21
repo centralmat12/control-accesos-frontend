@@ -31,7 +31,7 @@ import { DEPARTAMENTO_ALL, fillDepartamentoOptions, parseEntityId, setDepartamen
 import { createSucursalMultiSelect } from '../components/sucursal-multi-select.js'
 import { showToast } from '../components/toast.js'
 import { empleadosFiltersArePristine, filterEmpleados, sortEmpleados } from '../utils/empleado-list.js'
-import { summarizeEmpleadoDatos } from '../utils/empleado-alerts.js'
+import { empleadoPerteneceAEmpresaActiva, summarizeEmpleadoDatos } from '../utils/empleado-alerts.js'
 import { DEFAULT_PAGE_SIZE, PAGE_SIZE_OPTIONS, paginateItems } from '../utils/paginate.js'
 
 const CONTROL_CLASS = `h-11 min-w-0 max-w-full ${FORM_INPUT_CLASS}`
@@ -45,6 +45,11 @@ function sessionEmpresaId() {
   return getOperativeEmpresaId(getCurrentUser())
 }
 
+function parsePositiveId(value) {
+  const id = Number(value)
+  return Number.isFinite(id) && id > 0 ? id : null
+}
+
 /**
  * PATCH parcial → GET /api/empleados/{id} para la versión definitiva.
  * `patchDto` solo incluye campos que cambiaron (sin id, empresaId, activo ni biometría).
@@ -54,7 +59,7 @@ async function persistEmpleadoUpdate(empleadoId, patchDto) {
   return getEmpleadoById(empleadoId)
 }
 
-export async function renderEmpleados(container, { initialQuery } = {}) {
+export async function renderEmpleados(container, { initialQuery, empleadoId, openEdit = false, estadoDatos } = {}) {
   const user = getCurrentUser()
   const empresaId = sessionEmpresaId()
 
@@ -430,6 +435,7 @@ export async function renderEmpleados(container, { initialQuery } = {}) {
     countLabel.textContent = `Mostrando ${paged.from}–${paged.to} de ${paged.total} empleados`
     results.replaceChildren(
       createEmpleadosTable(paged.items, {
+        catalog: empleados,
         sortKey,
         sortDir,
         highlightId,
@@ -516,6 +522,7 @@ export async function renderEmpleados(container, { initialQuery } = {}) {
 
     const form = createEmpleadoForm({
       empresaId: currentEmpresaId,
+      empleados: loaded && !loadError ? empleados : null,
       onCancel: () => closeActiveModal(),
       onSubmit: async (dto) => {
         await createEmpleado(dto)
@@ -536,7 +543,7 @@ export async function renderEmpleados(container, { initialQuery } = {}) {
     activeModalClose = modal.close
   }
 
-  async function openDetail(empleado) {
+  async function openDetail(empleado, { edit = false } = {}) {
     const loading = createDetailSkeleton()
 
     const modal = openModal({
@@ -560,7 +567,9 @@ export async function renderEmpleados(container, { initialQuery } = {}) {
       loading.replaceWith(
         createEmpleadoRecord({
           empleado: detail,
+          empleados: loaded && !loadError ? empleados : null,
           empresaLabel: empresaDisplayName(empresa, detail.empresaId),
+          initialMode: edit ? 'edit' : 'view',
           persistUpdate: persistEmpleadoUpdate,
           onDeactivate: openDeactivate,
           onReactivate: openReactivate,
@@ -676,7 +685,17 @@ export async function renderEmpleados(container, { initialQuery } = {}) {
     )
   }
 
-  if (initialQuery) {
+  const focusEmpleadoId = parsePositiveId(empleadoId)
+
+  if (estadoDatos === 'pendientes') {
+    estadoSelect.value = 'pendientes'
+  }
+
+  if (focusEmpleadoId) {
+    sucursalFilter.clear()
+    if (estadoDatos !== 'pendientes') estadoSelect.value = 'todos'
+    resetPage()
+  } else if (initialQuery) {
     searchInput.value = initialQuery
     sucursalFilter.clear()
     estadoSelect.value = 'todos'
@@ -725,7 +744,20 @@ export async function renderEmpleados(container, { initialQuery } = {}) {
     loadDepartamentos(),
   ])
 
-  if (initialQuery && loaded) {
+  if (loaded && focusEmpleadoId) {
+    const target = empleados.find((item) => Number(item.id) === focusEmpleadoId)
+    if (target && empleadoPerteneceAEmpresaActiva(target, empresaId)) {
+      if (target.activo === false) actividadSelect.value = 'todos'
+      highlightId = target.id
+      renderResults()
+      await openDetail(target, { edit: openEdit })
+    } else if (initialQuery) {
+      searchInput.value = initialQuery
+      const hinted = visibleEmpleados()[0]
+      highlightId = hinted?.id ?? null
+      if (highlightId) renderResults()
+    }
+  } else if (initialQuery && loaded) {
     const hinted = visibleEmpleados()[0]
     highlightId = hinted?.id ?? null
     if (highlightId) renderResults()

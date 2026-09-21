@@ -185,6 +185,7 @@ export function refreshEnhancedSelect(select) {
 
 export function enhanceSelect(select, { wrapClass = 'relative min-w-0 w-full' } = {}) {
   if (!select || select.multiple) return null
+  if (select.dataset.caNative === 'true') return null
   if (select.dataset.caSelectBound === 'true') {
     if (select._caSelect) return select._caSelect
     delete select.dataset.caSelectBound
@@ -226,8 +227,8 @@ export function enhanceSelect(select, { wrapClass = 'relative min-w-0 w-full' } 
       button.dataset.index = String(index)
       button.disabled = item.disabled
       button.textContent = item.label
-      if (select.value === item.value) button.classList.add(...DROPDOWN_OPTION_SELECTED_CLASS.split(' '))
-      if (index === activeIndex) button.classList.add(...DROPDOWN_OPTION_ACTIVE_CLASS.split(' '))
+      if (select.value === item.value) addClassTokens(button, DROPDOWN_OPTION_SELECTED_CLASS)
+      if (index === activeIndex) addClassTokens(button, DROPDOWN_OPTION_ACTIVE_CLASS)
       button.addEventListener('click', () => {
         if (item.disabled) return
         select.value = item.value
@@ -349,6 +350,7 @@ export function enhanceSelectsIn(root) {
   destroyDisconnectedSelects()
   if (!root?.querySelectorAll) return
   root.querySelectorAll('select:not([multiple])').forEach((select) => {
+    if (select.dataset.caNative === 'true') return
     if (select.dataset.caSelectBound === 'true' && !select._caSelect) {
       delete select.dataset.caSelectBound
     }

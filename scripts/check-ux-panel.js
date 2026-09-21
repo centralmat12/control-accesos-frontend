@@ -24,6 +24,7 @@ import {
   datosCargaStatus,
 } from '../src/components/system-status.js'
 import {
+  createDashboardAlerts,
   dashboardContentLayout,
   dashboardHasAlertas,
 } from '../src/components/dashboard-alerts.js'
@@ -82,7 +83,10 @@ check('Los contenidos usan títulos funcionales y no repiten la sección', () =>
   assert.match(empleados, /Administrá sus datos laborales, asignaciones y estado\./)
   assert.equal(empleados.includes('>Empleados</h2>'), false)
 
-  assert.equal(dashboard.includes('>Dashboard</h2>'), false)
+  assert.match(dashboard, /title: 'Dashboard'/)
+  assert.match(dashboard, /Resumen general del sistema y la actividad de hoy\./)
+  assert.match(dashboard, /pageHeadingMarkup/)
+  assert.match(read('src/components/page-heading.js'), /<\/h2>/)
   assert.equal(dashboard.includes('No indica conexión del agente ni del lector'), false)
   assert.match(read('src/components/page-heading.js'), /font-semibold/)
 })
@@ -141,9 +145,12 @@ check('El modal de edición unifica el formulario y conserva endpoints separados
 check('El dashboard usa la grilla operativa de dos columnas', () => {
   const dashboard = read('src/views/dashboard.js')
   assert.match(dashboard, /lg:grid-cols-\[minmax\(16rem,32%\)_minmax\(0,1fr\)\]/)
-  assert.match(dashboard, /contents lg:flex lg:min-h-0 lg:flex-col lg:gap-6/)
-  assert.match(dashboard, /order-1 min-w-0 shrink-0/)
-  assert.match(dashboard, /order-2 min-w-0 shrink-0/)
+  assert.match(dashboard, /lg:grid-rows-\[auto_minmax\(0,1fr\)\]/)
+  assert.match(dashboard, /lg:grid-rows-\[repeat\(2,minmax\(0,1fr\)\)\]/)
+  assert.match(dashboard, /lg:items-stretch/)
+  assert.match(dashboard, /contents/)
+  assert.match(dashboard, /order-1 min-w-0 shrink-0 lg:h-full/)
+  assert.match(dashboard, /order-2 min-w-0 shrink-0 space-y-4 lg:flex lg:h-full lg:min-h-0 lg:flex-col/)
   assert.match(dashboard, /order-3/)
   assert.match(dashboard, /order-4/)
   assert.match(dashboard, /createSystemStatusCard/)
@@ -179,8 +186,9 @@ check('Dashboard con alertas, sin alertas y con error', () => {
   assert.match(dashboard, /lg:col-span-2/)
   assert.match(dashboard, /data-dashboard-layout/)
   assert.match(dashboard, /showDataError: true/)
-  assert.match(alerts, /if \(!dashboardHasAlertas\(alertas\)\) return null/)
+  assert.equal(alerts.includes('ATTENTION_EMPTY_TITLE'), false)
   assert.equal(alerts.includes('No hay alertas ni pendientes en este momento.'), false)
+  assert.equal(createDashboardAlerts({ items: [] }), null)
   assert.match(read('src/components/recent-punches-table.js'), /data-view-all/)
   assert.match(read('src/components/recent-punches-table.js'), /min-h-0 flex-1 overflow-auto/)
 })
@@ -302,7 +310,8 @@ check('El pie muestra solo la versión del frontend', () => {
 check('Estado del sistema es compacto y usa tooltips', () => {
   const status = read('src/components/system-status.js')
   assert.match(status, /tooltipTriggerAttributes/)
-  assert.match(status, /Estados correspondientes a la aplicación instalada en Sede Central/)
+  assert.match(status, /Última actualización/)
+  assert.equal(status.includes('Estados correspondientes a la aplicación instalada en Sede Central'), false)
   assert.equal(status.includes('Consulta del panel, datos cargados'), false)
   assert.equal(status.includes('clientId'), false)
   assert.equal(status.includes('terminal_devs'), false)
