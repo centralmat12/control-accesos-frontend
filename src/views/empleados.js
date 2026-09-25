@@ -9,7 +9,7 @@ import {
 import { getCurrentUser } from '../api/auth.js'
 import { canLoadTenantData, getOperativeEmpresaId } from '../api/empresa-context.js'
 import { empresaDisplayName, getEmpresaActual } from '../api/empresas.js'
-import { filterDepartamentosForSucursalSelection, getDepartamentos } from '../api/departamentos.js'
+import { filterDepartamentosForSucursalSelection, getDepartamentos, notifyDepartamentosLoadError } from '../api/departamentos.js'
 import { getSucursales } from '../api/sucursales.js'
 import { pageHeadingMarkup } from '../components/page-heading.js'
 import { isSuperadmin } from '../config/roles.js'
@@ -354,10 +354,7 @@ export async function renderEmpleados(container, { initialQuery, empleadoId, ope
         message: error.message || 'No se pudieron cargar los departamentos.',
       })
       if (error.message !== 'Sesión expirada o no autorizada.') {
-        showToast({
-          message: error.message || 'No se pudieron cargar los departamentos.',
-          tone: 'error',
-        })
+        notifyDepartamentosLoadError((notice) => showToast(notice), error)
       }
     }
   }
@@ -373,10 +370,7 @@ export async function renderEmpleados(container, { initialQuery, empleadoId, ope
         includeAll: true,
         message: error.message || 'No se pudieron cargar los departamentos.',
       })
-      showToast({
-        message: error.message || 'No se pudieron cargar los departamentos.',
-        tone: 'error',
-      })
+      notifyDepartamentosLoadError((notice) => showToast(notice), error)
     }
   }
 
@@ -509,6 +503,18 @@ export async function renderEmpleados(container, { initialQuery, empleadoId, ope
     }
   }
 
+  async function verEmpleadosDepartamento({ departamentoId } = {}) {
+    sucursalFilter.clear()
+    actividadSelect.value = 'todos'
+    departamentoCatalog = []
+    await syncDepartamentoFilter({ preserveDepartamentoId: departamentoId })
+    departamentoSelect.value = departamentoId ? String(departamentoId) : ''
+    refreshEnhancedSelect(departamentoSelect)
+    resetPage()
+    updateClearFiltersState()
+    renderResults()
+  }
+
   function openCreateForm() {
     const currentEmpresaId = sessionEmpresaId()
     if (!currentEmpresaId) {
@@ -523,6 +529,8 @@ export async function renderEmpleados(container, { initialQuery, empleadoId, ope
     const form = createEmpleadoForm({
       empresaId: currentEmpresaId,
       empleados: loaded && !loadError ? empleados : null,
+      onVerEmpleadosDepartamento: verEmpleadosDepartamento,
+      onDepartamentosChanged: loadDepartamentos,
       onCancel: () => closeActiveModal(),
       onSubmit: async (dto) => {
         await createEmpleado(dto)
@@ -573,6 +581,8 @@ export async function renderEmpleados(container, { initialQuery, empleadoId, ope
           persistUpdate: persistEmpleadoUpdate,
           onDeactivate: openDeactivate,
           onReactivate: openReactivate,
+          onVerEmpleadosDepartamento: verEmpleadosDepartamento,
+          onDepartamentosChanged: loadDepartamentos,
           onUpdated: (updated) => {
             empleados = empleados.map((item) => (Number(item.id) === Number(updated.id) ? { ...item, ...updated } : item))
             renderSummary()

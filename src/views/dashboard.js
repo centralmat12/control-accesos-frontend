@@ -389,8 +389,11 @@ export function renderDashboard(container, { onNavigate } = {}) {
     if (data) appendStatCards(statsCol, data)
 
     const recentPunches = createRecentPunchesTable(data?.ultimasFichadas ?? [], {
-      onViewAll: () => onNavigate?.('fichadas'),
+      empleados: data?.empleados ?? [],
+      onViewAll: () => onNavigate?.('fichadas', { fichadasView: 'movimientos' }),
+      onViewTimeline: () => onNavigate?.('fichadas', { fichadasView: 'timeline' }),
     })
+    const fichadasColumn = recentPunches
 
     if (layout === 'split') {
       grid.className =
@@ -428,22 +431,22 @@ export function renderDashboard(container, { onNavigate } = {}) {
         )
       }
 
-      recentPunches.classList.add(
+      fichadasColumn.classList.add(
         'order-4',
-        'max-h-[min(24rem,70vh)]',
+        'min-h-0',
         'lg:col-start-2',
         'lg:row-start-2',
         'lg:h-full',
         'lg:min-h-0',
-        'lg:max-h-none',
       )
+      recentPunches.classList.add('min-h-0', 'flex-1')
 
       systemHost.classList.add('lg:col-start-1', 'lg:row-start-1', 'lg:h-full')
       statsCol.classList.add('lg:col-start-2', 'lg:row-start-1', 'lg:h-full', 'lg:min-h-0')
 
       leftCol.append(systemHost)
       if (alerts) leftCol.append(alerts)
-      rightCol.append(statsCol, recentPunches)
+      rightCol.append(statsCol, fichadasColumn)
       grid.append(leftCol, rightCol)
       content.replaceChildren(grid)
       startLabelClock()
@@ -454,16 +457,15 @@ export function renderDashboard(container, { onNavigate } = {}) {
       'flex flex-col gap-6 lg:grid lg:h-[calc(100dvh-11rem)] lg:min-h-[32rem] lg:grid-cols-[minmax(16rem,32%)_minmax(0,1fr)] lg:grid-rows-[auto_minmax(0,1fr)] lg:items-stretch'
     systemHost.classList.add('lg:col-start-1', 'lg:row-start-1', 'lg:h-full')
     statsCol.classList.add('lg:col-start-2', 'lg:row-start-1', 'lg:h-full', 'lg:min-h-0')
-    recentPunches.classList.add(
+    fichadasColumn.classList.add(
       'order-3',
-      'max-h-[min(24rem,70vh)]',
+      'min-h-0',
       'lg:col-span-2',
       'lg:row-start-2',
       'lg:h-full',
-      'lg:min-h-0',
-      'lg:max-h-none',
     )
-    grid.append(systemHost, statsCol, recentPunches)
+    recentPunches.classList.add('min-h-0', 'flex-1')
+    grid.append(systemHost, statsCol, fichadasColumn)
     content.replaceChildren(grid)
     startLabelClock()
   }

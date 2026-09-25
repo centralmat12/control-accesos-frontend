@@ -39,7 +39,7 @@ export function buildFichadasPrintDocument({
   <meta charset="utf-8" />
   <title>${escapeHtml(title)}</title>
   <style>
-    @page { size: A4 ${landscape ? 'landscape' : 'portrait'}; margin: 12mm; }
+    @page { size: A4 ${landscape ? 'landscape' : 'portrait'}; margin: 12mm 12mm 16mm; @bottom-right { content: "Página " counter(page); font-size: 10px; color: #475569; } }
     body { font-family: Arial, sans-serif; color: #0f172a; font-size: 12px; }
     h1 { font-size: 18px; margin: 0 0 8px; }
     p, li { margin: 0 0 4px; }
@@ -49,8 +49,9 @@ export function buildFichadasPrintDocument({
     table { width: 100%; border-collapse: collapse; }
     thead { display: table-header-group; }
     tr { break-inside: avoid; page-break-inside: avoid; }
-    th, td { border: 1px solid #cbd5e1; padding: 6px; text-align: left; }
-    th { background: #f1f5f9; font-size: 11px; text-transform: uppercase; }
+    th, td { border: 1px solid #cbd5e1; padding: 6px; text-align: left; vertical-align: top; overflow-wrap: anywhere; }
+    td { white-space: pre-line; }
+    th { background: #f1f5f9; font-size: 10px; text-transform: uppercase; white-space: nowrap; }
   </style>
 </head>
 <body>

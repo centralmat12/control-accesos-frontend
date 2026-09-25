@@ -1,5 +1,5 @@
 import { isAdmin, isRrhh, isSuperadmin } from '../config/roles.js'
-import { displayTipoLabel, formatDate, formatTime } from './format.js'
+import { displayTipoLabel, esTipoIntermedio, formatDate, formatFichadaHora, formatTime } from './format.js'
 import { pick } from './pick.js'
 
 export const OBSERVACION_DETALLE_MAX = 500
@@ -82,6 +82,39 @@ export function hasObservacionHumana(item) {
 export function countObservacionesJornada(jornada) {
   const movimientos = Array.isArray(jornada?.movimientos) ? jornada.movimientos : []
   return movimientos.filter((item) => hasObservacionHumana(item)).length
+}
+
+export function movimientoObservadoLabel(item) {
+  const visual = item?.movimientoVisual ?? item?.tipo
+  if (esTipoIntermedio(visual)) return 'Intermedia'
+  return displayTipoLabel(visual) || '—'
+}
+
+export function observacionesDeJornada(jornada) {
+  const movimientos = Array.isArray(jornada?.movimientos) ? jornada.movimientos : []
+  return movimientos
+    .filter((item) => hasObservacionHumana(item))
+    .map((item) => ({
+      fechaHora: item.fechaHora,
+      hora: formatFichadaHora(item.fechaHora) || '—',
+      movimiento: movimientoObservadoLabel(item),
+      motivo: observacionMotivoLabel(item.observacionHumana?.motivo),
+      detalle: String(item.observacionHumana?.detalle ?? '').trim(),
+    }))
+    .sort((a, b) => String(a.fechaHora ?? '').localeCompare(String(b.fechaHora ?? '')))
+}
+
+export function formatObservacionPdfLinea(item) {
+  const tipo = String(item?.motivo ?? '').trim()
+  const detalle = String(item?.detalle ?? '').trim()
+  const cuerpo = detalle ? `${tipo}: ${detalle}` : tipo
+  return `${item?.hora || '—'} — ${cuerpo}`
+}
+
+export function formatObservacionesPdf(jornada) {
+  const items = observacionesDeJornada(jornada)
+  if (!items.length) return '—'
+  return items.map((item) => formatObservacionPdfLinea(item)).join('\n')
 }
 
 export function describeObservacionesJornada(count) {

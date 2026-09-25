@@ -16,12 +16,13 @@ import {
   validateEmpleadoValues,
 } from '../utils/empleado-data.js'
 import { getCurrentUser } from '../api/auth.js'
-import { createDepartamento } from '../api/departamentos.js'
 import { getOperativeEmpresaId } from '../api/empresa-context.js'
+import { getDepartamentos, notifyDepartamentosLoadError } from '../api/departamentos.js'
 import { getSucursales } from '../api/sucursales.js'
+import { normalizeRole } from '../config/roles.js'
 import { puedeCrearDepartamentos, puedeMostrarAltaDepartamento } from '../config/administracion.js'
-import { iconPencil, iconPlus, iconStatusOff, iconStatusOk } from './icons.js'
-import { createDepartamentoForm } from './departamento-form.js'
+import { iconPencil, iconSettings, iconStatusOff, iconStatusOk } from './icons.js'
+import { createDepartamentosAdmin } from './departamentos-admin.js'
 import { biometricStatusBadge, employeeStatusBadge } from './badge.js'
 import { openFormModal, openModal } from './modal.js'
 import {
@@ -57,11 +58,9 @@ const EDITABLE_FIELDS = [
   { key: 'horario', label: 'Horario' },
 ]
 const HORARIO_STORED = /^([01]\d|2[0-3]):([0-5]\d)\s*(?:-|a)\s*([01]\d|2[0-3]):([0-5]\d)$/i
-const ADD_DEPARTAMENTO_LABEL = 'Agregar departamento'
-const ADD_DEPARTAMENTO_NO_EMPRESA =
-  'Seleccioná una empresa activa para agregar un departamento.'
-const ADD_DEPARTAMENTO_BTN_CLASS =
-  'inline-flex h-11 w-full shrink-0 items-center justify-center rounded-lg bg-blue-600 text-white hover:bg-blue-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:bg-blue-600/70 disabled:opacity-60 sm:w-11 dark:focus-visible:ring-offset-slate-900'
+const ADMIN_DEPARTAMENTOS_LABEL = 'Administrar departamentos'
+const ADMIN_DEPARTAMENTOS_ARIA = 'Agregar, editar o eliminar departamentos'
+const ADMIN_DEPARTAMENTO_BTN_CLASS = `${BTN_SECONDARY_CLASS} h-auto w-full shrink-0 gap-2 whitespace-nowrap py-2.5 sm:w-auto`
 
 function parsePositiveId(value) {
   const id = Number(value)
@@ -252,6 +251,8 @@ export function createEmpleadoForm({
   requireEmpresa = true,
   onCancel,
   onSubmit,
+  onVerEmpleadosDepartamento,
+  onDepartamentosChanged,
 }) {
   const wrapper = document.createElement('div')
   const horarioIds = fieldIds('empleado-horario')
@@ -261,7 +262,6 @@ export function createEmpleadoForm({
   const operativeEmpresaId = parsePositiveId(empresaId) ?? getOperativeEmpresaId(user)
   const showAddDepartamento = puedeMostrarAltaDepartamento(user)
   const canSubmitDepartamento = puedeCrearDepartamentos(user, operativeEmpresaId)
-  const addDepartamentoHint = canSubmitDepartamento ? ADD_DEPARTAMENTO_LABEL : ADD_DEPARTAMENTO_NO_EMPRESA
   const catalogReady = Array.isArray(empleados)
   const catalog = catalogReady ? empleados : []
   const isCreate = !initialValues
@@ -350,7 +350,7 @@ export function createEmpleadoForm({
           helpText: 'Seleccioná la sucursal donde trabaja el empleado.',
           optionsHtml: '<option value="">Seleccionar...</option>',
         })}
-        <div data-form-field="departamentoId">
+        <div class="sm:col-span-2" data-form-field="departamentoId">
           <label for="empleado-departamentoId" class="${FORM_LABEL_CLASS}">Departamento</label>
           <div class="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-stretch">
             <select
@@ -359,7 +359,7 @@ export function createEmpleadoForm({
               disabled
               data-ca-native="true"
               aria-describedby="${departamentoIds.helpId}"
-              class="min-w-0 flex-1 ${FORM_INPUT_CLASS}"
+              class="min-w-0 w-full flex-1 ${FORM_INPUT_CLASS}"
             >
               <option value="">Seleccioná una sucursal</option>
             </select>
@@ -367,24 +367,18 @@ export function createEmpleadoForm({
               showAddDepartamento
                 ? `<button
                     type="button"
-                    id="empleado-add-departamento"
-                    class="${ADD_DEPARTAMENTO_BTN_CLASS}"
-                    aria-label="${escapeHtml(ADD_DEPARTAMENTO_LABEL)}"
-                    data-tooltip="${escapeHtml(addDepartamentoHint)}"
-                    ${canSubmitDepartamento ? '' : 'disabled'}
+                    id="empleado-admin-departamentos"
+                    class="${ADMIN_DEPARTAMENTO_BTN_CLASS}"
+                    aria-label="${escapeHtml(ADMIN_DEPARTAMENTOS_ARIA)}"
+                    disabled
                   >
-                    ${iconPlus('h-5 w-5')}
-                    <span class="sm:sr-only">${escapeHtml(ADD_DEPARTAMENTO_LABEL)}</span>
+                    ${iconSettings('h-4 w-4')}
+                    <span>Administrar</span>
                   </button>`
                 : ''
             }
           </div>
           <p id="${departamentoIds.helpId}" class="${FORM_HELP_CLASS}">Seleccioná el departamento correspondiente.</p>
-          ${
-            showAddDepartamento && !canSubmitDepartamento
-              ? `<p id="empleado-add-departamento-hint" class="${FORM_HELP_CLASS}">${escapeHtml(ADD_DEPARTAMENTO_NO_EMPRESA)}</p>`
-              : ''
-          }
           <p id="${departamentoIds.errorId}" class="${FORM_ERROR_CLASS} hidden" aria-live="polite"></p>
         </div>
         <div class="sm:col-span-2" data-form-field="horario">
@@ -446,11 +440,12 @@ export function createEmpleadoForm({
   const cancelButton = wrapper.querySelector('#empleado-form-cancel')
   const sucursalSelect = form.querySelector('[name="sucursalId"]')
   const departamentoSelect = form.querySelector('[name="departamentoId"]')
-  const addDepartamentoButton = form.querySelector('#empleado-add-departamento')
+  const adminDepartamentosButton = form.querySelector('#empleado-admin-departamentos')
   const horarioDesde = form.querySelector('[name="horarioDesde"]')
   const horarioHasta = form.querySelector('[name="horarioHasta"]')
   let sucursalCatalog = []
   let departamentoModalClose = null
+  let departamentosAdmin = null
 
   setDepartamentoIdle(departamentoSelect, null, { includeAll: false })
   if (initialValues) fillEmpleadoForm(form, initialValues)
@@ -551,59 +546,84 @@ export function createEmpleadoForm({
     onChange: () => {
       fields.refresh('sucursalId')
       fields.refresh('departamentoId')
+      syncAdminButton()
     },
     onDepartamentosError: (error) => {
       if (error.message === 'Sesión expirada o no autorizada.') return
-      showToast({
-        message: error.message || 'No se pudieron cargar los departamentos.',
-        tone: 'error',
-      })
+      notifyDepartamentosLoadError((notice) => showToast(notice), error)
     },
   })
 
-  async function applyCreatedDepartamento(created) {
-    const sucursalId = parseEntityId(created?.sucursalId)
-    const departamentoId = parseEntityId(created?.id)
-    if (!sucursalId || !departamentoId) return
-
-    sucursalSelect.value = String(sucursalId)
-    refreshEnhancedSelect(sucursalSelect)
-    await cascade.reloadDepartamentos({ preserveDepartamentoId: departamentoId })
-    fields.refresh('sucursalId')
-    fields.refresh('departamentoId')
+  function syncAdminButton() {
+    if (!adminDepartamentosButton) return
+    const ready = canSubmitDepartamento && Boolean(parseEntityId(sucursalSelect.value))
+    adminDepartamentosButton.disabled = !ready
   }
 
-  function openDepartamentoAlta() {
-    if (!showAddDepartamento || !canSubmitDepartamento || form.dataset.submitting === 'true') return
-    if (addDepartamentoButton?.disabled) return
+  function closeDepartamentoAdmin() {
+    departamentosAdmin?.dispose()
+    departamentosAdmin = null
+    departamentoModalClose?.({ force: true })
+    departamentoModalClose = null
+  }
 
-    const formEl = createDepartamentoForm({
+  async function syncDepartamentoSelector({ preserveDepartamentoId } = {}) {
+    await cascade.reloadDepartamentos({ preserveDepartamentoId })
+    fields.refresh('departamentoId')
+    await onDepartamentosChanged?.()
+  }
+
+  function openDepartamentosAdmin() {
+    if (!showAddDepartamento || form.dataset.submitting === 'true') return
+    const sucursalId = parseEntityId(sucursalSelect.value)
+    if (!sucursalId) {
+      showToast({ message: 'Seleccioná una sucursal para administrar sus departamentos.', tone: 'error' })
+      return
+    }
+
+    closeDepartamentoAdmin()
+    departamentosAdmin = createDepartamentosAdmin({
+      sucursalId,
       sucursales: sucursalCatalog,
-      sucursalId: parseEntityId(sucursalSelect.value),
-      onCancel: () => departamentoModalClose?.(),
-      onSubmit: async (dto) => {
-        const created = await createDepartamento({
-          ...dto,
-          empresaId: operativeEmpresaId,
-        })
-        departamentoModalClose?.({ force: true })
-        await applyCreatedDepartamento(created)
+      empresaId: operativeEmpresaId,
+      onChanged: async (event) => {
+        const selected = parseEntityId(departamentoSelect.value)
+        if (event.type === 'delete') {
+          const preserve = selected === event.departamentoId ? null : selected
+          await syncDepartamentoSelector({ preserveDepartamentoId: preserve })
+          return
+        }
+        if (event.type === 'create') {
+          await syncDepartamentoSelector({ preserveDepartamentoId: selected })
+          return
+        }
+        await syncDepartamentoSelector({ preserveDepartamentoId: selected })
       },
     })
 
-    const modal = openFormModal({
-      title: ADD_DEPARTAMENTO_LABEL,
-      content: formEl,
-      labelledBy: 'departamento-create-title',
+    const modal = openModal({
+      title: ADMIN_DEPARTAMENTOS_LABEL,
+      content: departamentosAdmin.element,
+      scrollBody: false,
+      labelledBy: 'departamentos-admin-title',
       stacked: true,
+      dialogClass: 'max-w-2xl',
       onClose: () => {
+        const selected = parseEntityId(departamentoSelect.value)
+        departamentosAdmin?.dispose()
+        departamentosAdmin = null
         departamentoModalClose = null
+        void syncDepartamentoSelector({ preserveDepartamentoId: selected })
       },
     })
     departamentoModalClose = modal.close
   }
 
-  addDepartamentoButton?.addEventListener('click', openDepartamentoAlta)
+  adminDepartamentosButton?.addEventListener('click', openDepartamentosAdmin)
+  sucursalSelect.addEventListener('change', () => {
+    syncAdminButton()
+    if (departamentosAdmin) closeDepartamentoAdmin()
+  })
   bindTooltipRoot(wrapper)
 
   function syncLegajoGuard() {
@@ -740,28 +760,80 @@ export function createEmpleadoForm({
 
   queueMicrotask(() => form.querySelector('[name="nombre"]')?.focus())
 
+  function avisoCatalogoBloqueado(endpoint, status) {
+    const rol = normalizeRole(getCurrentUser()) || 'la sesión actual'
+    return `La edición de este campo depende de una corrección de Samuel en la API. ${endpoint} respondió ${status} para el rol ${rol}.`
+  }
+
+  function conservarValorActual(select, id, label) {
+    const actual = parseEntityId(id)
+    select.disabled = true
+    select.replaceChildren()
+    const option = document.createElement('option')
+    option.value = actual ? String(actual) : ''
+    option.textContent = label || 'Valor actual'
+    select.append(option)
+    if (actual) select.value = String(actual)
+    refreshEnhancedSelect(select)
+  }
+
   ;(async () => {
+    let avisado = false
+    function avisarUnaVez(message) {
+      if (avisado || !message) return
+      avisado = true
+      showFormError(message)
+      showToast({ message, tone: 'error' })
+    }
+
     try {
       const sucursales = await getSucursales()
       if (!form.isConnected) return
       sucursalCatalog = sucursales
-      fillSucursalOptions(sucursalSelect, sucursales, {
-        currentId: initialValues?.sucursalId,
-      })
-      if (parseEntityId(sucursalSelect.value)) {
+
+      let sucursalId = parseEntityId(initialValues?.sucursalId)
+      if (!sucursalId && parseEntityId(initialValues?.departamentoId)) {
+        try {
+          const departamentos = await getDepartamentos()
+          const actual = departamentos.find(
+            (item) => Number(item.id) === Number(initialValues.departamentoId),
+          )
+          sucursalId = parseEntityId(actual?.sucursalId)
+        } catch (error) {
+          if (error.status === 401 || error.status === 403) {
+            avisarUnaVez(avisoCatalogoBloqueado('GET /api/departamentos', error.status))
+          } else if (error.message !== 'Sesión expirada o no autorizada.') {
+            avisarUnaVez(error.message || 'No se pudieron cargar los departamentos.')
+          }
+        }
+      }
+
+      fillSucursalOptions(sucursalSelect, sucursales, { currentId: sucursalId })
+      if (!parseEntityId(sucursalSelect.value) && (initialValues?.sucursal || sucursalId)) {
+        conservarValorActual(sucursalSelect, sucursalId, initialValues?.sucursal)
+      }
+      if (parseEntityId(sucursalSelect.value) && !sucursalSelect.disabled) {
         await cascade.reloadDepartamentos({ preserveDepartamentoId: initialValues?.departamentoId })
+        syncAdminButton()
+      } else if (initialValues?.departamento || initialValues?.departamentoId) {
+        conservarValorActual(departamentoSelect, initialValues?.departamentoId, initialValues?.departamento)
       } else {
         setDepartamentoIdle(departamentoSelect, null, { includeAll: false })
       }
     } catch (error) {
       if (error.message === 'Sesión expirada o no autorizada.') return
       if (!form.isConnected) return
+      if (error.status === 401 || error.status === 403) {
+        sucursalCatalog = []
+        conservarValorActual(sucursalSelect, initialValues?.sucursalId, initialValues?.sucursal)
+        conservarValorActual(departamentoSelect, initialValues?.departamentoId, initialValues?.departamento)
+        avisarUnaVez(avisoCatalogoBloqueado('GET /api/sucursales', error.status))
+        return
+      }
       sucursalCatalog = []
       fillSucursalOptions(sucursalSelect, [])
       setDepartamentoIdle(departamentoSelect, null, { includeAll: false })
-      const message = error.message || 'No se pudieron cargar las sucursales.'
-      showFormError(message)
-      showToast({ message, tone: 'error' })
+      avisarUnaVez(error.message || 'No se pudieron cargar las sucursales.')
     }
   })()
 
@@ -883,6 +955,8 @@ export function createEmpleadoRecord({
   onDeactivate,
   onReactivate,
   initialMode = 'view',
+  onVerEmpleadosDepartamento,
+  onDepartamentosChanged,
 }) {
   void empresaLabel
   const root = document.createElement('div')
@@ -1021,6 +1095,8 @@ export function createEmpleadoRecord({
       submitLabel: 'Guardar cambios',
       requireEmpresa: false,
       onCancel: showView,
+      onVerEmpleadosDepartamento,
+      onDepartamentosChanged,
       onSubmit: async (draft) => {
         const changes = diffEmpleadoFields(current, draft)
         if (changes.length === 0) {

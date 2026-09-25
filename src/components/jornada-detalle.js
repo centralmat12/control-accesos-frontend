@@ -1,4 +1,4 @@
-import { displayMetodoLabel, displayValue, escapeHtml, formatDate } from '../utils/format.js'
+import { displayMetodoLabel, displayTipoLabel, displayValue, escapeHtml, formatDate } from '../utils/format.js'
 import { hasObservacionHumana } from '../utils/fichada-observacion.js'
 import { describeDetalleLinea, INTERMEDIATE_MOVIMIENTO_TOOLTIP, TIPO_INFORMADO_TOOLTIP } from '../utils/movimientos.js'
 import { badgeHtml, movementBadge } from './badge.js'
@@ -66,9 +66,13 @@ export function createJornadaDetalleContent(jornada, { canEditObservacion = fals
         <li class="border-b border-slate-100 py-3 last:border-0 dark:border-slate-800" data-movimiento-id="${escapeHtml(String(item.id ?? ''))}">
           <p class="text-sm font-medium text-slate-900 dark:text-slate-100">${escapeHtml(describeDetalleLinea(item))}</p>
           <div class="mt-2 flex flex-wrap items-center gap-2 lg:flex-nowrap">
-            ${movementBadge(item.tipo, {
-              tooltip: TIPO_INFORMADO_TOOLTIP,
-              ariaLabel: TIPO_INFORMADO_TOOLTIP,
+            ${movementBadge(item.movimientoVisual ?? item.tipo, {
+              tooltip:
+                displayTipoLabel(item.movimientoInformado ?? item.tipo) &&
+                displayTipoLabel(item.movimientoInformado ?? item.tipo) !== displayTipoLabel(item.movimientoVisual ?? item.tipo)
+                  ? `Informado originalmente: ${displayTipoLabel(item.movimientoInformado ?? item.tipo)}`
+                  : TIPO_INFORMADO_TOOLTIP,
+              ariaLabel: 'Clasificación de la jornada',
             })}
             ${badgeHtml(displayMetodoLabel(item.metodo) || '—', 'neutral')}
             ${auto}

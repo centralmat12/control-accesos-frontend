@@ -12,6 +12,7 @@ import {
 import { describePeriodo } from './period.js'
 import { describeDetalleLinea } from './movimientos.js'
 import {
+  formatObservacionesPdf,
   observacionExportColumns,
   observacionExportValue,
   shouldAppendObservacionExportColumns,
@@ -38,6 +39,21 @@ export const FICHADAS_CSV_EXPORT_LABEL = 'Exportar archivo'
 export const FICHADAS_CSV_GENERATING_LABEL = 'Generando CSV…'
 export const FICHADAS_CSV_LARGE_THRESHOLD = 200
 export const FICHADAS_CSV_LARGE_TITLE = 'Exportación grande'
+
+export const JORNADA_PRINT_NOTE =
+  'La actividad registrada corresponde al intervalo entre la primera y la última fichada. No representa necesariamente horas netas trabajadas. Las jornadas incompletas no incluyen una duración calculada porque no existe una fichada de salida válida.'
+
+export const JORNADA_PRINT_COLUMNS = Object.freeze([
+  { id: 'empleado', label: 'Empleado' },
+  { id: 'legajo', label: 'Legajo' },
+  { id: 'fecha', label: 'Fecha' },
+  { id: 'horarioPrevisto', label: 'Horario previsto' },
+  { id: 'ingreso', label: 'Primera fichada' },
+  { id: 'egreso', label: 'Última fichada' },
+  { id: 'actividad', label: 'Actividad registrada' },
+  { id: 'estado', label: 'Estado' },
+  { id: 'observaciones', label: 'Observaciones' },
+])
 
 export function fichadasCompleteQuery() {
   return {}
@@ -124,7 +140,7 @@ function movimientoField(item, columnId, { forCsv }) {
       if (!item.fechaHora) return ''
       return forCsv ? csvTimeValue(item.fechaHora) : formatTime(item.fechaHora)
     case 'tipo':
-      return displayTipoLabel(item.tipo)
+      return displayTipoLabel(item.movimientoVisual ?? item.tipo)
     case 'metodo':
       return displayMetodoLabel(item.metodo)
     case 'observacion':
@@ -155,6 +171,10 @@ function jornadaField(item, columnId, { forCsv }) {
       return forCsv ? String(item.fichadasIntermedias ?? 0) : (item.fichadasIntermediasLabel ?? '')
     case 'estado':
       return item.estado ?? ''
+    case 'actividad':
+      return item.actividadRegistrada ?? '—'
+    case 'observaciones':
+      return formatObservacionesPdf(item)
     case 'detalle': {
       const lines = Array.isArray(item.movimientos)
         ? item.movimientos.map((movimiento) => describeDetalleLinea(movimiento)).filter(Boolean)

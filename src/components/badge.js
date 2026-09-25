@@ -1,4 +1,4 @@
-import { displayTipoLabel, esTipoEntrada, escapeHtml } from '../utils/format.js'
+import { displayTipoLabel, esTipoEntrada, esTipoSalida, escapeHtml } from '../utils/format.js'
 
 const TONES = {
   success:
@@ -32,7 +32,8 @@ export function badgeHtml(label, tone = 'neutral', options = {}) {
   const tooltip = options.tooltip
     ? ` data-tooltip="${escapeHtml(options.tooltip)}" tabindex="0"`
     : ''
-  return `<span class="inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium ring-1 ring-inset ${TONES[tone] ?? TONES.neutral}"${title}${ariaLabel}${tooltip}>${escapeHtml(label)}</span>`
+  const extra = options.className ? ` ${options.className}` : ''
+  return `<span class="inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium ring-1 ring-inset ${TONES[tone] ?? TONES.neutral}${extra}"${title}${ariaLabel}${tooltip}>${escapeHtml(label)}</span>`
 }
 
 export function featureStatusBadge(kind) {
@@ -45,26 +46,31 @@ export function employeeStatusBadge(active) {
 }
 
 export function movementBadge(tipo, options = {}) {
-  return badgeHtml(displayTipoLabel(tipo), esTipoEntrada(tipo) ? 'success' : 'warning', options)
+  const label = displayTipoLabel(tipo)
+  const tone = esTipoEntrada(label) ? 'success' : esTipoSalida(label) ? 'warning' : 'neutral'
+  return badgeHtml(label, tone, options)
 }
 
 export function jornadaEstadoBadge(estado) {
   const tones = {
     Completa: 'success',
     'En curso': 'blue',
-    Pendiente: 'warning',
+    Incompleta: 'warning',
+    Revisar: 'warning',
   }
   const dots = {
     Completa: 'bg-emerald-600 dark:bg-emerald-400',
     'En curso': 'bg-blue-600 dark:bg-blue-400',
-    Pendiente: 'bg-amber-500 dark:bg-amber-400',
+    Incompleta: 'bg-amber-500 dark:bg-amber-400',
+    Revisar: 'bg-amber-500 dark:bg-amber-400',
   }
   const descriptions = {
-    Completa: 'Jornada completa: ingreso y egreso calculados.',
-    'En curso': 'Jornada en curso: el egreso todavía no es definitivo.',
-    Pendiente: 'Jornada pendiente: falta el egreso calculado.',
+    Completa: 'Jornada con entrada y salida del día.',
+    'En curso': 'Jornada abierta: hay una entrada y todavía no hay otra fichada.',
+    Incompleta: 'Jornada incompleta: no se registró la fichada de salida.',
+    Revisar: 'Hay fichadas muy próximas. Revisar antes de tomar la salida.',
   }
-  const label = String(estado ?? '').trim() || 'Pendiente'
+  const label = String(estado ?? '').trim() || 'Incompleta'
   const tone = tones[label] ?? 'neutral'
   const description = descriptions[label] ?? label
   return `<span class="inline-flex items-center gap-1.5 whitespace-nowrap rounded-full px-2.5 py-1 text-xs font-medium ring-1 ring-inset ${TONES[tone] ?? TONES.neutral}" title="${escapeHtml(description)}" aria-label="${escapeHtml(description)}"><span class="h-1.5 w-1.5 shrink-0 rounded-full ${dots[label] ?? 'bg-slate-500'}" aria-hidden="true"></span>${escapeHtml(label)}</span>`

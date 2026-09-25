@@ -38,7 +38,7 @@ export function fillSucursalOptions(
   sucursales,
   { includeAll = false, currentId = null, placeholder = 'Seleccionar...' } = {},
 ) {
-  const wanted = currentId != null ? String(currentId) : null
+  const wanted = parseEntityId(currentId)
   select.replaceChildren()
 
   if (includeAll) addOption(select, SUCURSAL_ALL, 'Todas')
@@ -46,8 +46,8 @@ export function fillSucursalOptions(
 
   sortByNombre(sucursales).forEach((item) => addOption(select, String(item.id), item.nombre || `Sucursal ${item.id}`))
 
-  const valid = wanted && [...select.options].some((option) => option.value === wanted)
-  select.value = valid ? wanted : includeAll ? SUCURSAL_ALL : ''
+  const valid = wanted && [...select.options].some((option) => parseEntityId(option.value) === wanted)
+  select.value = valid ? String(wanted) : includeAll ? SUCURSAL_ALL : ''
   syncSelect(select)
 }
 
@@ -67,11 +67,18 @@ export function setDepartamentoIdle(
   }
 }
 
-function setDepartamentoLoading(select, hintEl) {
+function setDepartamentoLoading(select, hintEl, { preserveId = null } = {}) {
+  const currentLabel = String(select.selectedOptions?.[0]?.textContent ?? '').trim()
+  const keep = preserveId != null ? String(preserveId) : ''
   select.disabled = true
   select.replaceChildren()
-  addOption(select, '', 'Cargando...')
-  select.value = ''
+  if (keep) {
+    addOption(select, keep, currentLabel && currentLabel !== 'Cargando...' ? currentLabel : 'Departamento actual')
+    select.value = keep
+  } else {
+    addOption(select, '', 'Cargando...')
+    select.value = ''
+  }
   syncSelect(select)
   if (hintEl) {
     hintEl.textContent = ''
@@ -83,7 +90,7 @@ export function fillDepartamentoOptions(
   select,
   departamentos,
   hintEl,
-  { includeAll = false, currentId = null, sucursalNames } = {},
+  { includeAll = false, currentId = null, currentLabel = '', sucursalNames } = {},
 ) {
   const unique = uniqueDepartamentosById(departamentos)
   const nameCounts = new Map()
@@ -94,7 +101,7 @@ export function fillDepartamentoOptions(
     nameCounts.set(key, (nameCounts.get(key) || 0) + 1)
   })
 
-  const wanted = currentId != null ? String(currentId) : null
+  const wanted = parseEntityId(currentId)
   select.disabled = false
   select.replaceChildren()
 
@@ -115,8 +122,11 @@ export function fillDepartamentoOptions(
     )
   })
 
-  const valid = wanted && [...select.options].some((option) => option.value === wanted)
-  select.value = valid ? wanted : includeAll ? DEPARTAMENTO_ALL : ''
+  const valid = wanted && [...select.options].some((option) => parseEntityId(option.value) === wanted)
+  if (wanted && !valid && !includeAll) {
+    addOption(select, String(wanted), currentLabel || 'Departamento actual')
+  }
+  select.value = wanted && (valid || !includeAll) ? String(wanted) : includeAll ? DEPARTAMENTO_ALL : ''
   syncSelect(select)
 
   if (hintEl) {
@@ -125,10 +135,10 @@ export function fillDepartamentoOptions(
   }
 }
 
-function clearDepartamentoAfterError(select, hintEl, { includeAll = false, message } = {}) {
+function clearDepartamentoAfterError(select, hintEl, { includeAll = false, message, optionLabel } = {}) {
   select.disabled = true
   select.replaceChildren()
-  addOption(select, includeAll ? DEPARTAMENTO_ALL : '', HINT_SELECT_SUCURSAL)
+  addOption(select, includeAll ? DEPARTAMENTO_ALL : '', optionLabel || HINT_SELECT_SUCURSAL)
   select.value = includeAll ? DEPARTAMENTO_ALL : ''
   syncSelect(select)
   if (hintEl) {
@@ -163,22 +173,46 @@ export function bindSucursalDepartamentoCascade({
       return
     }
 
-    setDepartamentoLoading(departamentoSelect, hintEl)
+    const previous = [...departamentoSelect.options].map((option) => ({
+      value: option.value,
+      label: option.textContent,
+      selected: option.selected,
+    }))
+    setDepartamentoLoading(departamentoSelect, hintEl, { preserveId: preserveDepartamentoId })
     onChange?.()
 
     try {
       const departamentos = await getDepartamentosBySucursal(sucursalId)
       if (current !== generation) return
+      const preserved = previous.find((option) => parseEntityId(option.value) === parseEntityId(preserveDepartamentoId))
       fillDepartamentoOptions(departamentoSelect, departamentos, hintEl, {
         includeAll,
         currentId: preserveDepartamentoId,
+        currentLabel: preserved?.label || '',
       })
     } catch (error) {
       if (current !== generation) return
-      clearDepartamentoAfterError(departamentoSelect, hintEl, {
-        includeAll,
-        message: error.message || 'No se pudieron cargar los departamentos.',
-      })
+      const keepId = parseEntityId(preserveDepartamentoId)
+      const keepSelection =
+        (error.status === 401 || error.status === 403) &&
+        (keepId || previous.some((option) => parseEntityId(option.value)))
+      if (keepSelection) {
+        departamentoSelect.disabled = error.status === 401 || error.status === 403
+        departamentoSelect.replaceChildren()
+        previous.forEach((option) => addOption(departamentoSelect, option.value, option.label))
+        if (keepId && !previous.some((option) => parseEntityId(option.value) === keepId)) {
+          addOption(departamentoSelect, String(keepId), 'Departamento actual')
+        }
+        const selected = previous.find((option) => option.selected)
+        departamentoSelect.value = selected?.value || (keepId ? String(keepId) : '')
+        syncSelect(departamentoSelect)
+      } else {
+        clearDepartamentoAfterError(departamentoSelect, hintEl, {
+          includeAll,
+          message: error.message || 'No se pudieron cargar los departamentos.',
+          optionLabel: error.message || 'No se pudieron cargar los departamentos.',
+        })
+      }
       onDepartamentosError?.(error)
     }
 

@@ -4,10 +4,90 @@ import {
   esMetodoBiometrico,
   esMetodoManual,
   esTipoEntrada,
+  esTipoIntermedio,
   esTipoSalida,
+  fichadaDateKey,
+  fichadaSortKey,
   formatClockTime,
-  toDateKey,
 } from './format.js'
+
+export const MOVIMIENTO_VISUAL = {
+  entrada: 'Entrada',
+  salida: 'Salida',
+  intermedio: 'Movimiento intermedio',
+}
+
+export const JORNADA_CLASIFICACION = {
+  enCurso: 'En curso',
+  incompleta: 'Incompleta',
+  completa: 'Completa',
+  revisar: 'Revisar',
+}
+
+export const CLASIFICACION_JORNADA_AYUDA =
+  'La primera fichada válida de la jornada es la entrada y la última, si hay más de una, es la salida. Las demás son intermedias. El día calendario es America/Argentina/Buenos_Aires. Una jornada sin salida deja de estar en curso a las 12 horas o al terminar el día, salvo un horario nocturno configurado.'
+
+export const JORNADA_LIMITE_MS = 12 * 60 * 60 * 1000
+
+export const MOTIVO_FALTA_SALIDA = 'Falta fichada de salida'
+export const MOTIVO_DUPLICADO = 'Hay fichadas posiblemente duplicadas'
+export const TOLERANCIA_FUTURO_MS = 5 * 60 * 1000
+export const MOTIVO_FUTURO = 'La fichada posee una fecha u hora futura'
+export const MOTIVO_DURACION = 'La duración entre la primera y la última fichada supera las 12 horas'
+export const TEXTO_INCOMPLETA = 'Jornada incompleta: no se registró la fichada de salida.'
+
+export function parseHorarioRango(label) {
+  const match = String(label ?? '').match(/(\d{1,2}):(\d{2})\s*[-–]\s*(\d{1,2}):(\d{2})/)
+  if (!match) return null
+  const start = Number(match[1]) * 60 + Number(match[2])
+  const end = Number(match[3]) * 60 + Number(match[4])
+  if (start >= 24 * 60 || end > 24 * 60) return null
+  return { start, end, nocturno: end < start }
+}
+
+function wallClockMs(value) {
+  const key = fichadaSortKey(value)
+  const match = String(key).match(/(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})/)
+  if (!match) return null
+  const fraction = String(value ?? '').match(/\.(\d{1,3})/)
+  const milliseconds = fraction ? Number(fraction[1].padEnd(3, '0')) : 0
+  return Date.UTC(
+    Number(match[1]),
+    Number(match[2]) - 1,
+    Number(match[3]),
+    Number(match[4]),
+    Number(match[5]),
+    Number(match[6]),
+    milliseconds,
+  )
+}
+
+function minutesOfKey(value) {
+  const key = fichadaSortKey(value)
+  const match = String(key).match(/T(\d{2}):(\d{2})/)
+  if (!match) return null
+  return Number(match[1]) * 60 + Number(match[2])
+}
+
+function shiftDateKey(dateKey, days) {
+  const match = String(dateKey).match(/^(\d{4})-(\d{2})-(\d{2})$/)
+  if (!match) return ''
+  const date = new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3]) + days))
+  const year = date.getUTCFullYear()
+  const month = String(date.getUTCMonth() + 1).padStart(2, '0')
+  const day = String(date.getUTCDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
+export function jornadaFechaDeFichada(fechaHora, horarioLabel) {
+  const date = fichadaDateKey(fechaHora)
+  const rango = parseHorarioRango(horarioLabel)
+  if (!date || !rango?.nocturno) return date
+  const minutes = minutesOfKey(fechaHora)
+  if (minutes == null) return date
+  if (minutes < rango.end) return shiftDateKey(date, -1)
+  return date
+}
 
 /** Ventana local de presentación; no es una regla de la API. */
 export const DUPLICATE_WINDOW_SECONDS = 60
@@ -66,19 +146,31 @@ export function formatDuplicateDelay(ms) {
 export function isPossibleDuplicateOf(reference, candidate) {
   if (!reference || !candidate) return false
   if (empleadoMovimientoKey(reference) !== empleadoMovimientoKey(candidate)) return false
-  if (toDateKey(reference.fechaHora) !== toDateKey(candidate.fechaHora)) return false
+  const fechaReferencia = reference.jornadaFecha || fichadaDateKey(reference.fechaHora)
+  const fechaCandidata = candidate.jornadaFecha || fichadaDateKey(candidate.fechaHora)
+  if (fechaReferencia !== fechaCandidata) return false
   if (!isWithinDuplicateWindow(millisecondsBetweenMovimientos(reference, candidate))) return false
   return sameOptionalLocation(reference, candidate)
 }
 
 export function compareMovimientosByTime(a, b) {
-  return new Date(a.fechaHora) - new Date(b.fechaHora)
+  const left = fichadaSortKey(a?.fechaHora)
+  const right = fichadaSortKey(b?.fechaHora)
+  if (left !== right) return left < right ? -1 : 1
+  const idA = Number(a?.id)
+  const idB = Number(b?.id)
+  if (Number.isFinite(idA) && Number.isFinite(idB) && idA !== idB) return idA - idB
+  return String(a?.id ?? '').localeCompare(String(b?.id ?? ''))
 }
 
 function cloneMovimiento(item) {
   return {
     ...item,
     tipo: item.tipo,
+    movimientoInformado: item.tipo,
+    movimientoVisual: item.tipo,
+    jornadaEstado: '',
+    esSalidaProvisional: false,
     metodo: item.metodo,
     esPosibleDuplicado: false,
     esMovimientoIntermedio: false,
@@ -88,15 +180,50 @@ function cloneMovimiento(item) {
   }
 }
 
-function groupByEmpleadoFecha(items) {
+function horarioDe(item, horarioByEmpleado) {
+  if (!horarioByEmpleado) return ''
+  const id = Number(item?.empleadoId)
+  if (horarioByEmpleado instanceof Map) return horarioByEmpleado.get(id)?.horario ?? horarioByEmpleado.get(id) ?? ''
+  return horarioByEmpleado[id]?.horario ?? horarioByEmpleado[id] ?? ''
+}
+
+function groupByEmpleadoFecha(items, horarioByEmpleado) {
   const groups = new Map()
   items.forEach((item, index) => {
-    if (!item?.fechaHora || !toDateKey(item.fechaHora)) return
-    const key = `${empleadoMovimientoKey(item)}|${toDateKey(item.fechaHora)}`
+    const fecha = jornadaFechaDeFichada(item?.fechaHora, horarioDe(item, horarioByEmpleado))
+    if (!fecha) return
+    item.jornadaFecha = fecha
+    const key = `${empleadoMovimientoKey(item)}|${fecha}`
     if (!groups.has(key)) groups.set(key, [])
     groups.get(key).push({ item, index })
   })
   return groups
+}
+
+function resolverEstadoJornada(roles, { now, nocturno, jornadaFecha }) {
+  const efectivos = roles.filter((item) => !item.esPosibleDuplicado)
+  const nowMs = wallClockMs(now)
+  if (efectivos.some((item) => wallClockMs(item.fechaHora) != null && nowMs != null && wallClockMs(item.fechaHora) - nowMs > TOLERANCIA_FUTURO_MS)) {
+    return { estado: JORNADA_CLASIFICACION.revisar, motivo: MOTIVO_FUTURO }
+  }
+  if (!efectivos.length || efectivos.some((item) => wallClockMs(item.fechaHora) == null)) {
+    return { estado: JORNADA_CLASIFICACION.revisar, motivo: 'No se puede interpretar la jornada' }
+  }
+  const first = wallClockMs(efectivos[0].fechaHora)
+  const last = wallClockMs(efectivos.at(-1).fechaHora)
+  if (efectivos.length >= 2) {
+    if (last < first) return { estado: JORNADA_CLASIFICACION.revisar, motivo: 'La salida queda antes de la entrada' }
+    if (last - first > JORNADA_LIMITE_MS) {
+      return { estado: JORNADA_CLASIFICACION.revisar, motivo: MOTIVO_DURACION }
+    }
+    return { estado: JORNADA_CLASIFICACION.completa, motivo: '' }
+  }
+  const elapsed = nowMs == null ? JORNADA_LIMITE_MS : nowMs - first
+  const diaCerrado = !nocturno && fichadaDateKey(now) > jornadaFecha
+  if (elapsed >= JORNADA_LIMITE_MS || diaCerrado) {
+    return { estado: JORNADA_CLASIFICACION.incompleta, motivo: MOTIVO_FALTA_SALIDA }
+  }
+  return { estado: JORNADA_CLASIFICACION.enCurso, motivo: '' }
 }
 
 export function describeFichadasIntermedias(count) {
@@ -120,9 +247,11 @@ export function describeDetalleLinea(movimiento) {
 
 export function matchesTipoFiltro(item, tipo) {
   if (!tipo || tipo === 'todos') return true
-  if (esTipoEntrada(tipo)) return esTipoEntrada(item.tipo)
-  if (esTipoSalida(tipo)) return esTipoSalida(item.tipo)
-  return String(item.tipo ?? '') === String(tipo)
+  const visual = item?.movimientoVisual ?? item?.tipo
+  if (esTipoEntrada(tipo)) return esTipoEntrada(visual)
+  if (esTipoSalida(tipo)) return esTipoSalida(visual)
+  if (esTipoIntermedio(tipo)) return esTipoIntermedio(visual)
+  return String(visual ?? '') === String(tipo)
 }
 
 export function matchesMetodoFiltro(item, metodo) {
@@ -141,18 +270,21 @@ export function filterMovimientosOriginales(movimientos, { tipo = 'todos', metod
 export function summarizeMovimientosVista(movimientos) {
   return {
     total: movimientos.length,
-    entradas: movimientos.filter((item) => esTipoEntrada(item.tipo)).length,
-    salidas: movimientos.filter((item) => esTipoSalida(item.tipo)).length,
+    entradas: movimientos.filter((item) => esTipoEntrada(item.movimientoVisual ?? item.tipo)).length,
+    salidas: movimientos.filter((item) => esTipoSalida(item.movimientoVisual ?? item.tipo)).length,
+    intermedios: movimientos.filter((item) => esTipoIntermedio(item.movimientoVisual)).length,
     posiblesDuplicados: movimientos.filter((item) => item.esPosibleDuplicado).length,
   }
 }
 
 /**
- * Anota movimientos para presentación. No modifica el Tipo almacenado ni elimina registros.
+ * Clasifica fichadas por empleado y jornada en America/Argentina/Buenos_Aires.
+ * No modifica `tipo`. Recibe `now` para que todas las pantallas usen la misma hora.
+ * Un horario nocturno configurado (hora desde posterior a hora hasta) cruza la medianoche.
  */
-export function annotateMovimientos(fichadas = []) {
+export function clasificarFichadas(fichadas = [], { now = new Date(), horarioByEmpleado } = {}) {
   const annotated = fichadas.map((item) => cloneMovimiento(item))
-  const groups = groupByEmpleadoFecha(annotated)
+  const groups = groupByEmpleadoFecha(annotated, horarioByEmpleado)
 
   groups.forEach((entries) => {
     const sorted = [...entries].sort((a, b) => compareMovimientosByTime(a.item, b.item))
@@ -168,25 +300,10 @@ export function annotateMovimientos(fichadas = []) {
       duplicateGroups.push([entry])
     })
 
-    const validEntries = duplicateGroups.map((group) => group[0])
-    const intermediateIndexes = new Set(
-      validEntries.length >= 2
-        ? validEntries.slice(1, -1).map((entry) => entry.index)
-        : [],
-    )
-
     duplicateGroups.forEach((group) => {
       group.forEach((entry, offset) => {
+        if (offset === 0) return
         const movimiento = annotated[entry.index]
-        if (offset === 0) {
-          if (intermediateIndexes.has(entry.index)) {
-            movimiento.esMovimientoIntermedio = true
-            movimiento.observacion = 'intermedio'
-            movimiento.observacionLabel = 'Movimiento intermedio'
-          }
-          return
-        }
-
         const ms = millisecondsBetweenMovimientos(group[0].item, entry.item)
         movimiento.esPosibleDuplicado = true
         movimiento.observacion = 'duplicado'
@@ -194,9 +311,45 @@ export function annotateMovimientos(fichadas = []) {
         movimiento.observacionLabel = formatDuplicateDelay(ms)
       })
     })
+
+    const roles = sorted.map((entry) => annotated[entry.index])
+    const horario = horarioDe(roles[0], horarioByEmpleado)
+    const nocturno = Boolean(parseHorarioRango(horario)?.nocturno)
+    const jornadaFecha = roles[0]?.jornadaFecha ?? ''
+    const decision = resolverEstadoJornada(roles, { now, nocturno, jornadaFecha })
+    const efectivos = roles.filter((item) => !item.esPosibleDuplicado)
+    const lastEfectivo = efectivos.at(-1)
+
+    roles.forEach((movimiento) => {
+      const efectivoIndex = efectivos.indexOf(movimiento)
+      if (efectivoIndex === 0 || efectivos.length === 0) {
+        movimiento.movimientoVisual = MOVIMIENTO_VISUAL.entrada
+        movimiento.esMovimientoIntermedio = false
+      } else if (movimiento === lastEfectivo && efectivos.length >= 2) {
+        movimiento.movimientoVisual = MOVIMIENTO_VISUAL.salida
+        movimiento.esMovimientoIntermedio = false
+        movimiento.esSalidaProvisional = decision.estado === JORNADA_CLASIFICACION.enCurso
+      } else {
+        movimiento.movimientoVisual = MOVIMIENTO_VISUAL.intermedio
+        movimiento.esMovimientoIntermedio = true
+        if (!movimiento.observacion) {
+          movimiento.observacion = 'intermedio'
+          movimiento.observacionLabel = 'Movimiento intermedio'
+        }
+      }
+      movimiento.jornadaEstado = decision.estado
+      movimiento.jornadaMotivo = decision.motivo
+    })
   })
 
   return annotated
+}
+
+/**
+ * Anota movimientos para presentación. No modifica el Tipo almacenado ni elimina registros.
+ */
+export function annotateMovimientos(fichadas = [], options = {}) {
+  return clasificarFichadas(fichadas, options)
 }
 
 export function validMovimientosForResumen(annotatedMovimientos) {
@@ -223,8 +376,8 @@ export function buildMovimientosCsvRows(movimientos) {
     item.empleado ?? '',
     item.legajo ?? '',
     item.fechaHora ?? '',
-    item.tipo ?? '',
-    displayTipoLabel(item.tipo),
+    item.movimientoInformado ?? item.tipo ?? '',
+    displayTipoLabel(item.movimientoVisual ?? item.tipo),
     displayMetodoLabel(item.metodo),
     item.observacionLabel ?? '',
   ])

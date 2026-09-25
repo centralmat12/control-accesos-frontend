@@ -9,6 +9,8 @@ import { jornadaEstadoBadge } from '../src/components/badge.js'
 import {
   applyObservacionToFichada,
   countObservacionesJornada,
+  formatObservacionesPdf,
+  observacionesDeJornada,
   describeObservacionesJornada,
   hasObservacionHumana,
   isObservacionEndpointUnavailable,
@@ -24,7 +26,10 @@ import {
   shouldApplyObservacionResponse,
   validateObservacionForm,
 } from '../src/utils/fichada-observacion.js'
-import { buildFichadasExportSnapshot, buildFichadasViewSelection } from '../src/utils/fichadas-export.js'
+import { buildFichadasExportSnapshot, buildFichadasViewSelection, JORNADA_PRINT_COLUMNS } from '../src/utils/fichadas-export.js'
+import { buildFichadasPrintDocument } from '../src/components/fichadas-print.js'
+import { indicadorObservacionesHtml } from '../src/components/jornada-observaciones.js'
+import { buildJornadas, JORNADA_ESTADO } from '../src/utils/jornadas.js'
 import { annotateMovimientos, describeDetalleLinea } from '../src/utils/movimientos.js'
 import { buildCsv } from '../src/utils/csv.js'
 import { ROLES } from '../src/config/roles.js'
@@ -366,6 +371,88 @@ check('Jerarquía visual de estado, badges y modal de movimientos', () => {
   assert.equal(read('src/views/fichadas.js').includes('openJornadaObservacionesModal'), false)
   assert.equal(read('src/components/fichada-observacion-form.js').includes('Observaciones de la jornada'), false)
   assert.match(read('src/components/fichadas-table.js'), /observacionHumanaBadgeButton/)
+})
+
+function punchNote(id, hora, motivo, detalle, visual = 'Entrada') {
+  return {
+    id,
+    empleadoId: 1,
+    empleado: 'Agustín Gauna',
+    fechaHora: `2026-09-23T${hora}`,
+    tipo: visual === 'Intermedia' ? 'Entrada' : visual,
+    movimientoVisual: visual === 'Intermedia' ? 'Movimiento intermedio' : visual,
+    observacionHumana: { motivo, detalle, fichadaId: id },
+  }
+}
+
+check('Jornada sin observaciones no muestra ícono', () => {
+  const html = indicadorObservacionesHtml({ movimientos: [punchNote(1, '08:00:00', '', '')] }, 0)
+  assert.equal(html, '')
+  const built = buildJornadas([{ id: 1, empleadoId: 1, empleado: 'Agustín Gauna', fechaHora: '2026-09-23T08:00:00', tipo: 'Entrada' }, { id: 2, empleadoId: 1, empleado: 'Agustín Gauna', fechaHora: '2026-09-23T17:00:00', tipo: 'Salida' }], new Map(), { now: new Date('2026-09-23T18:00:00') })
+  assert.equal(indicadorObservacionesHtml(built[0], 0), '')
+  assert.match(read('src/components/fichadas-timeline.js'), /flex min-w-0 items-center gap-2/)
+})
+
+check('Una observación, dos observaciones y orden cronológico', () => {
+  const jornada = {
+    empleado: 'Agustín Gauna',
+    fecha: '2026-09-23',
+    estado: JORNADA_ESTADO.completa,
+    movimientos: [
+      punchNote(2, '17:02:00', 'SalidaAnticipada', 'Salió antes.', 'Salida'),
+      punchNote(1, '08:41:00', 'FichajeIncorrecto', 'El empleado apoyó dos veces el dedo.'),
+    ],
+  }
+  const items = observacionesDeJornada(jornada)
+  assert.equal(items.length, 2)
+  assert.equal(items[0].hora, '08:41')
+  assert.equal(items[0].movimiento, 'Entrada')
+  assert.equal(items[1].hora, '17:02')
+  const one = indicadorObservacionesHtml({ movimientos: [jornada.movimientos[1]] }, 0)
+  assert.match(one, /Ver observación/)
+  assert.equal(one.includes('>1<'), false)
+  const two = indicadorObservacionesHtml(jornada, 0)
+  assert.match(two, /Ver 2 observaciones/)
+  assert.match(two, />2</)
+  assert.match(two, /type="button"/)
+  assert.equal(two.includes('tabindex="-1"'), false)
+})
+
+check('Comentario vacío, largo, HTML e intermedia no cambian Completa', () => {
+  const vacio = observacionesDeJornada({ movimientos: [punchNote(1, '08:41:00', 'FichajeIncorrecto', '   ')] })
+  assert.equal(vacio[0].detalle, '')
+  assert.equal(formatObservacionesPdf({ movimientos: [punchNote(1, '08:41:00', 'FichajeIncorrecto', '')] }), '08:41 — Fichaje incorrecto')
+  const largo = 'x'.repeat(500)
+  const html = observacionesDeJornada({ movimientos: [punchNote(3, '13:02:00', 'Otro', '<script>alert(1)</script>', 'Intermedia')] })
+  assert.equal(html[0].detalle, '<script>alert(1)</script>')
+  assert.equal(html[0].movimiento, 'Intermedia')
+  const pdf = formatObservacionesPdf({
+    movimientos: [
+      punchNote(3, '13:02:00', 'Otro', '<img src=x onerror=alert(1)>'),
+      punchNote(1, '08:41:00', 'FichajeIncorrecto', largo),
+    ],
+  })
+  assert.match(pdf, /08:41 — Fichaje incorrecto: x{500}/)
+  assert.match(pdf, /13:02 — Otro: <img src=x onerror=alert\(1\)>/)
+  const printed = buildFichadasPrintDocument({
+    columns: ['Observaciones'],
+    rows: [[pdf], ['—']],
+    landscape: true,
+  })
+  assert.match(printed, /&lt;img/)
+  assert.match(printed, /white-space: pre-line/)
+  assert.match(printed, /landscape/)
+  const built = buildJornadas([
+    punchNote(1, '08:00:00', 'FichajeIncorrecto', 'Dos veces.'),
+    { id: 2, empleadoId: 1, empleado: 'Agustín Gauna', fechaHora: '2026-09-23T17:00:00', tipo: 'Salida' },
+  ], new Map(), { now: new Date('2026-09-23T18:00:00') })
+  assert.equal(built[0].estado, JORNADA_ESTADO.completa)
+  assert.match(formatObservacionesPdf(built[0]), /08:00 — Fichaje incorrecto: Dos veces\./)
+  assert.equal(formatObservacionesPdf({ movimientos: [] }), '—')
+  assert.equal(JORNADA_PRINT_COLUMNS.some((column) => column.label === 'Observaciones'), true)
+  const cell = jornadaCellHtml(built[0], 'empleado', 0)
+  assert.match(cell, /ver-observaciones-jornada/)
+  assert.match(read('src/components/fichadas-timeline.js'), /indicadorObservacionesHtml/)
 })
 
 if (failed) {
