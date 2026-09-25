@@ -35,6 +35,17 @@ import {
   restablecerPasswordUsuario,
   createUsuario,
 } from '../api/usuarios.js'
+import {
+  ADMIN_CARD_CLASS,
+  ADMIN_FIELD_CONTROL_CLASS,
+  ADMIN_TABLE_HEADER_CELL_CLASS,
+  ADMIN_TABLE_ROW_CLASS,
+  ADMIN_TABLE_SHELL_CLASS,
+  ADMIN_TOOLBAR_BUTTON_CLASS,
+} from '../components/admin-panel-layout.js'
+import { createDepartamentosAdmin } from '../components/departamentos-admin.js'
+import { iconBuilding } from '../components/icons.js'
+import { BTN_SECONDARY_CLASS } from '../components/button-styles.js'
 import { pageHeadingMarkup } from '../components/page-heading.js'
 import {
   API_ENABLEMENT_HINT,
@@ -44,6 +55,7 @@ import {
   empresaIdDeTenant,
   puedeAbrirNuevoUsuario,
   puedeAdministrarAgentes,
+  puedeMostrarAltaDepartamento,
   puedeVerSeccionEmpresas,
   puedeCrearAgentes,
   puedeCrearEmpresas,
@@ -128,6 +140,19 @@ const TAB_IDLE = 'border-transparent text-slate-600 hover:bg-slate-100 dark:text
 const SECTIONS = {
   usuarios: 'usuarios',
   empresas: 'empresas',
+  departamentos: 'departamentos',
+}
+
+function readAdminTab() {
+  const hash = String(globalThis.location?.hash ?? '')
+  const query = hash.includes('?') ? hash.slice(hash.indexOf('?') + 1) : ''
+  return new URLSearchParams(query).get('tab') || ''
+}
+
+function writeAdminTab(section) {
+  const hash = section && section !== SECTIONS.usuarios ? `#/administracion?tab=${section}` : '#/administracion'
+  if ((globalThis.location?.hash || '') === hash) return
+  globalThis.history?.replaceState?.({ view: 'administracion', tab: section }, '', hash)
 }
 
 function matchesQuery(empresa, query) {
@@ -177,6 +202,7 @@ export async function renderAdministracion(container) {
   const canCreateUsuarios = puedeAbrirNuevoUsuario(user)
   const canCreateEmpresas = puedeCrearEmpresas(user)
   const canViewEmpresasSection = puedeVerSeccionEmpresas(user)
+  const canViewDepartamentosSection = puedeMostrarAltaDepartamento(user)
   const canListUsuarios = puedeListarUsuarios(user)
   const tenantEmpresaId = empresaIdDeTenant(user)
   const usuarioDisabledMessage =
@@ -201,6 +227,13 @@ export async function renderAdministracion(container) {
         canViewEmpresasSection
           ? `<button type="button" data-section="${SECTIONS.empresas}" role="tab" class="inline-flex rounded-lg border px-3 py-1.5 text-sm font-medium">
         Empresas
+      </button>`
+          : ''
+      }
+      ${
+        canViewDepartamentosSection
+          ? `<button type="button" data-section="${SECTIONS.departamentos}" role="tab" class="inline-flex rounded-lg border px-3 py-1.5 text-sm font-medium">
+        Departamentos
       </button>`
           : ''
       }
@@ -264,12 +297,16 @@ export async function renderAdministracion(container) {
 
   function resolveSection(next) {
     if (next === SECTIONS.empresas && !canViewEmpresasSection) return SECTIONS.usuarios
-    return next === SECTIONS.empresas ? SECTIONS.empresas : SECTIONS.usuarios
+    if (next === SECTIONS.departamentos && !canViewDepartamentosSection) return SECTIONS.usuarios
+    if (next === SECTIONS.empresas || next === SECTIONS.departamentos) return next
+    return SECTIONS.usuarios
   }
 
   function setSection(next) {
     if (!isViewAlive()) return
     section = resolveSection(next)
+    writeAdminTab(section)
+    disposeDepartamentos()
     if (section !== SECTIONS.empresas) {
       selectedEmpresa = null
       selectedSucursal = null
@@ -290,7 +327,18 @@ export async function renderAdministracion(container) {
     }
   }
 
+  let departamentosAdmin = null
+
+  function disposeDepartamentos() {
+    departamentosAdmin?.dispose()
+    departamentosAdmin = null
+  }
+
   function renderPanel() {
+    if (section === SECTIONS.departamentos && canViewDepartamentosSection) {
+      renderDepartamentos()
+      return
+    }
     if (section !== SECTIONS.empresas || !canViewEmpresasSection) {
       renderUsuarios()
       return
@@ -854,19 +902,15 @@ export async function renderAdministracion(container) {
       return
     }
     panel.innerHTML = `
-      <div class="space-y-4">
-        <div class="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-          <div class="min-w-0 flex-1">
-            <label for="admin-empresas-search" class="mb-1.5 block text-sm font-medium text-slate-700">Buscar</label>
-            <input id="admin-empresas-search" type="search" placeholder="Nombre, razón social, CUIT o ID" class="${CONTROL_CLASS}" />
+      <div class="${ADMIN_CARD_CLASS} max-w-[1080px]">
+        <div class="grid grid-cols-1 items-end gap-3 sm:grid-cols-[minmax(320px,1fr)_auto]">
+          <div class="min-w-0">
+            <label for="admin-empresas-search" class="mb-1.5 block text-sm font-medium text-slate-700 dark:text-slate-300">Buscar</label>
+            <input id="admin-empresas-search" type="search" placeholder="Nombre, razón social, CUIT o ID" class="${CONTROL_CLASS} ${ADMIN_FIELD_CONTROL_CLASS}" />
           </div>
           ${
             canCreateEmpresas
-              ? createActionControl({
-                  id: 'admin-empresa-new',
-                  label: 'Nueva empresa',
-                  enabled: true,
-                })
+              ? `<button type="button" id="admin-empresa-new" class="${ADMIN_TOOLBAR_BUTTON_CLASS}">Nueva empresa</button>`
               : ''
           }
         </div>
@@ -932,39 +976,32 @@ export async function renderAdministracion(container) {
     }
 
     const sectionEl = document.createElement('section')
-    sectionEl.className = 'overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm'
+    sectionEl.className = `${ADMIN_TABLE_SHELL_CLASS} max-h-[65vh] overflow-y-auto`
+    const header = ADMIN_TABLE_HEADER_CELL_CLASS.replace('sm:flex', 'min-[880px]:flex')
     sectionEl.innerHTML = `
-      <div class="max-h-[65vh] overflow-auto">
-        <table class="min-w-full divide-y divide-slate-200">
-          <thead class="sticky top-0 z-10 bg-slate-50">
-            <tr>
-              <th scope="col" class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Nombre</th>
-              <th scope="col" class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Razón social</th>
-              <th scope="col" class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">CUIT</th>
-              <th scope="col" class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">ID</th>
-              <th scope="col" class="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wide text-slate-500">Acciones</th>
-            </tr>
-          </thead>
-          <tbody class="divide-y divide-slate-100">
-            ${filtered
-              .map(
-                (empresa) => `
-                  <tr class="hover:bg-slate-50">
-                    <td class="whitespace-nowrap px-4 py-3 text-sm font-medium text-slate-900">${displayValue(empresaDisplayName(empresa))}</td>
-                    <td class="whitespace-nowrap px-4 py-3 text-sm text-slate-600">${displayValue(empresa.razonSocial)}</td>
-                    <td class="whitespace-nowrap px-4 py-3 text-sm text-slate-600">${displayValue(empresa.cuit)}</td>
-                    <td class="whitespace-nowrap px-4 py-3 text-sm text-slate-600">${displayValue(empresa.id)}</td>
-                    <td class="whitespace-nowrap px-4 py-3 text-right">
-                      <button type="button" data-action="view" data-id="${Number(empresa.id)}" class="rounded-lg px-2.5 py-1.5 text-sm font-medium text-blue-700 hover:bg-blue-50">
-                        Ver sucursales
-                      </button>
-                    </td>
-                  </tr>
-                `,
-              )
-              .join('')}
-          </tbody>
-        </table>
+      <div class="grid grid-cols-1 text-left min-[880px]:grid-cols-[minmax(140px,0.8fr)_minmax(220px,1.5fr)_170px_60px_140px]">
+        <div class="${header}">Nombre</div>
+        <div class="${header}">Razón social</div>
+        <div class="${header}">CUIT</div>
+        <div class="${header}">ID</div>
+        <div class="${header} justify-end">Acciones</div>
+        ${filtered
+          .map(
+            (empresa) => `
+              <div class="${ADMIN_TABLE_ROW_CLASS} min-[880px]:col-span-5 min-[880px]:grid-cols-subgrid min-[880px]:h-[50px] min-[880px]:gap-0 min-[880px]:py-0" data-empresa-id="${Number(empresa.id)}">
+                <div class="min-w-0 truncate text-sm font-semibold text-slate-900 dark:text-slate-100">${displayValue(empresaDisplayName(empresa))}</div>
+                <div class="min-w-0 truncate text-sm text-slate-600 dark:text-slate-300">${displayValue(empresa.razonSocial)}</div>
+                <div class="min-w-0 truncate text-sm text-slate-600 dark:text-slate-300">${displayValue(empresa.cuit)}</div>
+                <div class="min-w-0 text-sm text-slate-600 dark:text-slate-300">${displayValue(empresa.id)}</div>
+                <div class="flex justify-end">
+                  <button type="button" data-action="view" data-id="${Number(empresa.id)}" class="${BTN_SECONDARY_CLASS} inline-flex h-8 items-center gap-1.5 whitespace-nowrap px-2.5! py-1! text-sm">
+                    ${iconBuilding('h-4 w-4')}<span>Ver sucursales</span>
+                  </button>
+                </div>
+              </div>
+            `,
+          )
+          .join('')}
       </div>
     `
     sectionEl.querySelectorAll('[data-action="view"]').forEach((button) => {
@@ -1618,12 +1655,44 @@ export async function renderAdministracion(container) {
     })
   })
 
+  async function renderDepartamentos() {
+    const empresaId = empresaSeleccionadaId()
+    panel.innerHTML = `<div data-admin-departamentos class="w-full max-w-[880px]"></div>`
+    const host = panel.querySelector('[data-admin-departamentos]')
+    if (!empresaId) {
+      host.innerHTML = `<p class="text-sm text-slate-500" role="status">Seleccioná una empresa para administrar sus departamentos.</p>`
+      return
+    }
+    host.innerHTML = `<p class="text-sm text-slate-500" role="status">Cargando departamentos…</p>`
+    let sucursalesDepartamento = []
+    try {
+      sucursalesDepartamento = await getSucursales({ empresaId })
+    } catch (error) {
+      if (!isViewAlive() || ignoreClosedSession(error)) return
+      host.innerHTML = `<p class="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800" role="alert">${escapeHtml(error.message || 'No se pudieron cargar las sucursales.')}</p>`
+      return
+    }
+    if (!isViewAlive() || section !== SECTIONS.departamentos) return
+    host.replaceChildren()
+    departamentosAdmin = createDepartamentosAdmin({
+      sucursales: sucursalesDepartamento,
+      empresaId,
+      addLabel: 'Nuevo departamento',
+      heading: {
+        title: 'Gestioná los departamentos',
+        description: 'Administrá los departamentos disponibles en cada sucursal.',
+      },
+    })
+    host.append(departamentosAdmin.element)
+  }
+
   container.replaceChildren(view)
-  setSection(SECTIONS.usuarios)
+  setSection(resolveSection(readAdminTab() || SECTIONS.usuarios))
 
   return () => {
     life.dispose(() => {
       listenerAbort.abort()
+      disposeDepartamentos()
       clearSecretHolder()
       closeActiveModal({ force: true })
     })

@@ -9,6 +9,8 @@ import { createColumnPicker } from '../components/column-picker.js'
 import { BTN_SECONDARY_CLASS } from '../components/button-styles.js'
 import { FORM_LABEL_CLASS } from '../components/form-field.js'
 import { createFichadasTable } from '../components/fichadas-table.js'
+import { createFichadasTimeline, TIMELINE_LEGEND, TIMELINE_TOOLTIP } from '../components/fichadas-timeline.js'
+import { FICHADAS_FRAME_CLASS } from '../components/fichadas-frame.js'
 import { openFichadaObservacionModal } from '../components/fichada-observacion-form.js'
 import { createFeedbackState, createSelectEmpresaState } from '../components/feedback-state.js'
 import { printReport } from '../components/fichadas-print.js'
@@ -31,6 +33,7 @@ import { buildJornadas, summarizeJornadasVista } from '../utils/jornadas.js'
 import {
   FICHADAS_JORNADAS_TAB_TOOLTIP,
   FICHADAS_MOVIMIENTOS_TAB_TOOLTIP,
+  FICHADAS_TIMELINE_TAB_TOOLTIP,
   FICHADAS_TIPO_METODO_TOOLTIP,
   isMobileColumnViewport,
   loadColumnIds,
@@ -45,10 +48,26 @@ import {
   buildFichadasViewSelection,
   fichadasCompleteQuery,
   hasFichadasServerFilters,
+  JORNADA_PRINT_COLUMNS,
+  JORNADA_PRINT_NOTE,
 } from '../utils/fichadas-export.js'
+
+const FICHADAS_VIEW_IDS = {
+  timeline: 'timeline',
+  summary: 'jornadas',
+  jornadas: 'jornadas',
+  movements: 'movimientos',
+  movimientos: 'movimientos',
+}
+
+export function resolveFichadasView(value) {
+  return FICHADAS_VIEW_IDS[value] ?? 'timeline'
+}
 import {
+  CLASIFICACION_JORNADA_AYUDA,
   annotateMovimientos,
   filterMovimientosOriginales,
+  matchesMetodoFiltro,
   summarizeMovimientosVista,
 } from '../utils/movimientos.js'
 import { DEFAULT_PAGE_SIZE, PAGE_SIZE_OPTIONS, paginateItems } from '../utils/paginate.js'
@@ -111,8 +130,8 @@ function createSummaryCards(activeView, dataset) {
         accent: 'indigo',
       }),
       createStatCard({
-        label: 'Pendientes',
-        value: summary.pendientes,
+        label: 'Incompletas',
+        value: summary.incompletas,
         icon: iconLogout(),
         accent: 'amber',
       }),
@@ -129,13 +148,13 @@ function createSummaryCards(activeView, dataset) {
       accent: 'indigo',
     }),
     createStatCard({
-      label: 'Entradas informadas',
+      label: 'Entradas',
       value: summary.entradas,
       icon: iconLogin(),
       accent: 'emerald',
     }),
     createStatCard({
-      label: 'Salidas informadas',
+      label: 'Salidas',
       value: summary.salidas,
       icon: iconLogout(),
       accent: 'amber',
@@ -151,7 +170,7 @@ function createSummaryCards(activeView, dataset) {
   return cards
 }
 
-export async function renderFichadas(container) {
+export async function renderFichadas(container, extras = {}) {
   if (!canLoadTenantData(getCurrentUser())) {
     const view = document.createElement('div')
     view.className = 'space-y-6'
@@ -198,6 +217,7 @@ export async function renderFichadas(container) {
               <option value="todos">Todos</option>
               <option value="Entrada">Entrada</option>
               <option value="Salida">Salida</option>
+              <option value="Movimiento intermedio">Movimiento intermedio</option>
             </select>
           </div>
           <div class="min-w-0 flex-1">
@@ -238,15 +258,16 @@ export async function renderFichadas(container) {
         </button>
       </div>
     </section>
-    <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+    <section class="${FICHADAS_FRAME_CLASS}">
+    <div class="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-b border-slate-200 px-3 py-3 dark:border-slate-700">
       <div class="inline-flex flex-wrap items-center gap-0.5 rounded-lg border border-slate-200 bg-white p-1 shadow-sm dark:border-slate-700 dark:bg-slate-900" role="tablist" aria-label="Vista de fichadas">
-        <button type="button" id="fichadas-tab-movimientos" role="tab" aria-selected="true" class="rounded-md px-3 py-2 text-sm font-medium bg-blue-600 text-white">
-          Movimientos registrados
+        <button type="button" id="fichadas-tab-timeline" role="tab" aria-selected="true" class="rounded-md px-3 py-2 text-sm font-medium bg-blue-600 text-white">
+          Línea de tiempo
         </button>
         ${infoButtonMarkup({
-          id: 'fichadas-tab-movimientos-info',
-          tooltip: FICHADAS_MOVIMIENTOS_TAB_TOOLTIP,
-          ariaLabel: 'Información sobre Movimientos registrados',
+          id: 'fichadas-tab-timeline-info',
+          tooltip: FICHADAS_TIMELINE_TAB_TOOLTIP,
+          ariaLabel: 'Información sobre Línea de tiempo',
         })}
         <button type="button" id="fichadas-tab-jornadas" role="tab" aria-selected="false" class="rounded-md px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800">
           Resumen de jornadas
@@ -256,21 +277,47 @@ export async function renderFichadas(container) {
           tooltip: FICHADAS_JORNADAS_TAB_TOOLTIP,
           ariaLabel: 'Información sobre Resumen de jornadas',
         })}
+        <button type="button" id="fichadas-tab-movimientos" role="tab" aria-selected="false" class="rounded-md px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800">
+          Movimientos registrados
+        </button>
+        ${infoButtonMarkup({
+          id: 'fichadas-tab-movimientos-info',
+          tooltip: FICHADAS_MOVIMIENTOS_TAB_TOOLTIP,
+          ariaLabel: 'Información sobre Movimientos registrados',
+        })}
       </div>
-      <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-4">
-        <label for="fichadas-page-size" class="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-300">
+      <div class="flex flex-wrap items-center gap-x-4 gap-y-2">
+        <label for="fichadas-page-size" class="inline-flex items-center gap-2 whitespace-nowrap text-sm text-slate-600 dark:text-slate-300">
           <span>Mostrar</span>
           <select id="fichadas-page-size" class="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-sm text-slate-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100">
             ${PAGE_SIZE_OPTIONS.map((size) => `<option value="${size}" ${size === DEFAULT_PAGE_SIZE ? 'selected' : ''}>${size}</option>`).join('')}
           </select>
         </label>
         <div id="fichadas-columnas-wrap"></div>
+        <label id="fichadas-franja-wrap" class="hidden items-center gap-2 whitespace-nowrap text-sm text-slate-600 dark:text-slate-300">
+          <span class="whitespace-nowrap">Franja horaria</span>
+          <select id="fichadas-franja" class="min-w-[9.5rem] rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-sm text-slate-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100">
+            <option value="auto">Automática</option>
+            <option value="office">06:00–20:00</option>
+            <option value="day">00:00–24:00</option>
+            <option value="custom">Personalizada</option>
+          </select>
+        </label>
+        <div id="fichadas-franja-custom" class="hidden items-center gap-2 text-sm text-slate-600 dark:text-slate-300">
+          <input id="fichadas-franja-desde" type="time" class="rounded-lg border border-slate-200 bg-white px-2 py-1 text-sm dark:border-slate-600 dark:bg-slate-900" aria-label="Hora desde" />
+          <input id="fichadas-franja-hasta" type="time" class="rounded-lg border border-slate-200 bg-white px-2 py-1 text-sm dark:border-slate-600 dark:bg-slate-900" aria-label="Hora hasta" />
+        </div>
         <p id="fichadas-count" class="text-sm text-slate-500 dark:text-slate-400"></p>
       </div>
     </div>
-    <p id="fichadas-limit-note" class="hidden rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-200"></p>
-    <div id="fichadas-results"></div>
-    <div id="fichadas-pagination"></div>
+    <p id="fichadas-legend" class="flex items-center gap-2 border-b border-slate-100 px-3 py-2 text-xs text-slate-500 dark:border-slate-800 dark:text-slate-400">
+      <span id="fichadas-legend-text">${TIMELINE_LEGEND}</span>
+      <button type="button" class="inline-flex h-6 w-6 items-center justify-center rounded-full text-slate-400 hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 dark:hover:bg-slate-800" data-tooltip="${TIMELINE_TOOLTIP}" aria-label="Cómo se interpreta la jornada">${iconInfo()}</button>
+    </p>
+    <p id="fichadas-limit-note" class="hidden border-b border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-200"></p>
+    <div id="fichadas-results" class="min-h-0"></div>
+    <div id="fichadas-pagination" class="border-t border-slate-100 px-3 empty:hidden dark:border-slate-800"></div>
+    </section>
   `
   bindTooltipRoot(view)
 
@@ -291,6 +338,7 @@ export async function renderFichadas(container) {
   const printButton = view.querySelector('#fichadas-print')
   const tabMovimientos = view.querySelector('#fichadas-tab-movimientos')
   const tabJornadas = view.querySelector('#fichadas-tab-jornadas')
+  const tabTimeline = view.querySelector('#fichadas-tab-timeline')
   const pageSizeSelect = view.querySelector('#fichadas-page-size')
   const columnasWrap = view.querySelector('#fichadas-columnas-wrap')
   const countLabel = view.querySelector('#fichadas-count')
@@ -302,9 +350,13 @@ export async function renderFichadas(container) {
   let empleadosLoaded = false
   let empresaLoaded = false
   let loaded = false
-  let activeView = 'movimientos'
+  let activeView = resolveFichadasView(extras.fichadasView)
+  let franjaMode = 'auto'
+  let franjaCustom = { start: null, end: null }
+  let franjaError = ''
   let movimientosPage = 1
   let jornadasPage = 1
+  let timelinePage = 1
   let pageSize = DEFAULT_PAGE_SIZE
   let loadSeq = 0
   let jornadaDetalleModal = null
@@ -372,13 +424,21 @@ export async function renderFichadas(container) {
   }
 
   function setTabStyles() {
-    const active = 'rounded-md px-3 py-2 text-sm font-medium bg-blue-600 text-white'
+    const active = 'rounded-md px-3 py-2 text-sm font-medium bg-blue-600 text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500'
     const idle =
-      'rounded-md px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800'
+      'rounded-md px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 dark:text-slate-300 dark:hover:bg-slate-800'
     tabMovimientos.className = activeView === 'movimientos' ? active : idle
     tabJornadas.className = activeView === 'jornadas' ? active : idle
+    tabTimeline.className = activeView === 'timeline' ? active : idle
     tabMovimientos.setAttribute('aria-selected', String(activeView === 'movimientos'))
     tabJornadas.setAttribute('aria-selected', String(activeView === 'jornadas'))
+    tabTimeline.setAttribute('aria-selected', String(activeView === 'timeline'))
+    columnasWrap.classList.toggle('hidden', activeView === 'timeline')
+    view.querySelector('#fichadas-franja-wrap')?.classList.toggle('hidden', activeView !== 'timeline')
+    view.querySelector('#fichadas-franja-wrap')?.classList.toggle('flex', activeView === 'timeline')
+    view.querySelector('#fichadas-franja-custom')?.classList.toggle('hidden', activeView !== 'timeline' || franjaMode !== 'custom')
+    view.querySelector('#fichadas-franja-custom')?.classList.toggle('flex', activeView === 'timeline' && franjaMode === 'custom')
+    view.querySelector('#fichadas-legend')?.classList.toggle('hidden', activeView === 'movimientos')
   }
 
   function setExportEnabled({ canPrint = false, canOpenCsv = false, disableReason = '' } = {}) {
@@ -389,12 +449,12 @@ export async function renderFichadas(container) {
     csvButton.title = canOpenCsv ? '' : reason
   }
 
-  function currentSelection() {
+  function currentSelection(now = new Date()) {
     const filters = getFilters()
-    const dataset = currentDataset(filters)
+    const dataset = currentDataset(filters, now)
     const records = activeView === 'movimientos' ? dataset.movimientos : dataset.jornadas
     const selection = buildFichadasViewSelection({
-      view: activeView,
+      view: activeView === 'movimientos' ? 'movimientos' : 'jornadas',
       records,
       columnIds: columnPrefs[activeView],
       filters,
@@ -408,20 +468,24 @@ export async function renderFichadas(container) {
   function resetPages() {
     movimientosPage = 1
     jornadasPage = 1
+    timelinePage = 1
   }
 
   function selectedEmpleadoLabel() {
     return empleadoCombobox.getSelectedLabel()
   }
 
-  function currentDataset(filters) {
+  function currentDataset(filters, now = new Date()) {
     const error = dateRangeError(filters)
-    const periodSet = error ? [] : annotateMovimientos(fichadas)
+    const porMetodo = error
+      ? []
+      : fichadas.filter((item) => matchesMetodoFiltro(item, filters.metodo))
+    const periodSet = annotateMovimientos(porMetodo, { now })
     const movimientos = filterMovimientosOriginales(periodSet, {
       tipo: filters.tipo,
-      metodo: filters.metodo,
+      metodo: 'todos',
     })
-    const jornadas = error ? [] : buildJornadas(fichadas, empleadoById)
+    const jornadas = error ? [] : buildJornadas(porMetodo, empleadoById, { now })
     return {
       error,
       periodSet,
@@ -445,6 +509,9 @@ export async function renderFichadas(container) {
   }
 
   function renderTablePlaceholder(placeholder, { onPlaceholderAction } = {}) {
+    if (activeView === 'timeline') {
+      return createFichadasTimeline([], { includesToday: false })
+    }
     if (activeView === 'jornadas') {
       return createJornadasTable([], {
         visibleColumnIds: columnPrefs.jornadas,
@@ -547,16 +614,19 @@ export async function renderFichadas(container) {
       return
     }
 
-    const { dataset, selection } = currentSelection()
+    const now = new Date()
+    const { dataset, selection } = currentSelection(now)
     renderSummary(dataset)
 
     const isMovimientos = activeView === 'movimientos'
-    const rows = selection.records
+    const isTimeline = activeView === 'timeline'
+    const rows = isTimeline ? dataset.jornadas : selection.records
     const noun = isMovimientos ? 'movimientos' : 'jornadas'
-    const page = isMovimientos ? movimientosPage : jornadasPage
+    const page = isMovimientos ? movimientosPage : isTimeline ? timelinePage : jornadasPage
     const paged = paginateItems(rows, page, pageSize)
 
     if (isMovimientos) movimientosPage = paged.page
+    else if (isTimeline) timelinePage = paged.page
     else jornadasPage = paged.page
 
     const viewSnapshot = buildFichadasExportSnapshot(selection, { mode: 'view' })
@@ -567,7 +637,7 @@ export async function renderFichadas(container) {
     })
 
     if (rows.length === 0) {
-      countLabel.textContent = `0 ${noun}`
+      countLabel.textContent = `Mostrando 0 ${noun}`
       results.replaceChildren(
         renderTablePlaceholder({
           title: 'Sin resultados',
@@ -579,9 +649,16 @@ export async function renderFichadas(container) {
       return
     }
 
-    countLabel.textContent = `Mostrando ${paged.from}–${paged.to} de ${paged.total} ${noun}`
+    countLabel.textContent = `Mostrando ${isTimeline ? 1 : paged.from}–${isTimeline ? rows.length : paged.to} de ${isTimeline ? rows.length : paged.total} ${noun}`
+    const periodIncludesToday = dataset.jornadas.some((item) => item.fecha === todayDateKey())
     results.replaceChildren(
-      isMovimientos
+      isTimeline
+        ? createFichadasTimeline(rows, {
+            now,
+            includesToday: periodIncludesToday,
+            franja: { mode: franjaMode, start: franjaCustom.start, end: franjaCustom.end },
+          })
+        : isMovimientos
         ? createFichadasTable(paged.items, {
             visibleColumnIds: columnPrefs.movimientos,
             canEditObservacion: puedeEditarObservacionFichada(getCurrentUser()),
@@ -593,13 +670,14 @@ export async function renderFichadas(container) {
           }),
     )
 
-    if (paged.pageCount > 1) {
+    if (!isTimeline && paged.pageCount > 1) {
       paginationContainer.replaceChildren(
         createPagination({
           page: paged.page,
           pageCount: paged.pageCount,
           onPageChange: (nextPage) => {
             if (isMovimientos) movimientosPage = nextPage
+            else if (isTimeline) timelinePage = nextPage
             else jornadasPage = nextPage
             renderResults()
           },
@@ -724,17 +802,19 @@ export async function renderFichadas(container) {
     activeView = nextView
     setTabStyles()
     columnPicker.close()
-    columnPicker.setState({
-      view: nextView,
-      selectedIds: columnPrefs[nextView],
-      isMobile: isMobileColumns,
-    })
+    if (nextView !== 'timeline') {
+      columnPicker.setState({
+        view: nextView,
+        selectedIds: columnPrefs[nextView],
+        isMobile: isMobileColumns,
+      })
+    }
     renderResults()
   }
 
   function exportNotes(capped, filters) {
       const notes = [
-          'Ingreso y egreso corresponden a la primera y última fichada del día. Las intermedias se conservan para auditoría.',
+          CLASIFICACION_JORNADA_AYUDA,
           'Horario asignado al empleado.',
           'Los turnos nocturnos pueden requerir reglas adicionales.',
           'Tipo y Método filtran fichadas. El resumen usa empleado y período.',
@@ -798,13 +878,26 @@ export async function renderFichadas(container) {
       selection.view === 'movimientos'
         ? [
             `<p><strong>Movimientos totales:</strong> ${totals.total}</p>`,
-            `<p><strong>Entradas informadas:</strong> ${totals.entradas} · <strong>Salidas informadas:</strong> ${totals.salidas} · <strong>Posibles duplicados:</strong> ${totals.posiblesDuplicados}</p>`,
+            `<p><strong>Entradas:</strong> ${totals.entradas} · <strong>Salidas:</strong> ${totals.salidas} · <strong>Posibles duplicados:</strong> ${totals.posiblesDuplicados}</p>`,
           ]
         : [
             `<p><strong>Jornadas:</strong> ${totals.total}</p>`,
-            `<p><strong>Completas:</strong> ${totals.completas} · <strong>En curso:</strong> ${totals.enCurso} · <strong>Pendientes:</strong> ${totals.pendientes}</p>`,
+            `<p><strong>Completas:</strong> ${totals.completas} · <strong>En curso:</strong> ${totals.enCurso} · <strong>Incompletas:</strong> ${totals.incompletas} · <strong>Revisar:</strong> ${totals.revisar}</p>`,
           ]
 
+    const jornadaPrint = selection.view !== 'movimientos'
+    const printColumns = jornadaPrint ? JORNADA_PRINT_COLUMNS : snapshot.columns
+    const printRows = jornadaPrint
+      ? selection.records.map((item) =>
+          printColumns.map((column) => {
+            if (column.id === 'actividad') return item.actividadRegistrada ?? '—'
+            if (column.id === 'ingreso') return item.ingresoHora ?? ''
+            if (column.id === 'egreso') return item.egresoHora ?? ''
+            if (column.id === 'horarioPrevisto') return item.horarioPrevisto ?? ''
+            return item[column.id] ?? ''
+          }),
+        )
+      : snapshot.printRows
     printReport({
       title: snapshot.title,
       empresa: snapshot.empresa,
@@ -813,10 +906,10 @@ export async function renderFichadas(container) {
       filters: snapshot.filtersSummary,
       totals,
       summaryLines,
-      columns: snapshot.headers,
-      rows: snapshot.printRows,
-      notes,
-      landscape: snapshot.landscape,
+      columns: printColumns.map((column) => column.label ?? column),
+      rows: printRows,
+      notes: jornadaPrint ? [...notes, JORNADA_PRINT_NOTE] : notes,
+      landscape: snapshot.landscape ? snapshot.landscape : jornadaPrint,
     })
   }
 
@@ -825,6 +918,24 @@ export async function renderFichadas(container) {
   metodoSelect.addEventListener('change', onClientFilterChange)
   desdeInput.addEventListener('change', onServerFilterChange)
   hastaInput.addEventListener('change', onServerFilterChange)
+  const franjaSelect = view.querySelector('#fichadas-franja')
+  franjaSelect.addEventListener('change', () => {
+    franjaMode = franjaSelect.value
+    setTabStyles()
+    renderResults()
+  })
+  function readFranjaTime(id) {
+    const match = String(view.querySelector(id)?.value ?? '').match(/^(\d{2}):(\d{2})/)
+    return match ? Number(match[1]) * 60 + Number(match[2]) : null
+  }
+  view.querySelector('#fichadas-franja-desde')?.addEventListener('change', () => {
+    franjaCustom.start = readFranjaTime('#fichadas-franja-desde')
+    renderResults()
+  })
+  view.querySelector('#fichadas-franja-hasta')?.addEventListener('change', () => {
+    franjaCustom.end = readFranjaTime('#fichadas-franja-hasta')
+    renderResults()
+  })
   pageSizeSelect.addEventListener('change', () => {
     pageSize = Number(pageSizeSelect.value) || DEFAULT_PAGE_SIZE
     resetPages()
@@ -845,8 +956,19 @@ export async function renderFichadas(container) {
       )
     }
   })
-  tabMovimientos.addEventListener('click', () => setView('movimientos'))
-  tabJornadas.addEventListener('click', () => setView('jornadas'))
+  const tabs = [tabTimeline, tabJornadas, tabMovimientos]
+  const tabViews = ['timeline', 'jornadas', 'movimientos']
+  tabs.forEach((tab, index) => {
+    tab.addEventListener('click', () => setView(tabViews[index]))
+    tab.addEventListener('keydown', (event) => {
+      if (event.key !== 'ArrowRight' && event.key !== 'ArrowLeft') return
+      event.preventDefault()
+      const delta = event.key === 'ArrowRight' ? 1 : -1
+      const next = (index + delta + tabs.length) % tabs.length
+      tabs[next].focus()
+      setView(tabViews[next])
+    })
+  })
 
   syncCustomDates()
   setTabStyles()

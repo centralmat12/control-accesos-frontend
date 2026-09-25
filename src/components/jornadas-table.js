@@ -1,16 +1,18 @@
-import { displayValue, escapeHtml, formatDate } from '../utils/format.js'
+import { displayValue, escapeHtml, formatFichadaFecha } from '../utils/format.js'
 import { allColumnIds, visibleColumns } from '../utils/fichadas-columns.js'
 import {
   countObservacionesJornada,
   describeObservacionesJornada,
 } from '../utils/fichada-observacion.js'
+import { indicadorObservacionesHtml, bindObservacionesJornada } from './jornada-observaciones.js'
 import { jornadaEstadoBadge } from './badge.js'
 import { iconEye } from './icons.js'
+import { FICHADAS_BODY_CLASS } from './fichadas-frame.js'
 
 const TH_CLASS = 'px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500'
 const TD_CLASS = 'px-4 py-3 text-sm text-slate-600 dark:text-slate-300'
-const INGRESO_HEADER = 'Ingreso — primera fichada'
-const EGRESO_HEADER = 'Egreso — última fichada'
+const INGRESO_HEADER = 'Primera fichada'
+const EGRESO_HEADER = 'Última fichada'
 
 const HEADER_LABELS = {
   ingreso: INGRESO_HEADER,
@@ -24,19 +26,24 @@ function headerLabel(column) {
 export function jornadaCellHtml(item, columnId, index) {
   switch (columnId) {
     case 'empleado':
-      return `<td class="px-4 py-3 text-sm font-medium text-slate-900 dark:text-slate-100">${displayValue(item.empleado)}</td>`
+      return `<td class="max-w-[14rem] px-4 py-3 text-sm font-medium text-slate-900 dark:text-slate-100"><div class="flex min-w-0 items-center gap-2"><span class="line-clamp-2 min-w-0">${displayValue(item.empleado)}</span>${indicadorObservacionesHtml(item, index)}</div></td>`
     case 'legajo':
       return `<td class="${TD_CLASS}">${displayValue(item.legajo)}</td>`
     case 'fecha':
-      return `<td class="${TD_CLASS}">${item.fecha ? formatDate(new Date(`${item.fecha}T12:00:00`)) : '—'}</td>`
+      return `<td class="${TD_CLASS}">${item.fecha ? formatFichadaFecha(item.fecha) : '—'}</td>`
     case 'horarioPrevisto':
       return `<td class="${TD_CLASS}">${displayValue(item.horarioPrevisto)}</td>`
     case 'ingreso':
       return `<td class="${TD_CLASS}">${displayValue(item.ingresoHora)}</td>`
     case 'egreso':
       return `<td class="${TD_CLASS}">${displayValue(item.egresoHora)}</td>`
-    case 'intermedias':
-      return `<td class="${TD_CLASS}">${displayValue(item.fichadasIntermediasLabel)}</td>`
+    case 'intermedias': {
+      const count = Number(item.fichadasIntermedias) || 0
+      const badge = count
+        ? `<span class="inline-flex min-w-[1.25rem] items-center justify-center rounded-full bg-slate-100 px-1.5 py-0.5 text-xs font-semibold text-slate-700 dark:bg-slate-800 dark:text-slate-200">${count}</span>`
+        : '—'
+      return `<td class="${TD_CLASS}">${badge}</td>`
+    }
     case 'estado':
       return `<td class="min-w-[8.5rem] whitespace-nowrap px-4 py-3">${jornadaEstadoBadge(item.estado)}</td>`
     case 'detalle': {
@@ -98,8 +105,7 @@ export function createJornadasTable(
   const columns = visibleColumns('jornadas', visibleColumnIds)
   const colspan = columns.length
   const section = document.createElement('section')
-  section.className =
-    'overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-900'
+  section.className = 'min-w-0'
   section.dataset.visibleColumns = columns.map((column) => column.id).join(',')
   section.dataset.colspan = String(colspan)
 
@@ -130,8 +136,8 @@ export function createJornadasTable(
           .join('')
 
   section.innerHTML = `
-    <div class="max-h-[65vh] overflow-auto">
-      <table class="w-full divide-y divide-slate-200 dark:divide-slate-700">
+    <div class="${FICHADAS_BODY_CLASS}">
+      <table class="min-w-[48rem] w-full divide-y divide-slate-200 dark:divide-slate-700">
         <thead class="sticky top-0 z-10 bg-slate-50 shadow-[0_1px_0_0_var(--color-slate-200)] dark:bg-slate-800 dark:shadow-[0_1px_0_0_var(--color-slate-700)]">
           <tr>${headers}</tr>
         </thead>
@@ -142,6 +148,7 @@ export function createJornadasTable(
     </div>
   `
 
+  bindObservacionesJornada(section, jornadas)
   section.addEventListener('click', (event) => {
     const retry = event.target.closest('[data-action="table-placeholder"]')
     if (retry && section.contains(retry)) {

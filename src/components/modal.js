@@ -1,5 +1,6 @@
 import { closeOpenDropdown, enhanceSelectsIn, destroyDisconnectedSelects } from './dropdown.js'
 import { BTN_SECONDARY_CLASS } from './button-styles.js'
+import { hideTooltip } from './tooltip.js'
 
 export const DISCARD_UNSAVED_TITLE = '¿Descartar los cambios?'
 export const DISCARD_UNSAVED_MESSAGE = 'Los datos ingresados todavía no fueron guardados.'
@@ -104,6 +105,8 @@ export function openModal({
   closeOnBackdrop = true,
   closeOnEscape = true,
   unsavedChanges = false,
+  headerActions = null,
+  scrollBody = true,
   hideCloseButton = false,
   isDirty,
   discardPrompt,
@@ -111,6 +114,7 @@ export function openModal({
   canClose,
 } = {}) {
   closeOpenDropdown()
+  hideTooltip()
 
   const overlay = document.createElement('div')
   overlay.className = stacked
@@ -126,11 +130,14 @@ export function openModal({
   dialog.setAttribute('aria-modal', 'true')
   dialog.setAttribute('aria-labelledby', labelledBy)
 
+  const compact = headerActions || scrollBody === false
   const header = document.createElement('div')
-  header.className = 'flex items-start justify-between gap-4 border-b border-slate-200 px-5 py-4 dark:border-slate-700'
+  header.className = compact
+    ? 'flex items-center justify-between gap-3 border-b border-slate-200 px-5 py-5 dark:border-slate-700'
+    : 'flex items-start justify-between gap-4 border-b border-slate-200 px-5 py-4 dark:border-slate-700'
 
   const headingBlock = document.createElement('div')
-  headingBlock.className = 'min-w-0'
+  headingBlock.className = compact ? 'min-w-0 flex-1' : 'min-w-0'
 
   const heading = document.createElement('h2')
   heading.id = labelledBy
@@ -146,19 +153,26 @@ export function openModal({
 
   const closeButton = document.createElement('button')
   closeButton.type = 'button'
-  closeButton.className =
-    'rounded-lg px-2 py-1 text-lg leading-none text-slate-500 hover:bg-slate-100 hover:text-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500'
+  closeButton.className = compact
+    ? 'inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-lg leading-none text-slate-500 hover:bg-slate-100 hover:text-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 dark:hover:bg-slate-800'
+    : 'rounded-lg px-2 py-1 text-lg leading-none text-slate-500 hover:bg-slate-100 hover:text-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500'
   closeButton.setAttribute('aria-label', 'Cerrar')
   closeButton.textContent = '×'
 
   const body = document.createElement('div')
-  body.className = 'overflow-y-auto px-5 py-4'
+  body.className = compact
+    ? 'flex min-h-0 flex-1 flex-col overflow-hidden px-5 py-5'
+    : 'overflow-y-auto px-5 py-4'
   if (content) body.append(content)
 
+  const headerTools = document.createElement('div')
+  headerTools.className = 'ml-auto flex shrink-0 items-center gap-2'
+  if (headerActions) headerTools.append(headerActions)
   if (hideCloseButton) {
-    header.append(headingBlock)
+    header.append(headingBlock, headerTools)
   } else {
-    header.append(headingBlock, closeButton)
+    headerTools.append(closeButton)
+    header.append(headingBlock, headerTools)
   }
   dialog.append(header, body)
   overlay.append(dialog)

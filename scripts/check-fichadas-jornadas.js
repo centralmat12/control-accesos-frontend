@@ -30,7 +30,7 @@ import {
 } from '../src/utils/fichadas-export.js'
 import { fichadasCsvExportMarkup } from '../src/components/fichadas-csv-export.js'
 import { buildFichadasPrintDocument } from '../src/components/fichadas-print.js'
-import { formatTime, toDateKey } from '../src/utils/format.js'
+import { formatFichadaHora, formatTime, toDateKey } from '../src/utils/format.js'
 import { buildJornadas, buildJornadasCsvRows, JORNADA_ESTADO, summarizeJornadasVista } from '../src/utils/jornadas.js'
 import {
   annotateMovimientos,
@@ -147,11 +147,11 @@ check('1. Una sola fichada histórica → Pendiente', () => {
   const original = [punch({ id: 1, hours: 10, minutes: 3, tipo: 'Entrada' })]
   const jornadas = buildJornadas(original, new Map(), { todayKey: '2024-01-09' })
   assert.equal(jornadas.length, 1)
-  assert.equal(jornadas[0].estado, JORNADA_ESTADO.pendiente)
-  assert.equal(jornadas[0].ingresoHora, formatTime(original[0].fechaHora))
-  assert.equal(jornadas[0].egresoHora, 'Pendiente')
+  assert.equal(jornadas[0].estado, JORNADA_ESTADO.incompleta)
+  assert.equal(jornadas[0].ingresoHora, formatFichadaHora(original[0].fechaHora))
+  assert.equal(jornadas[0].egresoHora, 'Sin salida')
   assert.equal(jornadas[0].fichadasIntermedias, 0)
-  assert.equal(jornadas[0].fichadasIntermediasLabel, 'Sin fichadas intermedias')
+  assert.equal(jornadas[0].fichadasIntermediasLabel, '—')
 })
 
 check('2. Dos fichadas históricas → primera y última', () => {
@@ -161,8 +161,8 @@ check('2. Dos fichadas históricas → primera y última', () => {
   ]
   const jornadas = buildJornadas(original, new Map(), { todayKey: '2024-01-09' })
   assert.equal(jornadas[0].estado, JORNADA_ESTADO.completa)
-  assert.equal(jornadas[0].ingresoHora, formatTime(original[0].fechaHora))
-  assert.equal(jornadas[0].egresoHora, formatTime(original[1].fechaHora))
+  assert.equal(jornadas[0].ingresoHora, formatFichadaHora(original[0].fechaHora))
+  assert.equal(jornadas[0].egresoHora, formatFichadaHora(original[1].fechaHora))
   assert.equal(jornadas[0].egresoDefinitivo, true)
   assert.equal(jornadas[0].fichadasIntermedias, 0)
 })
@@ -177,9 +177,9 @@ check('3. Cinco fichadas → primera, última y tres intermedias', () => {
   ]
   const jornadas = buildJornadas(original, new Map(), { todayKey: '2024-01-09' })
   assert.equal(jornadas[0].fichadasIntermedias, 3)
-  assert.equal(jornadas[0].fichadasIntermediasLabel, '3 fichadas intermedias')
-  assert.equal(jornadas[0].ingresoHora, formatTime(original[0].fechaHora))
-  assert.equal(jornadas[0].egresoHora, formatTime(original[4].fechaHora))
+  assert.equal(jornadas[0].fichadasIntermediasLabel, '3')
+  assert.equal(jornadas[0].ingresoHora, formatFichadaHora(original[0].fechaHora))
+  assert.equal(jornadas[0].egresoHora, formatFichadaHora(original[4].fechaHora))
   const intermedios = jornadas[0].movimientos.filter((item) => item.esMovimientoIntermedio)
   assert.equal(intermedios.length, 3)
 })
@@ -196,9 +196,10 @@ check('4. Dos fichadas separadas por 25 segundos → posible duplicado', () => {
   assert.match(annotated[1].observacionLabel, /25 segundos después/)
 
   const jornadas = buildJornadas(original, new Map(), { todayKey: '2024-01-09' })
-  assert.equal(jornadas[0].validos.length, 1)
-  assert.equal(jornadas[0].estado, JORNADA_ESTADO.pendiente)
+  assert.equal(jornadas[0].validos.length, 2)
+  assert.equal(jornadas[0].estado, JORNADA_ESTADO.incompleta)
   assert.equal(jornadas[0].posiblesDuplicados, 1)
+  assert.equal(jornadas[0].advertencia, '1 posible duplicado')
 })
 
 check('5. Dos fichadas separadas por 61 segundos → movimientos distintos', () => {
@@ -225,7 +226,8 @@ check('6. Tres fichadas consecutivas dentro de 60 segundos → un grupo', () => 
     new Map(),
     { todayKey: '2024-01-09' },
   )
-  assert.equal(jornadas[0].validos.length, 1)
+  assert.equal(jornadas[0].validos.length, 3)
+  assert.equal(jornadas[0].estado, JORNADA_ESTADO.incompleta)
   assert.equal(jornadas[0].posiblesDuplicados, 2)
   assert.equal(jornadas[0].movimientos.length, 3)
 })
@@ -263,11 +265,11 @@ check('9. Jornada del día actual → En curso', () => {
       punch({ id: 2, hours: 13, minutes: 0, tipo: 'Salida' }),
     ],
     new Map(),
-    { todayKey: '2024-01-08' },
+    { todayKey: '2024-01-08', now: '2024-01-09T03:00:00Z' },
   )
-  assert.equal(jornadas[0].estado, JORNADA_ESTADO.enCurso)
-  assert.equal(jornadas[0].egresoDefinitivo, false)
-  assert.match(jornadas[0].egresoHora, /última disponible/)
+  assert.equal(jornadas[0].estado, JORNADA_ESTADO.completa)
+  assert.equal(jornadas[0].egresoDefinitivo, true)
+  assert.equal(jornadas[0].egresoHora.includes('última disponible'), false)
   assert.equal(jornadas[0].egresoHora.includes('18:00'), false)
 })
 
@@ -307,8 +309,8 @@ check('11. Exportación de jornadas incluye el cálculo', () => {
   assert.equal(rows[0][6], '1')
   assert.equal(rows[0][7], '0')
   assert.equal(rows[0][8], JORNADA_ESTADO.completa)
-  assert.equal(rows[0][4], formatTime(original[0].fechaHora))
-  assert.equal(rows[0][5], formatTime(original[2].fechaHora))
+  assert.equal(rows[0][4], formatFichadaHora(original[0].fechaHora))
+  assert.equal(rows[0][5], formatFichadaHora(original[2].fechaHora))
 })
 
 check('12. Los filtros recalculan indicadores', () => {
@@ -319,7 +321,7 @@ check('12. Los filtros recalculan indicadores', () => {
   ])
   const all = summarizeMovimientosVista(annotated)
   assert.equal(all.total, 3)
-  assert.equal(all.entradas, 2)
+  assert.equal(all.entradas, 1)
   assert.equal(all.salidas, 1)
   assert.equal(all.posiblesDuplicados, 1)
 
@@ -334,6 +336,8 @@ check('12. Los filtros recalculan indicadores', () => {
   const jornadaTotals = summarizeJornadasVista(jornadas)
   assert.equal(jornadaTotals.total, 1)
   assert.equal(jornadaTotals.completas, 1)
+  assert.equal(jornadaTotals.revisar, 0)
+  assert.equal(jornadas[0].advertencia, '1 posible duplicado')
 })
 
 check('13. Fechas locales sin desplazamiento UTC', () => {
@@ -412,14 +416,14 @@ check('El horario previsto no se usa como egreso', () => {
     { todayKey: '2024-01-09' },
   )
   assert.equal(jornadas[0].horarioPrevisto.includes('18:00') || jornadas[0].horarioPrevisto.includes('09:00'), true)
-  assert.equal(jornadas[0].egresoHora, 'Pendiente')
+  assert.equal(jornadas[0].egresoHora, 'Sin salida')
 })
 
 check('El filtro de Tipo no recorta el resumen de jornadas', () => {
   const view = read('src/views/fichadas.js')
   assert.match(view, /filterMovimientosOriginales/)
-  assert.match(view, /buildJornadas\(fichadas/)
-  assert.match(view, /Tipo y Método filtran solo la auditoría/)
+  assert.match(view, /buildJornadas\(porMetodo/)
+  assert.match(view, /El resumen de jornadas se calcula sobre el conjunto de la API/)
   assert.equal(view.includes('tipo: filters.tipo === \'todos\' ? undefined : filters.tipo'), false)
 })
 
@@ -621,7 +625,7 @@ check('Duplicados 18. Una secuencia no se agrupa indefinidamente por encadenamie
   assert.equal(annotated[1].esPosibleDuplicado, true)
   assert.equal(annotated[2].esPosibleDuplicado, false)
   const jornadas = buildJornadas(original, new Map(), { todayKey: '2024-01-09' })
-  assert.equal(jornadas[0].validos.length, 2)
+  assert.equal(jornadas[0].validos.length, 3)
   assert.equal(jornadas[0].posiblesDuplicados, 1)
   assert.equal(read('src/utils/movimientos.js').includes('Math.round'), false)
 })
@@ -677,8 +681,8 @@ check('Fichadas limpia textos permanentes y usa tooltips accesibles', () => {
   assert.equal(jornadas.includes('El horario previsto es el horario actual del empleado, no un historial de la fecha de la fichada.'), false)
   assert.equal(jornadas.includes('Las jornadas que atraviesan medianoche pueden requerir una regla adicional'), false)
   assert.match(columns, /Muestra las fichadas informadas por el lector/)
-  assert.match(columns, /El ingreso y el egreso se calculan/)
-  assert.match(columns, /Tipo y Método se aplican a los movimientos originales/)
+  assert.match(columns, /La primera fichada del día se interpreta como entrada/)
+  assert.match(columns, /El tipo filtra la clasificación del día/)
 })
 
 check('Tooltip de movimiento intermedio accesible', () => {
@@ -784,11 +788,9 @@ check('CSV con subconjunto de columnas visibles', () => {
 check('Exportación usa filtros, ordenamiento y todas las páginas', () => {
   const filtered = filterMovimientosOriginales(
     annotateMovimientos([
-      punch({ id: 1, hours: 8, minutes: 0, tipo: 'Entrada' }),
-      punch({ id: 2, hours: 9, minutes: 0, tipo: 'Salida' }),
-      punch({ id: 3, hours: 10, minutes: 0, tipo: 'Entrada' }),
-      punch({ id: 4, hours: 11, minutes: 0, tipo: 'Salida' }),
-      punch({ id: 5, hours: 12, minutes: 0, tipo: 'Entrada' }),
+      punch({ id: 1, day: 8, hours: 8, minutes: 0, tipo: 'Salida' }),
+      punch({ id: 2, day: 9, hours: 8, minutes: 0, tipo: 'Salida' }),
+      punch({ id: 3, day: 10, hours: 8, minutes: 0, tipo: 'Salida' }),
     ]),
     { tipo: 'Entrada', metodo: 'todos' },
   )

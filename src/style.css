@@ -335,6 +335,28 @@
       transform: none;
     }
   }
+
+  .dept-admin-scroll {
+    scrollbar-color: var(--color-slate-400) transparent;
+    scrollbar-width: thin;
+  }
+
+  html.dark .dept-admin-scroll {
+    scrollbar-color: var(--color-slate-500) transparent;
+  }
+
+  .dept-admin-scroll::-webkit-scrollbar {
+    width: 0.5rem;
+  }
+
+  .dept-admin-scroll::-webkit-scrollbar-thumb {
+    background: var(--color-slate-400);
+    border-radius: 999px;
+  }
+
+  html.dark .dept-admin-scroll::-webkit-scrollbar-thumb {
+    background: var(--color-slate-500);
+  }
 }
 
 .enrolar-huella-panel {

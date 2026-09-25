@@ -1,6 +1,7 @@
 import { FICHADAS_LIMITE } from './fichadas.js'
 import { puedeListarUsuarios } from '../config/administracion.js'
-import { esTipoEntrada, esTipoSalida, todayDateKey } from '../utils/format.js'
+import { todayDateKey } from '../utils/format.js'
+import { JORNADA_CLASIFICACION, MOVIMIENTO_VISUAL, clasificarFichadas } from '../utils/movimientos.js'
 import { exclusiveHastaIso, startOfDayIso } from '../utils/period.js'
 import { buildEmpleadoAlertas } from '../utils/empleado-alerts.js'
 import { isSuperadmin } from '../config/roles.js'
@@ -20,16 +21,23 @@ function sortFichadasByNewest(items) {
   })
 }
 
-export function buildDashboardData(empleados = [], fichadasHoy = []) {
+export function buildDashboardData(empleados = [], fichadasHoy = [], { now = new Date() } = {}) {
   const listaEmpleados = Array.isArray(empleados) ? empleados : []
   const listaFichadas = Array.isArray(fichadasHoy) ? fichadasHoy : []
+  const horarioByEmpleado = new Map(listaEmpleados.map((empleado) => [Number(empleado.id), empleado.horario ?? '']))
+  const clasificadas = clasificarFichadas(listaFichadas, { now, horarioByEmpleado })
 
   return {
     empleados: listaEmpleados,
     empleadosActivos: listaEmpleados.length,
     fichadasHoy: listaFichadas.length,
-    entradas: listaFichadas.filter((item) => esTipoEntrada(item.tipo)).length,
-    salidas: listaFichadas.filter((item) => esTipoSalida(item.tipo)).length,
+    entradas: clasificadas.filter((item) => item.movimientoVisual === MOVIMIENTO_VISUAL.entrada && !item.esPosibleDuplicado).length,
+    salidas: clasificadas.filter(
+      (item) =>
+        item.movimientoVisual === MOVIMIENTO_VISUAL.salida &&
+        item.jornadaEstado === JORNADA_CLASIFICACION.completa &&
+        !item.esPosibleDuplicado,
+    ).length,
     ultimasFichadas: sortFichadasByNewest(listaFichadas),
     alcanzoLimite: listaFichadas.length >= FICHADAS_LIMITE,
     alertas: buildEmpleadoAlertas(listaEmpleados),

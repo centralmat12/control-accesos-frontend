@@ -28,9 +28,9 @@
  * - POST /api/empresas  → SoloSuperadmin
  * - POST /api/sucursales → SoloSuperadmin + X-Empresa-Id
  * - GET/PUT /api/sucursales → PerteneceAUsuario (JWT empresa_id o X-Empresa-Id de SuperAdmin)
- * - GET/POST /api/departamentos → [Authorize] token_use=web (DefaultPolicy).
- *   POST valida PerteneceAUsuario sobre Sucursal.EmpresaId (no SoloSuperadmin).
- *   SuperAdmin: X-Empresa-Id; ADMIN: claim empresa_id.
+ * - GET /api/departamentos → PuedeLeerDepartamentos (SuperAdmin, ADMIN, RRHH, token_use=web).
+ *   POST/PUT/DELETE → PuedeAdministrarDepartamentos (SuperAdmin, ADMIN).
+ *   La empresa sigue saliendo del JWT o de X-Empresa-Id para SuperAdmin.
  *   El frontend no ofrece alta de departamentos a RRHH (solo seleccionar existentes).
  * - GET/POST /api/agentes, GET /api/agentes/{id}, POST /api/agentes/{id}/rotar-secret,
  *   PATCH /api/agentes/{id}/desactivar → SoloSuperadmin (token_use=web) en la API actual.

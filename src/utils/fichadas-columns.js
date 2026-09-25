@@ -21,9 +21,9 @@ export const JORNADAS_COLUMN_CATALOG = [
   { id: 'legajo', label: 'Legajo', required: false },
   { id: 'fecha', label: 'Fecha', required: true },
   { id: 'horarioPrevisto', label: 'Horario previsto', required: false },
-  { id: 'ingreso', label: 'Ingreso', required: true },
-  { id: 'egreso', label: 'Egreso', required: false },
-  { id: 'intermedias', label: 'Fichadas intermedias', required: false },
+  { id: 'ingreso', label: 'Primera fichada', required: true },
+  { id: 'egreso', label: 'Última fichada', required: false },
+  { id: 'intermedias', label: 'Intermedias', required: false },
   { id: 'estado', label: 'Estado', required: true },
   { id: 'detalle', label: 'Detalle', required: false },
 ]
@@ -71,10 +71,13 @@ export const FICHADAS_COLUMNS_INFO_TOOLTIP = {
 export const FICHADAS_MOVIMIENTOS_TAB_TOOLTIP = 'Muestra las fichadas informadas por el lector biometrico.'
 
 export const FICHADAS_JORNADAS_TAB_TOOLTIP =
-  'El ingreso y el egreso se calculan con la primera y la última fichada válida del día. El horario mostrado corresponde a la asignación actual del empleado.'
+  'La primera fichada del día se interpreta como entrada, la última como salida y las restantes como movimientos intermedios. Un turno que cruza la medianoche necesita otra regla.'
+
+export const FICHADAS_TIMELINE_TAB_TOOLTIP =
+  'La barra representa la permanencia estimada entre la primera y la última fichada.'
 
 export const FICHADAS_TIPO_METODO_TOOLTIP =
-  'Tipo y Método se aplican a los movimientos originales. El Resumen de jornadas conserva el ingreso y egreso calculados.'
+  'El tipo filtra la clasificación del día, después de reunir todas las fichadas del período. El método filtra el registro original.'
 
 export function allColumnIds(view) {
   return columnCatalog(view).map((column) => column.id)
@@ -180,9 +183,9 @@ export const JORNADAS_EXPORT_HEADERS = [
   'Legajo',
   'Fecha',
   'Horario previsto',
-  'Ingreso',
-  'Egreso calculado',
-  'Fichadas intermedias',
+  'Primera fichada',
+  'Última fichada',
+  'Intermedias',
   'Posibles duplicados',
   'Estado',
 ]
@@ -192,9 +195,9 @@ export const JORNADAS_PRINT_HEADERS = [
   'Legajo',
   'Fecha',
   'Horario previsto',
-  'Ingreso — primera fichada',
-  'Egreso — última fichada',
-  'Fichadas intermedias',
+  'Primera fichada',
+  'Última fichada',
+  'Intermedias',
   'Posibles duplicados',
   'Estado',
 ]

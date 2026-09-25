@@ -93,6 +93,19 @@ export function formatDashboardLastUpdate(value, now = new Date()) {
   return `Última actualización: ${dayLabel}, ${time}`
 }
 
+export function formatFichadaHora(value) {
+  const key = fichadaSortKey(value)
+  const match = key.match(/T(\d{2}):(\d{2})/)
+  return match ? `${match[1]}:${match[2]}` : ''
+}
+
+export function formatFichadaFecha(value) {
+  const raw = String(value ?? '').trim()
+  const key = /^\d{4}-\d{2}-\d{2}$/.test(raw) ? raw : fichadaDateKey(value)
+  const match = key.match(/^(\d{4})-(\d{2})-(\d{2})$/)
+  return match ? `${match[3]}/${match[2]}/${match[1]}` : ''
+}
+
 export function formatClockTime(value = new Date()) {
   const date = parseApiLocalDate(value)
   if (!date) return ''
@@ -112,6 +125,94 @@ export function toDateKey(value) {
   const month = String(date.getMonth() + 1).padStart(2, '0')
   const day = String(date.getDate()).padStart(2, '0')
   return `${year}-${month}-${day}`
+}
+
+/** Calendario de fichadas. No usa la zona del navegador. */
+export const FICHADA_TIME_ZONE = 'America/Argentina/Buenos_Aires'
+
+const FICHADA_ZONED_RE = /(?:Z|[+-]\d{2}:\d{2})$/i
+const FICHADA_NAIVE_RE = /^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})(?::(\d{2}))?/
+
+function zoneDateParts(date, timeZone) {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hourCycle: 'h23',
+  }).formatToParts(date)
+  const read = (type) => parts.find((part) => part.type === type)?.value ?? ''
+  return {
+    year: read('year'),
+    month: read('month'),
+    day: read('day'),
+    hour: read('hour'),
+    minute: read('minute'),
+    second: read('second'),
+  }
+}
+
+/**
+ * Fecha calendario de una fichada en America/Argentina/Buenos_Aires.
+ * Un instante con zona se convierte. Un reloj sin zona se toma como hora local de esa zona.
+ */
+export function fichadaDateKey(value, timeZone = FICHADA_TIME_ZONE) {
+  if (value instanceof Date) {
+    if (Number.isNaN(value.getTime())) return ''
+    const parts = zoneDateParts(value, timeZone)
+    return `${parts.year}-${parts.month}-${parts.day}`
+  }
+
+  const text = String(value ?? '').trim()
+  if (!text) return ''
+
+  if (FICHADA_ZONED_RE.test(text)) {
+    const date = new Date(text)
+    if (Number.isNaN(date.getTime())) return ''
+    const parts = zoneDateParts(date, timeZone)
+    return `${parts.year}-${parts.month}-${parts.day}`
+  }
+
+  const naive = text.match(FICHADA_NAIVE_RE)
+  if (naive) return `${naive[1]}-${naive[2]}-${naive[3]}`
+
+  const date = new Date(text)
+  if (Number.isNaN(date.getTime())) return ''
+  const parts = zoneDateParts(date, timeZone)
+  return `${parts.year}-${parts.month}-${parts.day}`
+}
+
+/** Clave ordenable de reloj en la zona de fichadas. */
+export function fichadaSortKey(value, timeZone = FICHADA_TIME_ZONE) {
+  if (value instanceof Date) {
+    if (Number.isNaN(value.getTime())) return ''
+    const parts = zoneDateParts(value, timeZone)
+    return `${parts.year}-${parts.month}-${parts.day}T${parts.hour}:${parts.minute}:${parts.second}`
+  }
+
+  const text = String(value ?? '').trim()
+  if (!text) return ''
+
+  if (FICHADA_ZONED_RE.test(text)) {
+    const date = new Date(text)
+    if (Number.isNaN(date.getTime())) return ''
+    const parts = zoneDateParts(date, timeZone)
+    return `${parts.year}-${parts.month}-${parts.day}T${parts.hour}:${parts.minute}:${parts.second}`
+  }
+
+  const naive = text.match(FICHADA_NAIVE_RE)
+  if (naive) {
+    const second = naive[6] ?? '00'
+    return `${naive[1]}-${naive[2]}-${naive[3]}T${naive[4]}:${naive[5]}:${second}`
+  }
+
+  const date = new Date(text)
+  if (Number.isNaN(date.getTime())) return ''
+  const parts = zoneDateParts(date, timeZone)
+  return `${parts.year}-${parts.month}-${parts.day}T${parts.hour}:${parts.minute}:${parts.second}`
 }
 
 export function todayDateKey() {
@@ -169,9 +270,15 @@ export function esMetodoBiometrico(metodo) {
   return normalizarFiltro(metodo) === 'biometrico'
 }
 
+export function esTipoIntermedio(tipo) {
+  const value = normalizarFiltro(tipo)
+  return value === 'movimiento intermedio' || value === 'intermedio'
+}
+
 export function displayTipoLabel(tipo) {
   if (esTipoEntrada(tipo)) return 'Entrada'
   if (esTipoSalida(tipo)) return 'Salida'
+  if (esTipoIntermedio(tipo)) return 'Movimiento intermedio'
   return String(tipo ?? '').trim()
 }
 

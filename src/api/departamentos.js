@@ -4,8 +4,8 @@
  * GET /api/departamentos — scoped por EmpresaId del JWT / X-Empresa-Id.
  * La API no acepta sucursalId como query; cada ítem trae sucursalId y se filtra en el cliente.
  * POST /api/departamentos — modelo Departamento: nombre, sucursalId.
- * Autorización: [Authorize] (token_use=web) + PerteneceAUsuario(sucursal.EmpresaId).
- * SuperAdmin: X-Empresa-Id; ADMIN/RRHH: claim empresa_id. No hay policy SoloSuperadmin.
+ * Autorización de lectura: PuedeLeerDepartamentos (SuperAdmin, ADMIN, RRHH, token_use=web).
+ * Escritura: PuedeAdministrarDepartamentos (SuperAdmin, ADMIN). El listado sigue acotado a la empresa.
  */
 import { puedeCrearDepartamentos } from '../config/administracion.js'
 import { pick } from '../utils/pick.js'
@@ -30,11 +30,30 @@ export function mapDepartamento(item) {
 
   const sucursal = nestedSucursal(item)
 
-  return {
+  const mapped = {
     id,
     nombre: String(pick(item, 'nombre', 'Nombre') ?? '').trim(),
     sucursalId: parseId(pick(item, 'sucursalId', 'SucursalId')) ?? parseId(pick(sucursal, 'id', 'Id')),
+    sucursalNombre: String(
+      pick(item, 'sucursalNombre', 'SucursalNombre') ?? pick(sucursal, 'nombre', 'Nombre') ?? '',
+    ).trim(),
   }
+
+  const cantidadEmpleados = parseCount(
+    pick(item, 'cantidadEmpleadosAsignados', 'CantidadEmpleadosAsignados', 'cantidadEmpleados', 'CantidadEmpleados'),
+  )
+  const empleadosActivos = parseCount(pick(item, 'empleadosActivos', 'EmpleadosActivos'))
+  const empleadosInactivos = parseCount(pick(item, 'empleadosInactivos', 'EmpleadosInactivos'))
+  if (cantidadEmpleados != null) mapped.cantidadEmpleados = cantidadEmpleados
+  if (empleadosActivos != null) mapped.empleadosActivos = empleadosActivos
+  if (empleadosInactivos != null) mapped.empleadosInactivos = empleadosInactivos
+  return mapped
+}
+
+function parseCount(value) {
+  if (value == null || value === '') return null
+  const count = Number(value)
+  return Number.isInteger(count) && count >= 0 ? count : null
 }
 
 function normalizeDepartamentos(payload) {
@@ -97,19 +116,64 @@ export function departamentoOptionLabel(item, { sucursalNames, duplicateName = f
   return `${base} (${item.id})`
 }
 
+export const MENSAJE_DEPARTAMENTOS_401 = 'La sesión venció. Iniciá sesión nuevamente.'
+export const MENSAJE_DEPARTAMENTOS_403 = 'No tenés permiso para consultar los departamentos.'
+export const MENSAJE_DEPARTAMENTOS_CARGA = 'No se pudieron cargar los departamentos.'
+
+let inflightDepartamentos = null
+let ultimoAvisoCarga = { message: '', at: 0 }
+
+export function mensajeCargaDepartamentos(error) {
+  if (error?.status === 401) return MENSAJE_DEPARTAMENTOS_401
+  if (error?.status === 403) return MENSAJE_DEPARTAMENTOS_403
+  return MENSAJE_DEPARTAMENTOS_CARGA
+}
+
+export function notifyDepartamentosLoadError(notify, error) {
+  const message = mensajeCargaDepartamentos(error)
+  const now = Date.now()
+  if (message === ultimoAvisoCarga.message && now - ultimoAvisoCarga.at < 2000) return
+  ultimoAvisoCarga = { message, at: now }
+  notify?.({ message, tone: 'error' })
+}
+
 export async function getDepartamentos() {
-  const { url, response } = await apiFetch('/api/departamentos', {
-    missingAuthMessage: 'No hay sesión activa. Iniciá sesión para consultar departamentos.',
-    logLabel: 'Departamentos',
-  })
+  if (!inflightDepartamentos) {
+    inflightDepartamentos = fetchDepartamentos().finally(() => {
+      inflightDepartamentos = null
+    })
+  }
+  return inflightDepartamentos
+}
+
+async function fetchDepartamentos() {
+  let url = '/api/departamentos'
+  let response
+  try {
+    const result = await apiFetch('/api/departamentos', {
+      missingAuthMessage: MENSAJE_DEPARTAMENTOS_401,
+      logLabel: 'Departamentos',
+    })
+    url = result.url
+    response = result.response
+  } catch (error) {
+    if (error?.status === 401) throw createApiError(MENSAJE_DEPARTAMENTOS_401, 401)
+    console.error('Departamentos: no se pudo consultar el listado', { url, status: error?.status || 0 })
+    throw createApiError(MENSAJE_DEPARTAMENTOS_CARGA, error?.status || 0)
+  }
+
+  if (response.status === 401) {
+    throw createApiError(MENSAJE_DEPARTAMENTOS_401, 401)
+  }
 
   if (response.status === 403) {
-    throw new Error('No tenés permiso para ver los departamentos.')
+    console.error('Departamentos: lectura HTTP no exitosa', { url, status: response.status })
+    throw createApiError(MENSAJE_DEPARTAMENTOS_403, 403)
   }
 
   if (!response.ok) {
     console.error('Departamentos: respuesta HTTP no exitosa', { url, status: response.status })
-    throw new Error(await readErrorMessage(response, `No se pudieron cargar los departamentos (${response.status}).`))
+    throw createApiError(MENSAJE_DEPARTAMENTOS_CARGA, response.status)
   }
 
   return normalizeDepartamentos(await response.json())
@@ -149,6 +213,8 @@ export function validateDepartamentoAlta({ nombre, sucursalId } = {}) {
   }
 }
 
+const MENSAJE_SIN_PERMISO_ADMIN = 'No tenés permiso para administrar departamentos.'
+
 function looksLikeDuplicateDepartamento(message) {
   return /duplicate|duplicad|unique|1062|nombre.*sucursal/i.test(String(message ?? ''))
 }
@@ -166,7 +232,7 @@ export async function createDepartamento({ nombre, sucursalId, empresaId } = {})
 
   const empresa = parseId(empresaId) ?? getOperativeEmpresaId(getCurrentUser())
   if (!puedeCrearDepartamentos(getCurrentUser(), empresa)) {
-    throw createApiError('No tenés permiso para crear departamentos en esta empresa.', 403)
+    throw createApiError(MENSAJE_SIN_PERMISO_ADMIN, 403)
   }
 
   const dto = {
@@ -184,7 +250,7 @@ export async function createDepartamento({ nombre, sucursalId, empresaId } = {})
   })
 
   if (response.status === 403) {
-    throw createApiError('No tenés permiso para crear departamentos en esta sucursal.', 403)
+    throw createApiError(MENSAJE_SIN_PERMISO_ADMIN, 403)
   }
 
   if (response.status === 400) {
@@ -218,4 +284,129 @@ export async function createDepartamento({ nombre, sucursalId, empresaId } = {})
   }
 
   return created
+}
+
+export const DEPARTAMENTO_ELIMINACION_BLOQUEADA =
+  'No se puede eliminar el departamento porque tiene empleados asignados. Reasigná esos empleados antes de eliminarlo.'
+
+export const MENSAJE_ELIMINACION_GENERICO = 'No se pudo eliminar el departamento. Intentá nuevamente.'
+
+function mensajeJson(payload) {
+  const message = payload?.mensaje ?? payload?.Mensaje
+  if (typeof message !== 'string') return ''
+  const text = message.replace(/\s+/g, ' ').trim()
+  if (!text || /^bad request$/i.test(text)) return ''
+  return text
+}
+
+export function validateDepartamentoNombre(nombre) {
+  const trimmed = normalizeDepartamentoNombre(nombre)
+  if (!trimmed) return 'Ingresá el nombre del departamento.'
+  if (trimmed.length > DEPARTAMENTO_NOMBRE_MAX) {
+    return `El nombre no puede superar ${DEPARTAMENTO_NOMBRE_MAX} caracteres.`
+  }
+  return ''
+}
+
+async function readJsonBody(response) {
+  try {
+    return JSON.parse(await response.clone().text())
+  } catch {
+    return null
+  }
+}
+
+/**
+ * PUT /api/departamentos/{id}. Body: { nombre, sucursalId }. 204 No Content.
+ * sucursalId es el original del departamento. La API todavía debe impedir
+ * por sí misma un cambio de sucursal durante un renombrado; este cliente no reemplaza esa validación.
+ * SuperAdmin y ADMIN. RRHH recibe 403.
+ */
+export async function updateDepartamento({ id, nombre, sucursalId, empresaId } = {}) {
+  const departamentoId = parseId(id)
+  const sucursalOriginalId = parseId(sucursalId)
+  const error = validateDepartamentoNombre(nombre)
+  if (!departamentoId) throw createApiError('No se encontró el departamento.', 404)
+  if (!sucursalOriginalId) throw createApiError('No se encontró la sucursal del departamento.', 400)
+  if (error) throw createApiError(error, 400)
+
+  const empresa = parseId(empresaId) ?? getOperativeEmpresaId(getCurrentUser())
+  if (!puedeCrearDepartamentos(getCurrentUser(), empresa)) {
+    throw createApiError(MENSAJE_SIN_PERMISO_ADMIN, 403)
+  }
+
+  const { url, response } = await apiFetch(`/api/departamentos/${departamentoId}`, {
+    method: 'PUT',
+    empresaId: empresa,
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      nombre: normalizeDepartamentoNombre(nombre),
+      sucursalId: sucursalOriginalId,
+    }),
+    missingAuthMessage: 'No hay sesión activa. Iniciá sesión para editar departamentos.',
+    logLabel: 'Departamentos',
+  })
+
+  if (response.status === 403) {
+    throw createApiError(MENSAJE_SIN_PERMISO_ADMIN, 403)
+  }
+  if (response.status === 404) {
+    throw createApiError('El departamento ya no existe.', 404)
+  }
+  if (response.status === 400) {
+    throw createApiError(await readErrorMessage(response, 'Los datos del departamento no son válidos.'), 400)
+  }
+  if (response.status === 409) {
+    throw createApiError(await readErrorMessage(response, 'Ya existe un departamento con ese nombre en la sucursal.'), 409)
+  }
+  if (response.status === 204) {
+    return { id: departamentoId, nombre: normalizeDepartamentoNombre(nombre) }
+  }
+  if (!response.ok) {
+    console.error('Departamentos: edición HTTP no exitosa', { url, status: response.status })
+    throw createApiError(await readErrorMessage(response, `No se pudo editar el departamento (${response.status}).`), response.status)
+  }
+
+  const updated = mapDepartamento(await response.json())
+  if (!updated) throw createApiError('La API editó el departamento pero devolvió una respuesta incompleta.', 500)
+  return updated
+}
+
+/**
+ * DELETE /api/departamentos/{id}. 204 si no hay empleados. 409 si hay asignaciones.
+ */
+export async function deleteDepartamento({ id, empresaId } = {}) {
+  const departamentoId = parseId(id)
+  if (!departamentoId) throw createApiError('No se encontró el departamento.', 404)
+
+  const empresa = parseId(empresaId) ?? getOperativeEmpresaId(getCurrentUser())
+  if (!puedeCrearDepartamentos(getCurrentUser(), empresa)) {
+    throw createApiError(MENSAJE_SIN_PERMISO_ADMIN, 403)
+  }
+
+  const { url, response } = await apiFetch(`/api/departamentos/${departamentoId}`, {
+    method: 'DELETE',
+    empresaId: empresa,
+    missingAuthMessage: 'No hay sesión activa. Iniciá sesión para eliminar departamentos.',
+    logLabel: 'Departamentos',
+  })
+
+  if (response.status === 204) return
+
+  const payload = await readJsonBody(response)
+  const mensaje = mensajeJson(payload)
+
+  if (response.status === 409) {
+    throw createApiError(mensaje || DEPARTAMENTO_ELIMINACION_BLOQUEADA, 409)
+  }
+
+  if (response.status === 403) {
+    throw createApiError(MENSAJE_SIN_PERMISO_ADMIN, 403)
+  }
+  if (response.status === 404) {
+    throw createApiError('El departamento ya no existe o fue eliminado.', 404)
+  }
+
+  console.error('Departamentos: eliminación HTTP no exitosa', { url, status: response.status })
+  throw createApiError(mensaje || MENSAJE_ELIMINACION_GENERICO, response.status)
 }
