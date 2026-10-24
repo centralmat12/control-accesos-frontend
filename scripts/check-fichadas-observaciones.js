@@ -444,8 +444,9 @@ check('Comentario vacío, largo, HTML e intermedia no cambian Completa', () => {
   assert.match(printed, /landscape/)
   const built = buildJornadas([
     punchNote(1, '08:00:00', 'FichajeIncorrecto', 'Dos veces.'),
-    { id: 2, empleadoId: 1, empleado: 'Agustín Gauna', fechaHora: '2026-09-23T17:00:00', tipo: 'Salida' },
-  ], new Map(), { now: new Date('2026-09-23T18:00:00') })
+    punchNote(3, '13:02:00', 'Otro', 'Marca intermedia.', 'Intermedia'),
+    { id: 2, empleadoId: 1, empleado: 'Agustín Gauna', fechaHora: '2026-09-23T17:01:01', tipo: 'Salida' },
+  ], new Map(), { now: new Date('2026-09-23T21:30:00Z') })
   assert.equal(built[0].estado, JORNADA_ESTADO.completa)
   assert.match(formatObservacionesPdf(built[0]), /08:00 — Fichaje incorrecto: Dos veces\./)
   assert.equal(formatObservacionesPdf({ movimientos: [] }), '—')
