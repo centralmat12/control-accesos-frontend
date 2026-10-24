@@ -44,6 +44,8 @@ import {
   ADMIN_TOOLBAR_BUTTON_CLASS,
 } from '../components/admin-panel-layout.js'
 import { createDepartamentosAdmin } from '../components/departamentos-admin.js'
+import { createTurnosPanel } from '../components/turnos-panel.js'
+import { puedeAdministrarTurnos } from '../config/labor-access.js'
 import { iconBuilding } from '../components/icons.js'
 import { BTN_SECONDARY_CLASS } from '../components/button-styles.js'
 import { pageHeadingMarkup } from '../components/page-heading.js'
@@ -141,6 +143,7 @@ const SECTIONS = {
   usuarios: 'usuarios',
   empresas: 'empresas',
   departamentos: 'departamentos',
+  turnos: 'turnos',
 }
 
 function readAdminTab() {
@@ -237,6 +240,13 @@ export async function renderAdministracion(container) {
       </button>`
           : ''
       }
+      ${
+        puedeAdministrarTurnos(user)
+          ? `<button type="button" data-section="${SECTIONS.turnos}" role="tab" class="inline-flex rounded-lg border px-3 py-1.5 text-sm font-medium">
+        Turnos de trabajo
+      </button>`
+          : ''
+      }
     </div>
     <div id="admin-panel"></div>
   `
@@ -298,7 +308,8 @@ export async function renderAdministracion(container) {
   function resolveSection(next) {
     if (next === SECTIONS.empresas && !canViewEmpresasSection) return SECTIONS.usuarios
     if (next === SECTIONS.departamentos && !canViewDepartamentosSection) return SECTIONS.usuarios
-    if (next === SECTIONS.empresas || next === SECTIONS.departamentos) return next
+    if (next === SECTIONS.turnos && !puedeAdministrarTurnos(user)) return SECTIONS.usuarios
+    if (next === SECTIONS.empresas || next === SECTIONS.departamentos || next === SECTIONS.turnos) return next
     return SECTIONS.usuarios
   }
 
@@ -307,6 +318,7 @@ export async function renderAdministracion(container) {
     section = resolveSection(next)
     writeAdminTab(section)
     disposeDepartamentos()
+    disposeTurnos()
     if (section !== SECTIONS.empresas) {
       selectedEmpresa = null
       selectedSucursal = null
@@ -334,7 +346,23 @@ export async function renderAdministracion(container) {
     departamentosAdmin = null
   }
 
+  let turnosPanel = null
+
+  function disposeTurnos() {
+    turnosPanel = null
+  }
+
+  function renderTurnos() {
+    panel.replaceChildren()
+    turnosPanel = createTurnosPanel()
+    panel.append(turnosPanel)
+  }
+
   function renderPanel() {
+    if (section === SECTIONS.turnos && puedeAdministrarTurnos(user)) {
+      renderTurnos()
+      return
+    }
     if (section === SECTIONS.departamentos && canViewDepartamentosSection) {
       renderDepartamentos()
       return

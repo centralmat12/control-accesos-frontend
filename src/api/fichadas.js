@@ -9,7 +9,39 @@ import {
 import { pick } from '../utils/pick.js'
 import { apiFetch, createApiError, readErrorMessage } from './http.js'
 
-function mapFichada(item) {
+function readOptional(item, keys) {
+  if (!item || typeof item !== 'object') return undefined
+  for (const key of keys) {
+    if (Object.prototype.hasOwnProperty.call(item, key)) return item[key]
+  }
+  return undefined
+}
+
+function optionalBool(item, keys) {
+  const value = readOptional(item, keys)
+  if (value === undefined) return undefined
+  if (value === true) return true
+  if (value === false) return false
+  return null
+}
+
+function optionalText(item, keys) {
+  const value = readOptional(item, keys)
+  if (value === undefined) return undefined
+  if (value == null) return null
+  const text = String(value).trim()
+  return text || null
+}
+
+function optionalNumber(item, keys) {
+  const value = readOptional(item, keys)
+  if (value === undefined) return undefined
+  if (value == null || value === '') return null
+  const number = Number(value)
+  return Number.isFinite(number) ? number : null
+}
+
+export function mapFichada(item) {
   const nombre = pick(item, 'nombre', 'Nombre')
   const apellido = pick(item, 'apellido', 'Apellido')
   const empleado =
@@ -30,6 +62,9 @@ function mapFichada(item) {
     sucursal: pick(item, 'sucursal', 'Sucursal'),
     dispositivoId: pick(item, 'dispositivoId', 'DispositivoId'),
     dispositivo: pick(item, 'dispositivo', 'Dispositivo'),
+    esManual: optionalBool(item, ['esManual', 'EsManual']),
+    estado: optionalText(item, ['estado', 'Estado']),
+    minutosHastaCorte: optionalNumber(item, ['minutosHastaCorte', 'MinutosHastaCorte']),
     observacionHumana: mapFichadaObservacionFromItem(item),
   }
 }

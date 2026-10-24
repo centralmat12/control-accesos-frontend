@@ -365,4 +365,7 @@ export function logout() {
   clearEmpresaContexto({ silent: true })
   clearSession()
   clearActivityLogs()
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('ca:session-reset'))
+  }
 }

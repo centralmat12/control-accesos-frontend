@@ -145,6 +145,14 @@ function movimientoField(item, columnId, { forCsv }) {
       return displayMetodoLabel(item.metodo)
     case 'observacion':
       return item.observacionLabel ?? ''
+    case 'esManual':
+      if (item.esManual === true) return 'Sí'
+      if (item.esManual === false) return 'No'
+      return ''
+    case 'estadoFichada':
+      return item.estado ?? ''
+    case 'minutosHastaCorte':
+      return item.minutosHastaCorte == null ? '' : String(item.minutosHastaCorte)
     case 'observacionMotivo':
     case 'observacionDetalle':
       return observacionExportValue(item, columnId)
@@ -206,6 +214,22 @@ export function describeActiveFichadasFilters(filters = {}, empleadoLabel = '') 
   return parts.join(' · ')
 }
 
+export function optionalMetadataColumns(view, records) {
+  if (view !== 'movimientos') return []
+  const list = Array.isArray(records) ? records : []
+  const columns = []
+  if (list.some((item) => item?.esManual === true || item?.esManual === false)) {
+    columns.push({ id: 'esManual', label: 'Fichada manual' })
+  }
+  if (list.some((item) => typeof item?.estado === 'string' && item.estado)) {
+    columns.push({ id: 'estadoFichada', label: 'Estado informado' })
+  }
+  if (list.some((item) => Number.isFinite(item?.minutosHastaCorte))) {
+    columns.push({ id: 'minutosHastaCorte', label: 'Minutos hasta el corte' })
+  }
+  return columns
+}
+
 export function shouldPrintLandscape(columns = []) {
   if (columns.length >= 6) return true
   const width = columns.reduce((total, column) => total + String(column.label ?? column ?? '').length, 0)
@@ -241,9 +265,12 @@ export function buildFichadasExportSnapshot(selection, { mode = 'view' } = {}) {
   const records = Array.isArray(selection?.records) ? selection.records : []
   const baseColumns =
     mode === 'full' ? columnCatalog(view) : selectedCatalogColumns(view, selection?.columnIds ?? [])
-  const columns = shouldAppendObservacionExportColumns(view, records)
-    ? [...baseColumns, ...observacionExportColumns()]
-    : baseColumns
+  const columns = [
+    ...(shouldAppendObservacionExportColumns(view, records)
+      ? [...baseColumns, ...observacionExportColumns()]
+      : baseColumns),
+    ...optionalMetadataColumns(view, records),
+  ]
   const headers = columns.map((column) => columnExportLabel(view, column))
   const hasRecords = records.length > 0
   const hasColumns = columns.length > 0

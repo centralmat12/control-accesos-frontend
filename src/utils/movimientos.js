@@ -240,9 +240,10 @@ export function describeTipoInformado(tipo) {
 export function describeDetalleLinea(movimiento) {
   const hora = movimiento.fechaHora ? formatClockTime(movimiento.fechaHora) : '—'
   const tipo = describeTipoInformado(movimiento.tipo)
-  if (movimiento.esPosibleDuplicado) return `${hora} — ${tipo} · Posible duplicado`
-  if (movimiento.esMovimientoIntermedio) return `${hora} — ${tipo} · Movimiento intermedio`
-  return `${hora} — ${tipo}`
+  const manual = movimiento.esManual === true ? ' · Manual' : ''
+  if (movimiento.esPosibleDuplicado) return `${hora} — ${tipo} · Posible duplicado${manual}`
+  if (movimiento.esMovimientoIntermedio) return `${hora} — ${tipo} · Movimiento intermedio${manual}`
+  return `${hora} — ${tipo}${manual}`
 }
 
 export function matchesTipoFiltro(item, tipo) {

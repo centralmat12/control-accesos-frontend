@@ -36,6 +36,7 @@ import { refreshEnhancedSelect } from './dropdown.js'
 import { showToast } from './toast.js'
 import { bindTooltipRoot } from './tooltip.js'
 import { BTN_DANGER_CLASS, BTN_POSITIVE_CLASS, BTN_SECONDARY_CLASS } from './button-styles.js'
+import { mountHorarioLaboral, guardarAsignacionSiCorresponde, turnoAsignacionDesdeForm } from './horario-laboral.js'
 import {
   FORM_ERROR_CLASS,
   FORM_HELP_CLASS,
@@ -738,11 +739,16 @@ export function createEmpleadoForm({
     cancelButton.disabled = true
 
     const { horarioError: _ignored, categoria: _categoria, ...draft } = values
+    if (form.dataset.horarioLaboral === 'turno') {
+      draft.horario = form.dataset.horarioConservado || null
+    }
+    const turnoAsignacion = turnoAsignacionDesdeForm(form)
 
     try {
       await onSubmit({
         empresaId,
         ...draft,
+        ...(turnoAsignacion ? { turnoAsignacion } : {}),
       })
     } catch (error) {
       const message = error.message || 'No se pudieron guardar los cambios.'
@@ -836,6 +842,9 @@ export function createEmpleadoForm({
       avisarUnaVez(error.message || 'No se pudieron cargar las sucursales.')
     }
   })()
+
+  form.dataset.horarioConservado = canonicalHorario(initialValues?.horario) || ''
+  void mountHorarioLaboral(form, { empleadoId: initialValues?.id })
 
   return wrapper
 }
@@ -1098,16 +1107,23 @@ export function createEmpleadoRecord({
       onVerEmpleadosDepartamento,
       onDepartamentosChanged,
       onSubmit: async (draft) => {
-        const changes = diffEmpleadoFields(current, draft)
-        if (changes.length === 0) {
+        const { turnoAsignacion, ...empleadoDraft } = draft
+        const changes = diffEmpleadoFields(current, empleadoDraft)
+        if (changes.length === 0 && !turnoAsignacion) {
           throw new Error('No hay cambios pendientes.')
         }
 
-        const confirmed = await promptEmpleadoChangesConfirm(changes)
-        if (!confirmed) return
+        if (changes.length > 0) {
+          const confirmed = await promptEmpleadoChangesConfirm(changes)
+          if (!confirmed) return
+          const updated = await persistUpdate(current.id, buildEmpleadoPatchDto(current, empleadoDraft))
+          if (updated) current = updated
+        }
 
-        const updated = await persistUpdate(current.id, buildEmpleadoPatchDto(current, draft))
-        if (updated) current = updated
+        if (turnoAsignacion) {
+          await guardarAsignacionSiCorresponde(current.id, turnoAsignacion)
+        }
+
         onUpdated?.(current)
         showView()
       },

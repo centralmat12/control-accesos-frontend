@@ -19,6 +19,7 @@ import {
   createEmpleadoRecord,
   createReactivateConfirm,
 } from '../components/empleado-form.js'
+import { guardarAsignacionSiCorresponde } from '../components/horario-laboral.js'
 import { createEmpleadosTable, fullName } from '../components/empleados-table.js'
 import { createFeedbackState, createSelectEmpresaState } from '../components/feedback-state.js'
 import { createPagination } from '../components/pagination.js'
@@ -533,7 +534,11 @@ export async function renderEmpleados(container, { initialQuery, empleadoId, ope
       onDepartamentosChanged: loadDepartamentos,
       onCancel: () => closeActiveModal(),
       onSubmit: async (dto) => {
-        await createEmpleado(dto)
+        const { turnoAsignacion, ...empleado } = dto
+        const created = await createEmpleado(empleado)
+        if (turnoAsignacion && created?.id) {
+          await guardarAsignacionSiCorresponde(created.id, turnoAsignacion)
+        }
         closeActiveModal({ force: true })
         showToast({ message: 'Empleado creado correctamente.', tone: 'success' })
         await loadEmpleados()
