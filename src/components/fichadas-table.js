@@ -97,7 +97,7 @@ export function movimientoCellHtml(item, columnId, options = {}) {
     case 'tipo':
       return `<td class="${cellClass(columnId)}">${movimientoVisualBadge(item)}</td>`
     case 'metodo':
-      return `<td class="${cellClass(columnId)}">${metodoBadge(item.metodo)}</td>`
+      return `<td class="${cellClass(columnId)}">${metodoBadge(item.metodo)}${item.esManual === true ? ` ${badgeHtml('Manual', 'info')}` : ''}</td>`
     case 'observacion':
       return `<td class="${cellClass(columnId, 'max-w-0')}">${observacionCell(item, options)}</td>`
     default:

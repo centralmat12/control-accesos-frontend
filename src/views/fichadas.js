@@ -1,4 +1,9 @@
 import { getEmpleados } from '../api/empleados.js'
+import { getDepartamentos } from '../api/departamentos.js'
+import { getSucursales } from '../api/sucursales.js'
+import { createJornadasCalendarPanel } from '../components/jornadas-calendar-panel.js'
+import { createAlertasPanel } from '../components/jornadas-alertas-panel.js'
+import { createFichadaManualControl } from '../components/fichada-manual-panel.js'
 import { getCurrentUser } from '../api/auth.js'
 import { canLoadTenantData } from '../api/empresa-context.js'
 import { empresaDisplayName, getEmpresaActual } from '../api/empresas.js'
@@ -30,6 +35,15 @@ import {
   todayDateKey,
 } from '../utils/format.js'
 import { buildJornadas, summarizeJornadasVista } from '../utils/jornadas.js'
+import {
+  CLASSIFICATION_SOURCE,
+  applyClassificationDeclaration,
+  clasificarSegunFuente,
+  classificationSource,
+  construirJornadasSegunFuente,
+} from '../utils/classification-source.js'
+import { CAPABILITY, noteExtendedMetadata, resolveCapability } from '../api/capabilities.js'
+import { CLASIFICACION_JORNADA_AYUDA } from '../utils/movimientos.js'
 import {
   FICHADAS_JORNADAS_TAB_TOOLTIP,
   FICHADAS_MOVIMIENTOS_TAB_TOOLTIP,
@@ -64,7 +78,6 @@ export function resolveFichadasView(value) {
   return FICHADAS_VIEW_IDS[value] ?? 'timeline'
 }
 import {
-  CLASIFICACION_JORNADA_AYUDA,
   annotateMovimientos,
   filterMovimientosOriginales,
   matchesMetodoFiltro,
@@ -310,11 +323,13 @@ export async function renderFichadas(container, extras = {}) {
         <p id="fichadas-count" class="text-sm text-slate-500 dark:text-slate-400"></p>
       </div>
     </div>
+    <div id="fichadas-modules" class="flex flex-wrap items-center gap-2 border-b border-slate-200 px-3 py-2 dark:border-slate-700"></div>
     <p id="fichadas-legend" class="flex items-center gap-2 border-b border-slate-100 px-3 py-2 text-xs text-slate-500 dark:border-slate-800 dark:text-slate-400">
       <span id="fichadas-legend-text">${TIMELINE_LEGEND}</span>
       <button type="button" class="inline-flex h-6 w-6 items-center justify-center rounded-full text-slate-400 hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 dark:hover:bg-slate-800" data-tooltip="${TIMELINE_TOOLTIP}" aria-label="Cómo se interpreta la jornada">${iconInfo()}</button>
     </p>
     <p id="fichadas-limit-note" class="hidden border-b border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-200"></p>
+    <div id="fichadas-labor" class="hidden px-3 py-3"></div>
     <div id="fichadas-results" class="min-h-0"></div>
     <div id="fichadas-pagination" class="border-t border-slate-100 px-3 empty:hidden dark:border-slate-800"></div>
     </section>
@@ -480,12 +495,20 @@ export async function renderFichadas(container, extras = {}) {
     const porMetodo = error
       ? []
       : fichadas.filter((item) => matchesMetodoFiltro(item, filters.metodo))
-    const periodSet = annotateMovimientos(porMetodo, { now })
+    const periodSet = error
+      ? []
+      : classificationSource() === CLASSIFICATION_SOURCE.api
+        ? clasificarSegunFuente(porMetodo, { now })
+        : annotateMovimientos(porMetodo, { now })
     const movimientos = filterMovimientosOriginales(periodSet, {
       tipo: filters.tipo,
       metodo: 'todos',
     })
-    const jornadas = error ? [] : buildJornadas(porMetodo, empleadoById, { now })
+    const jornadas = error
+      ? []
+      : classificationSource() === CLASSIFICATION_SOURCE.api
+        ? construirJornadasSegunFuente(porMetodo, empleadoById, { now })
+        : buildJornadas(porMetodo, empleadoById, { now })
     return {
       error,
       periodSet,
@@ -752,6 +775,14 @@ export async function renderFichadas(container, extras = {}) {
         empresaLoaded = true
       }
       loaded = true
+      noteExtendedMetadata(fichadas)
+      try {
+        const declaration = await resolveCapability(CAPABILITY.fichadasServerClassification)
+        if (seq !== loadSeq) return
+        applyClassificationDeclaration(declaration.declaration, fichadas)
+      } catch {
+        applyClassificationDeclaration(null, fichadas)
+      }
       updateLimitNote()
       renderResults()
     } catch (error) {
@@ -799,6 +830,7 @@ export async function renderFichadas(container, extras = {}) {
   }
 
   function setView(nextView) {
+    closeLaborModule()
     activeView = nextView
     setTabStyles()
     columnPicker.close()
@@ -846,7 +878,13 @@ export async function renderFichadas(container, extras = {}) {
           ? await getFichadas(fichadasCompleteQuery())
           : fichadas
         const records =
-          activeView === 'jornadas' ? buildJornadas(raw, empleadoById) : annotateMovimientos(raw)
+          activeView === 'jornadas'
+            ? classificationSource() === CLASSIFICATION_SOURCE.api
+              ? construirJornadasSegunFuente(raw, empleadoById)
+              : buildJornadas(raw, empleadoById)
+            : classificationSource() === CLASSIFICATION_SOURCE.api
+              ? clasificarSegunFuente(raw)
+              : annotateMovimientos(raw)
         return buildFichadasCompleteSelection({
           view: activeView,
           records,
@@ -956,6 +994,69 @@ export async function renderFichadas(container, extras = {}) {
       )
     }
   })
+  const laborHost = view.querySelector('#fichadas-labor')
+  const modules = view.querySelector('#fichadas-modules')
+
+  function closeLaborModule() {
+    laborHost.classList.add('hidden')
+    laborHost.replaceChildren()
+    results.classList.remove('hidden')
+    paginationContainer.classList.remove('hidden')
+  }
+
+  async function openLabor(kind) {
+    laborHost.classList.remove('hidden')
+    results.classList.add('hidden')
+    paginationContainer.classList.add('hidden')
+    laborHost.replaceChildren()
+    const empleados = [...empleadoById.values()]
+    if (kind === 'alertas') {
+      const panel = createAlertasPanel({
+        empleados,
+        onRevisar: () => {
+          closeLaborModule()
+          setView('jornadas')
+        },
+      })
+      laborHost.append(panel.element)
+      return
+    }
+    let sucursales = []
+    let departamentos = []
+    try {
+      ;[sucursales, departamentos] = await Promise.all([getSucursales(), getDepartamentos()])
+    } catch {
+      sucursales = []
+      departamentos = []
+    }
+    if (!laborHost.isConnected) return
+    laborHost.append(createJornadasCalendarPanel({
+      empleados,
+      sucursales,
+      departamentos,
+      onRevisar: () => {
+        closeLaborModule()
+        setView('jornadas')
+      },
+    }))
+  }
+
+  const calendarButton = document.createElement('button')
+  calendarButton.type = 'button'
+  calendarButton.className = BTN_SECONDARY_CLASS
+  calendarButton.textContent = 'Calendario de jornadas'
+  calendarButton.addEventListener('click', () => openLabor('calendario'))
+  const alertsButton = document.createElement('button')
+  alertsButton.type = 'button'
+  alertsButton.className = BTN_SECONDARY_CLASS
+  alertsButton.textContent = 'Alertas de jornadas'
+  alertsButton.addEventListener('click', () => openLabor('alertas'))
+  modules.append(calendarButton, alertsButton)
+  const manualControl = createFichadaManualControl({
+    getEmpleados: () => [...empleadoById.values()],
+    onSaved: () => loadFichadas(),
+  })
+  if (manualControl) modules.append(manualControl)
   const tabs = [tabTimeline, tabJornadas, tabMovimientos]
   const tabViews = ['timeline', 'jornadas', 'movimientos']
   tabs.forEach((tab, index) => {

@@ -27,6 +27,7 @@ import { createRecentPunchesTable } from '../components/recent-punches-table.js'
 import { pageHeadingMarkup } from '../components/page-heading.js'
 import { createDashboardSkeleton } from '../components/skeleton.js'
 import { createStatCard } from '../components/stat-card.js'
+import { createJornadasPendientesIndicator } from '../components/jornadas-alertas-panel.js'
 import { iconClock, iconLogin, iconLogout, iconUsers } from '../components/icons.js'
 import {
   baseDatosStatus,
@@ -338,6 +339,7 @@ export function renderDashboard(container, { onNavigate } = {}) {
       cards.append(card)
     }
     statsCol.append(cards)
+    statsCol.append(createJornadasPendientesIndicator())
 
     if (data.alcanzoLimite) {
       const note = document.createElement('p')
