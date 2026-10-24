@@ -30,7 +30,7 @@ import {
 } from '../src/utils/fichadas-export.js'
 import { fichadasCsvExportMarkup } from '../src/components/fichadas-csv-export.js'
 import { buildFichadasPrintDocument } from '../src/components/fichadas-print.js'
-import { formatFichadaHora, formatTime, toDateKey } from '../src/utils/format.js'
+import { fichadaDateKey, formatFichadaHora, formatTime, toDateKey } from '../src/utils/format.js'
 import { buildJornadas, buildJornadasCsvRows, JORNADA_ESTADO, summarizeJornadasVista } from '../src/utils/jornadas.js'
 import {
   annotateMovimientos,
@@ -341,26 +341,47 @@ check('12. Los filtros recalculan indicadores', () => {
 })
 
 check('13. Fechas locales sin desplazamiento UTC', () => {
-  const utcMorning = new Date(Date.UTC(2024, 0, 9, 2, 30, 0))
-  const jornadas = buildJornadas(
-    [
-      {
-        id: 1,
-        empleadoId: 7,
-        empleado: 'Ana Pérez',
-        legajo: '100',
-        fechaHora: utcMorning.toISOString(),
-        tipo: 'Entrada',
-        metodo: 'Biometrico',
-      },
-    ],
-    new Map(),
-    { todayKey: '1999-01-01' },
-  )
-  assert.equal(jornadas[0].fecha, toDateKey(utcMorning))
-  const utcKey = utcMorning.toISOString().slice(0, 10)
-  if (toDateKey(utcMorning) !== utcKey) {
-    assert.notEqual(jornadas[0].fecha, utcKey)
+  const zonaAnterior = process.env.TZ
+  process.env.TZ = 'America/Argentina/Buenos_Aires'
+  try {
+    const sinZona = '2024-01-09T23:30:00'
+    const conZona = '2024-01-09T02:30:00Z'
+    const instanteUtc = new Date(conZona)
+    const fichada = {
+      id: 1,
+      empleadoId: 7,
+      empleado: 'Ana Pérez',
+      legajo: '100',
+      tipo: 'Entrada',
+      metodo: 'Biometrico',
+    }
+
+    assert.equal(instanteUtc.getFullYear(), 2024)
+    assert.equal(instanteUtc.getMonth(), 0)
+    assert.equal(instanteUtc.getDate(), 8)
+    assert.equal(instanteUtc.getHours(), 23)
+    assert.equal(instanteUtc.getMinutes(), 30)
+    assert.equal(fichadaDateKey(sinZona), '2024-01-09')
+    assert.equal(fichadaDateKey(conZona), '2024-01-08')
+    assert.equal(fichadaDateKey(instanteUtc), '2024-01-08')
+    assert.equal(instanteUtc.toISOString().slice(0, 10), '2024-01-09')
+
+    const desdeUtc = buildJornadas(
+      [{ ...fichada, fechaHora: conZona }],
+      new Map(),
+      { todayKey: '1999-01-01' },
+    )
+    const desdeArgentina = buildJornadas(
+      [{ ...fichada, id: 2, fechaHora: sinZona }],
+      new Map(),
+      { todayKey: '1999-01-01' },
+    )
+    assert.equal(desdeUtc[0].fecha, '2024-01-08')
+    assert.equal(desdeArgentina[0].fecha, '2024-01-09')
+    assert.notEqual(desdeUtc[0].fecha, instanteUtc.toISOString().slice(0, 10))
+  } finally {
+    if (zonaAnterior == null) delete process.env.TZ
+    else process.env.TZ = zonaAnterior
   }
 })
 
