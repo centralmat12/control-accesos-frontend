@@ -1,5 +1,6 @@
 import { displayMetodoLabel, escapeHtml, fichadaDateKey, fichadaSortKey, formatFichadaFecha, formatFichadaHora } from '../utils/format.js'
 import { JORNADA_ESTADO } from '../utils/jornadas.js'
+import { interpretarFichadaUnica } from '../utils/movimientos.js'
 import { FICHADAS_BODY_CLASS } from './fichadas-frame.js'
 import { indicadorObservacionesHtml, bindObservacionesJornada } from './jornada-observaciones.js'
 import { iconClock } from './icons.js'
@@ -210,7 +211,7 @@ function accessibleLabel(jornada, text) {
 
 export function createFichadasTimeline(
   jornadas,
-  { now = new Date(), includesToday = false, bodyClass = FICHADAS_BODY_CLASS, variant = 'full', franja = { mode: 'auto' } } = {},
+  { now = new Date(), includesToday = false, bodyClass = FICHADAS_BODY_CLASS, variant = 'full', franja = { mode: 'auto' }, onCompletarSalida = null, onCompletarEntrada = null, onAgregarFichada = null, puedeCompletar = null, puedeCompletarEntrada = null, puedeAgregar = null } = {},
 ) {
   clearNowTimer()
   const section = document.createElement('section')
@@ -260,31 +261,56 @@ export function createFichadasTimeline(
           ? { left: 0, width: 0 }
           : barGeometry(toAxis(text.start), toAxis(text.end ?? text.start), axis.start, axis.end)
       const planned = parseHorario(jornada.horarioPrevisto)
+      const previstoTip = planned ? `Horario previsto: ${clock(planned.start)}–${clock(planned.end)}` : ''
       const plan =
         planned == null
           ? ''
-          : `<span class="pointer-events-none absolute top-1/2 h-7 max-w-full -translate-y-1/2 rounded-md bg-slate-200/35 ring-1 ring-inset ring-slate-300/40 dark:bg-slate-700/25 dark:ring-slate-600/30" style="${axisSpan(percent(planned.start), Math.max(0, percent(planned.end) - percent(planned.start)), true)}"></span>`
+          : `<span class="absolute top-1/2 z-0 h-7 max-w-full -translate-y-1/2 rounded-md border border-slate-400/80 bg-slate-300/80 dark:border-slate-500 dark:bg-slate-600/75" style="${axisSpan(percent(planned.start), Math.max(0, percent(planned.end) - percent(planned.start)), true)}" data-tooltip="${escapeHtml(previstoTip)}" role="img" aria-label="${escapeHtml(previstoTip)}"></span>`
       const incomplete = jornada.estado === JORNADA_ESTADO.incompleta
-      const ingresoHora = formatFichadaHora(text.first?.fechaHora) || (text.start == null ? '' : clock(text.start))
-      const ingresoTip = `Solo se registró el ingreso a las ${ingresoHora}. Falta la fichada de salida`
+      const lectura = interpretarFichadaUnica(jornada)
+      const horaUnica = lectura?.hora || formatFichadaHora(text.first?.fechaHora) || (text.start == null ? '' : clock(text.start))
+      const esEgreso = lectura?.lado === 'egreso'
+      const esAmbigua = lectura?.lado === 'ambigua'
+      const unicaTip = esAmbigua
+        ? `Hay una sola fichada a las ${horaUnica} y no alcanza para distinguir ingreso y egreso`
+        : esEgreso
+          ? `Solo se registró el egreso a las ${horaUnica}. Falta la fichada de entrada`
+          : `Solo se registró el ingreso a las ${horaUnica}. Falta la fichada de salida`
+      const unicaTexto = esAmbigua
+        ? `Fichada única · ${horaUnica}`
+        : esEgreso
+          ? `Solo egreso · ${horaUnica}`
+          : `Solo ingreso · ${horaUnica}`
       const bar =
-        incomplete && ingresoHora
-          ? `<button type="button" data-ingreso-label data-percent="${geometry.left}" data-full="Solo ingreso · ${escapeHtml(ingresoHora)}" data-short="Ingreso · ${escapeHtml(ingresoHora)}" class="absolute top-1/2 z-[1] inline-flex h-7 w-max -translate-y-1/2 items-center whitespace-nowrap rounded-md bg-amber-800 px-2.5 text-xs font-semibold text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-300" style="left:${axisPoint(geometry.left, true)}" data-tooltip="${escapeHtml(ingresoTip)}" aria-label="${escapeHtml(`Solo ingreso a las ${ingresoHora}. ${ingresoTip}`)}">Solo ingreso · ${escapeHtml(ingresoHora)}</button>`
+        (esAmbigua || incomplete) && horaUnica
+          ? `<button type="button" data-unica-label data-percent="${geometry.left}" data-full="${escapeHtml(unicaTexto)}" data-short="${escapeHtml(unicaTexto)}" class="absolute top-1/2 z-[1] inline-flex h-7 w-max -translate-y-1/2 items-center whitespace-nowrap rounded-md bg-amber-800 px-2.5 text-xs font-semibold text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-300" style="left:${axisPoint(geometry.left, true)}" data-tooltip="${escapeHtml(unicaTip)}" aria-label="${escapeHtml(`${unicaTexto}. ${unicaTip}`)}">${escapeHtml(unicaTexto)}</button>`
           : geometry.width > 0
             ? `<button type="button" class="absolute top-1/2 z-[1] flex h-7 max-w-full min-w-0 -translate-y-1/2 items-center overflow-hidden rounded-md px-3 text-xs font-semibold text-white hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ${tone}" style="${axisSpan(geometry.left, geometry.width, true)}" data-tooltip="${escapeHtml(tip)}" aria-label="${escapeHtml(label)}"><span class="truncate" data-timeline-label data-short="${escapeHtml(text.range)}" data-full="${escapeHtml(text.full)}">${escapeHtml(text.full)}</span></button>`
             : ''
       const fecha = formatFichadaFecha(jornada.fecha)
-      const detalle = incomplete
-        ? `${escapeHtml(fecha)} · <span class="text-amber-700 dark:text-amber-300">Incompleta · Sin salida</span>`
-        : `${escapeHtml(fecha)}${jornada.estado ? ` · ${escapeHtml(jornada.estado)}` : ''}`
+      const completarSalida = !esAmbigua && !esEgreso && typeof puedeCompletar === 'function' && puedeCompletar(jornada)
+      const completarEntrada = !esAmbigua && esEgreso && typeof puedeCompletarEntrada === 'function' && puedeCompletarEntrada(jornada)
+      const agregar = esAmbigua && incomplete && typeof puedeAgregar === 'function' && puedeAgregar(jornada)
+      const completarBtn = completarSalida
+        ? `<button type="button" data-action="completar-salida" data-index="${index}" class="btn-secondary btn-secondary-compact shrink-0" aria-label="Completar salida de ${escapeHtml(jornada.empleado || 'la jornada')} del ${escapeHtml(fecha)}">Completar salida</button>`
+        : completarEntrada
+          ? `<button type="button" data-action="completar-entrada" data-index="${index}" class="btn-secondary btn-secondary-compact shrink-0" aria-label="Completar entrada de ${escapeHtml(jornada.empleado || 'la jornada')} del ${escapeHtml(fecha)}">Completar entrada</button>`
+          : agregar
+            ? `<button type="button" data-action="agregar-fichada" data-index="${index}" class="btn-secondary btn-secondary-compact shrink-0" aria-label="Agregar fichada de ${escapeHtml(jornada.empleado || 'la jornada')} del ${escapeHtml(fecha)}">Agregar fichada</button>`
+            : ''
+      const detalle = esAmbigua && incomplete
+        ? `${escapeHtml(fecha)} · <span class="text-amber-700 dark:text-amber-300">Incompleta</span>${completarBtn}`
+        : incomplete
+          ? `${escapeHtml(fecha)} · <span class="text-amber-700 dark:text-amber-300">${esEgreso ? 'Entrada faltante' : 'Salida faltante'}</span>${completarBtn}`
+          : `${escapeHtml(fecha)}${jornada.estado ? ` · ${escapeHtml(jornada.estado)}` : ''}`
       return `
-        <li class="${rowGrid} h-[60px] border-b border-slate-100 px-4 last:border-0 dark:border-slate-800">
+        <li class="${rowGrid} min-h-[60px] border-b border-slate-200 px-4 last:border-b-0 hover:bg-slate-50 focus-within:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800/60 dark:focus-within:bg-slate-800/60">
           <div class="min-w-0 self-center border-r border-slate-200 pr-3 dark:border-slate-700">
             <div class="flex min-w-0 items-center gap-2">
               <p class="min-w-0 truncate text-sm font-semibold text-slate-900 dark:text-slate-100">${escapeHtml(jornada.empleado || '—')}</p>
               ${indicadorObservacionesHtml(jornada, index)}
             </div>
-            <p class="mt-0.5 truncate text-xs font-normal text-slate-600 dark:text-slate-300">${detalle}</p>
+            <p class="mt-0.5 flex flex-wrap items-center gap-1 text-xs font-normal text-slate-600 dark:text-slate-300">${detalle}</p>
             ${jornada.advertencia ? `<p class="truncate text-[10px] font-normal text-amber-700 dark:text-amber-300">${escapeHtml(jornada.advertencia)}</p>` : ''}
           </div>
           <div class="relative h-7 min-w-0 w-full self-center overflow-hidden" data-timeline-track>
@@ -325,7 +351,7 @@ export function createFichadasTimeline(
       node.style.left = axisPoint(percent(minute), true)
       node.style.transform = 'translateX(-50%)'
     })
-    section.querySelectorAll('[data-ingreso-label]').forEach((node) => {
+    section.querySelectorAll('[data-unica-label]').forEach((node) => {
       const track = node.parentElement
       const limit = Math.max(0, (track?.clientWidth || 0) - 4)
       node.textContent = node.dataset.full
@@ -358,6 +384,15 @@ export function createFichadasTimeline(
     button.addEventListener('click', () => button.blur())
   })
   bindObservacionesJornada(section, jornadas)
+  section.addEventListener('click', (event) => {
+    const button = event.target.closest('[data-action="completar-salida"], [data-action="completar-entrada"], [data-action="agregar-fichada"]')
+    if (!button || !section.contains(button)) return
+    const jornada = jornadas[Number(button.dataset.index)]
+    if (!jornada) return
+    if (button.dataset.action === 'completar-entrada') onCompletarEntrada?.(jornada, button)
+    else if (button.dataset.action === 'agregar-fichada') onAgregarFichada?.(jornada, button)
+    else onCompletarSalida?.(jornada, button)
+  })
 
   if (showNow) {
     activeNowTimer = setInterval(() => {

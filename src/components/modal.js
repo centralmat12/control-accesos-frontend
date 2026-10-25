@@ -366,3 +366,113 @@ export function openConfirmModal({
     content.querySelector('[data-action="confirm"]')?.addEventListener('click', () => finish(true))
   })
 }
+
+const CONFIRM_PRIMARY_CLASS = 'rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 disabled:cursor-not-allowed disabled:opacity-60'
+
+const fichadasOverlayClosers = new Set()
+
+export function trackFichadasOverlay(modal) {
+  if (!modal?.close) return modal
+  const original = modal.close.bind(modal)
+  const tracked = (options) => {
+    fichadasOverlayClosers.delete(tracked)
+    return original(options)
+  }
+  modal.close = tracked
+  fichadasOverlayClosers.add(tracked)
+  return modal
+}
+
+export function closeFichadasOverlays() {
+  ;[...fichadasOverlayClosers].forEach((close) => close({ force: true }))
+}
+
+export function openReviewConfirm({
+  title,
+  body,
+  confirmLabel = 'Confirmar',
+  cancelLabel = 'Volver y corregir',
+  onConfirm,
+} = {}) {
+  return new Promise((resolve) => {
+    let settled = false
+    let busy = false
+
+    const content = document.createElement('div')
+    if (body) content.append(body)
+    const actions = document.createElement('div')
+    actions.className = 'mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end'
+    const cancelButton = document.createElement('button')
+    cancelButton.type = 'button'
+    cancelButton.dataset.action = 'cancel'
+    cancelButton.dataset.autofocus = 'true'
+    cancelButton.className = BTN_SECONDARY_CLASS
+    cancelButton.textContent = cancelLabel
+    const confirmButton = document.createElement('button')
+    confirmButton.type = 'button'
+    confirmButton.dataset.action = 'confirm'
+    confirmButton.className = CONFIRM_PRIMARY_CLASS
+    confirmButton.textContent = confirmLabel
+    actions.append(cancelButton, confirmButton)
+    content.append(actions)
+
+    const finish = (result) => {
+      if (settled) return
+      settled = true
+      modal.close({ force: true })
+      resolve(result)
+    }
+
+    function setProgress(text) {
+      const label = text || 'Registrando…'
+      confirmButton.textContent = label
+      const live = body?.querySelector?.('[data-progress]')
+      if (live) live.textContent = label
+    }
+
+    const modal = trackFichadasOverlay(openModal({
+      title,
+      content,
+      labelledBy: 'fichadas-accion-confirm-title',
+      stacked: true,
+      closeOnBackdrop: false,
+      unsavedChanges: false,
+      canClose: () => !busy,
+      onClose: () => {
+        if (!settled) {
+          settled = true
+          resolve({ ok: false, cancelled: true })
+        }
+      },
+    }))
+
+    cancelButton.addEventListener('click', () => {
+      if (busy || settled) return
+      finish({ ok: false, cancelled: true })
+    })
+    confirmButton.addEventListener('click', () => {
+      if (busy || settled) return
+      busy = true
+      confirmButton.disabled = true
+      cancelButton.disabled = true
+      confirmButton.setAttribute('aria-busy', 'true')
+      setProgress('Registrando…')
+      void (async () => {
+        try {
+          const outcome = await onConfirm?.({ setProgress })
+          if (settled) return
+          if (outcome === false) {
+            busy = false
+            finish({ ok: false })
+            return
+          }
+          finish({ ok: true })
+        } catch (error) {
+          if (settled) return
+          busy = false
+          finish({ ok: false, error })
+        }
+      })()
+    })
+  })
+}

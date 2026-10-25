@@ -15,6 +15,10 @@ export function observacionHumanaBadgeButton({
 } = {}) {
   const motivo = observacionMotivoLabel(item?.observacionHumana?.motivo)
   const aria = observacionEditAriaLabel(item, { canEdit })
+  const label = `<span class="min-w-0 truncate whitespace-nowrap">${escapeHtml(motivo)}</span>`
+  if (!canEdit) {
+    return `<span class="${OBSERVACION_BADGE_CLASS}" aria-label="${escapeHtml(aria)}">${label}</span>`
+  }
   const expandedAttr = expanded == null ? '' : ` aria-expanded="${expanded ? 'true' : 'false'}"`
   const controlsAttr = controlsId ? ` aria-controls="${escapeHtml(controlsId)}"` : ''
   const icon =
@@ -28,7 +32,6 @@ export function observacionHumanaBadgeButton({
       data-action="${escapeHtml(action)}"
       data-id="${escapeHtml(String(item?.id ?? ''))}"
       class="${OBSERVACION_BADGE_CLASS}"
-      data-tooltip="${escapeHtml(motivo)}"
       aria-label="${escapeHtml(aria)}"${expandedAttr}${controlsAttr}
-    >${iconFirst ? `${icon}<span class="min-w-0 truncate whitespace-nowrap">${escapeHtml(motivo)}</span>` : `<span class="min-w-0 truncate whitespace-nowrap">${escapeHtml(motivo)}</span>${icon}`}</button>`
+    >${iconFirst ? `${icon}${label}` : `${label}${icon}`}</button>`
 }

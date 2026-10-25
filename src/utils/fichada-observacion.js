@@ -232,8 +232,10 @@ export function observacionAddAriaLabel(fichada) {
 
 export function observacionEditAriaLabel(fichada, { canEdit } = { canEdit: true }) {
   const ctx = observacionContextLabels(fichada)
-  if (canEdit) return `Ver o editar observación de la fichada de ${ctx.empleado}`
-  return `Ver observación de la fichada de ${ctx.empleado}`
+  const motivo = observacionMotivoLabel(fichada?.observacionHumana?.motivo)
+  const asunto = motivo ? `${motivo} de ${ctx.empleado}` : ctx.empleado
+  if (canEdit) return `Editar observación ${asunto}`
+  return `Observación ${asunto}`
 }
 
 export function shouldAppendObservacionExportColumns(view, records) {
