@@ -297,6 +297,13 @@ export async function resolveCapability(capability, { request = defaultRequest, 
   return task
 }
 
+export function canOpenOperativeForm(capability) {
+  if (!capability) return false
+  if (capability.status === CAPABILITY_STATUS.available) return true
+  if (capability.status === CAPABILITY_STATUS.unknown && capability.reason === 'needs-employee') return true
+  return false
+}
+
 export function noteExtendedMetadata(records) {
   const list = Array.isArray(records) ? records : []
   if (list.length === 0) return { status: CAPABILITY_STATUS.unknown, reason: 'empty' }

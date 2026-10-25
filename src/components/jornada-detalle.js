@@ -4,7 +4,7 @@ import { describeDetalleLinea, INTERMEDIATE_MOVIMIENTO_TOOLTIP, TIPO_INFORMADO_T
 import { badgeHtml, movementBadge } from './badge.js'
 import { observacionHumanaBadgeButton } from './observacion-badge.js'
 import { openModal } from './modal.js'
-import { bindTooltipRoot } from './tooltip.js'
+import { bindTooltipRoot, hideTooltip } from './tooltip.js'
 
 function automaticAlertBadge(item) {
   if (item.esPosibleDuplicado) {
@@ -113,6 +113,7 @@ export function createJornadaDetalleContent(jornada, { canEditObservacion = fals
   }
 
   content.addEventListener('click', (event) => {
+    if (event.target.closest('[data-action="editar-observacion"], [data-action="toggle-observacion"]')) hideTooltip()
     const edit = event.target.closest('[data-action="editar-observacion"]')
     if (edit && content.contains(edit)) {
       const id = String(edit.dataset.id ?? '')

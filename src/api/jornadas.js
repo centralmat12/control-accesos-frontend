@@ -1,4 +1,5 @@
 import { apiFetch, createApiError, readErrorMessage } from './http.js'
+import { diaLibreRequest, ETIQUETA_DIA_LIBRE } from '../utils/dia-libre.js'
 import { formatMinutosInformados } from '../utils/labor-format.js'
 
 function dateText(value) {
@@ -39,8 +40,9 @@ export function mapJornadaDia(raw) {
 }
 
 export function etiquetaDiaCalendario(dia) {
-  if (!dia?.tieneTurnoAsignado) return 'Sin jornada prevista'
-  if (dia.esDiaLibre) return 'Día libre'
+  if (!dia) return 'Sin jornada prevista'
+  if (dia.esDiaLibre) return ETIQUETA_DIA_LIBRE
+  if (!dia.tieneTurnoAsignado) return 'Sin jornada prevista'
   if (dia.esExcepcionManual) return 'Excepción'
   if (dia.tieneHorarioConfigurado) return 'Horario configurado'
   return 'Turno asignado'
@@ -103,12 +105,15 @@ export function mapAlertaIncompleta(raw) {
   const empleadoId = Number(raw.empleadoId ?? raw.EmpleadoId)
   if (!Number.isFinite(empleadoId)) return null
   const minutos = raw.minutosHastaCorte ?? raw.MinutosHastaCorte
+  const legajo = String(raw.legajo ?? raw.Legajo ?? '').trim()
   return {
     fichadaId: Number(raw.fichadaId ?? raw.FichadaId ?? raw.id ?? raw.Id) || null,
     empleadoId,
     nombre: String(raw.nombre ?? raw.Nombre ?? '').trim(),
     apellido: String(raw.apellido ?? raw.Apellido ?? '').trim(),
+    legajo,
     fechaHora: raw.fechaHora ?? raw.FechaHora ?? null,
+    ultimaFechaHora: raw.ultimaFechaHora ?? raw.UltimaFechaHora ?? null,
     minutosHastaCorte: minutos == null || minutos === '' ? null : Number(minutos),
     esManual: raw.esManual === true ? true : raw.esManual === false ? false : undefined,
     mensaje: String(raw.mensaje ?? raw.Mensaje ?? '').trim(),
@@ -147,9 +152,35 @@ export async function assignTurno(empleadoId, { turnoId, fechaInicio, fechaFin =
   return mapAsignacion(await response.json())
 }
 
+export function calendarioFromPayload(payload) {
+  if (!Array.isArray(payload)) {
+    const error = createApiError('La respuesta del calendario no tiene el formato esperado.', 200)
+    error.code = 'invalid-contract'
+    throw error
+  }
+  return payload.map(mapJornadaDia).filter(Boolean)
+}
+
 export async function getCalendario(empleadoId, desde, hasta) {
-  const payload = await getJson(`/api/jornadas/empleados/${empleadoId}/calendario?${query(desde, hasta)}`)
-  return Array.isArray(payload) ? payload.map(mapJornadaDia).filter(Boolean) : []
+  return calendarioFromPayload(await getJson(`/api/jornadas/empleados/${empleadoId}/calendario?${query(desde, hasta)}`))
+}
+
+export async function guardarDiaLibre(empleadoId, fecha) {
+  const request = diaLibreRequest(empleadoId, fecha)
+  const { response } = await apiFetch(request.path, {
+    method: request.method,
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(request.body),
+    logLabel: 'Excepción de jornada',
+  })
+  if (response.status === 403) throw createApiError('No tenés permiso para registrar días libres.', 403)
+  if (response.status === 404 || response.status === 405) {
+    const error = createApiError('Funcionalidad aún en mantenimiento', response.status)
+    error.code = 'maintenance'
+    throw error
+  }
+  if (!response.ok) throw createApiError(await readErrorMessage(response, 'No se pudo registrar el día libre.'), response.status)
+  return true
 }
 
 export async function getResumen(empleadoId, desde, hasta) {
@@ -164,7 +195,17 @@ export async function getReposiciones(empleadoId, desde, hasta) {
 export async function getAlertasIncompletas() {
   const { response } = await apiFetch('/api/fichadas/alertas/incompletas?limite=500', { logLabel: 'Alertas' })
   if (response.status === 403) throw createApiError('No tenés permiso para ver las alertas de jornadas.', 403)
+  if (response.status === 404 || response.status === 405) {
+    const error = createApiError('Funcionalidad aún en mantenimiento', response.status)
+    error.code = 'maintenance'
+    throw error
+  }
   if (!response.ok) throw createApiError(await readErrorMessage(response, 'No se pudieron consultar las alertas.'), response.status)
   const payload = await response.json()
-  return Array.isArray(payload) ? payload.map(mapAlertaIncompleta).filter(Boolean) : []
+  if (!Array.isArray(payload)) {
+    const error = createApiError('La respuesta de alertas no tiene el formato esperado.', response.status)
+    error.code = 'invalid-contract'
+    throw error
+  }
+  return payload.map(mapAlertaIncompleta).filter(Boolean)
 }

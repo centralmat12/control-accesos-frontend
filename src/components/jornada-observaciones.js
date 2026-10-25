@@ -13,17 +13,28 @@ export function indicadorObservacionesHtml(jornada, index) {
     items.length > 1
       ? `<span class="text-xs font-semibold leading-none">${items.length}</span>`
       : ''
-  return `<button type="button" data-action="ver-observaciones-jornada" data-index="${index}" class="inline-flex shrink-0 cursor-pointer items-center gap-0.5 rounded text-violet-700 hover:text-violet-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 dark:text-violet-300" data-tooltip="${escapeHtml(label)}" aria-label="${escapeHtml(label)}">${iconNote('h-3.5 w-3.5')}${count}</button>`
+  return `<button type="button" data-action="ver-observaciones-jornada" data-index="${index}" class="inline-flex shrink-0 cursor-pointer items-center gap-0.5 rounded text-violet-700 hover:text-violet-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 dark:text-violet-300" aria-label="${escapeHtml(label)}" aria-haspopup="dialog" aria-expanded="false">${iconNote('h-3.5 w-3.5')}${count}</button>`
+}
+
+export function closeObservacionesJornada() {
+  const anchor = panel?.anchor ?? null
+  cleanup?.()
+  cleanup = null
+  if (anchor) anchor.setAttribute('aria-expanded', 'false')
+  panel?.remove()
+  panel = null
+  if (anchor?.isConnected) anchor.focus()
 }
 
 function closePanel() {
-  cleanup?.()
-  cleanup = null
-  panel?.remove()
-  panel = null
+  closeObservacionesJornada()
 }
 
 export function openObservacionesJornada(anchor, jornada) {
+  if (panel && panel.anchor === anchor) {
+    closePanel()
+    return
+  }
   closePanel()
   const items = observacionesDeJornada(jornada)
   if (!items.length || !anchor) return
@@ -63,7 +74,12 @@ export function openObservacionesJornada(anchor, jornada) {
     list.append(entry)
   })
   panel.append(title, empleado, fecha, list)
+  panel.tabIndex = -1
+  panel.anchor = anchor
   document.body.append(panel)
+  anchor.setAttribute('aria-expanded', 'true')
+  anchor.setAttribute('aria-controls', 'fichadas-observaciones-popover')
+  panel.id = 'fichadas-observaciones-popover'
 
   const rect = anchor.getBoundingClientRect()
   const width = panel.offsetWidth
@@ -76,14 +92,21 @@ export function openObservacionesJornada(anchor, jornada) {
     if (event.key === 'Escape') closePanel()
   }
   const onPointer = (event) => {
-    if (panel && !panel.contains(event.target) && event.target !== anchor) closePanel()
+    if (panel && !panel.contains(event.target) && event.target !== anchor && !anchor.contains(event.target)) closePanel()
+  }
+  const onScroll = (event) => {
+    if (panel && event.target && panel.contains(event.target)) return
+    closePanel()
   }
   document.addEventListener('keydown', onKey)
   document.addEventListener('pointerdown', onPointer)
+  window.addEventListener('scroll', onScroll, true)
   cleanup = () => {
     document.removeEventListener('keydown', onKey)
     document.removeEventListener('pointerdown', onPointer)
+    window.removeEventListener('scroll', onScroll, true)
   }
+  panel.focus()
 }
 
 export function bindObservacionesJornada(root, jornadas) {

@@ -65,6 +65,16 @@ export function summarizeJornadasVista(jornadas) {
   }
 }
 
+export function empleadoPorId(empleadoById, id) {
+  if (!(empleadoById instanceof Map)) return null
+  if (empleadoById.has(id)) return empleadoById.get(id)
+  const numeric = Number(id)
+  if (Number.isFinite(numeric) && empleadoById.has(numeric)) return empleadoById.get(numeric)
+  const text = String(id ?? '')
+  if (text && empleadoById.has(text)) return empleadoById.get(text)
+  return null
+}
+
 export function buildJornadas(fichadas, empleadoById = new Map(), { todayKey = todayDateKey(), now } = {}) {
   const horarioByEmpleado = new Map()
   empleadoById.forEach((empleado, id) => horarioByEmpleado.set(Number(id), empleado?.horario ?? ''))
@@ -109,7 +119,7 @@ export function buildJornadas(fichadas, empleadoById = new Map(), { todayKey = t
         estado,
         now: referenceNow,
       })
-      const empleado = empleadoById.get(Number(group.empleadoId))
+      const empleado = empleadoPorId(empleadoById, group.empleadoId)
       const horario = empleado?.horario ?? null
       const posiblesDuplicados = movimientos.filter((item) => item.esPosibleDuplicado).length
 

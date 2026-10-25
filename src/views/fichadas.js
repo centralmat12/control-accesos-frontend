@@ -3,7 +3,11 @@ import { getDepartamentos } from '../api/departamentos.js'
 import { getSucursales } from '../api/sucursales.js'
 import { createJornadasCalendarPanel } from '../components/jornadas-calendar-panel.js'
 import { createAlertasPanel } from '../components/jornadas-alertas-panel.js'
-import { createFichadaManualControl } from '../components/fichada-manual-panel.js'
+import { openFichadaManual } from '../components/fichada-manual-panel.js'
+import { openDiaLibre } from '../components/dia-libre-panel.js'
+import { createRegistrarMenu } from '../components/registrar-menu.js'
+import { closeFichadasOverlays } from '../components/modal.js'
+import { puedeRegistrarFichadaManual, registrarMenuActions } from '../config/labor-access.js'
 import { getCurrentUser } from '../api/auth.js'
 import { canLoadTenantData } from '../api/empresa-context.js'
 import { empresaDisplayName, getEmpresaActual } from '../api/empresas.js'
@@ -15,13 +19,14 @@ import { BTN_SECONDARY_CLASS } from '../components/button-styles.js'
 import { FORM_LABEL_CLASS } from '../components/form-field.js'
 import { createFichadasTable } from '../components/fichadas-table.js'
 import { createFichadasTimeline, TIMELINE_LEGEND, TIMELINE_TOOLTIP } from '../components/fichadas-timeline.js'
+import { closeObservacionesJornada } from '../components/jornada-observaciones.js'
 import { FICHADAS_FRAME_CLASS } from '../components/fichadas-frame.js'
 import { openFichadaObservacionModal } from '../components/fichada-observacion-form.js'
 import { createFeedbackState, createSelectEmpresaState } from '../components/feedback-state.js'
 import { printReport } from '../components/fichadas-print.js'
 import { openFichadasCsvExportModal } from '../components/fichadas-csv-export.js'
 import { showToast } from '../components/toast.js'
-import { bindTooltipRoot, unbindTooltipRoot } from '../components/tooltip.js'
+import { bindTooltipRoot, hideTooltip, unbindTooltipRoot } from '../components/tooltip.js'
 import { openJornadaDetalle } from '../components/jornada-detalle.js'
 import { createJornadasTable } from '../components/jornadas-table.js'
 import { createPagination } from '../components/pagination.js'
@@ -34,6 +39,17 @@ import {
   formatDateTime,
   todayDateKey,
 } from '../utils/format.js'
+import {
+  filtrosMovimientosDeAlerta,
+  presetAgregarFichada,
+  presetCompletarEntrada,
+  presetCompletarSalida,
+  presetSalidaManual,
+  puedeAgregarFichada,
+  puedeCompletarEntrada,
+  puedeCompletarSalida,
+  resultadoSalidaManual,
+} from '../utils/jornada-alerta.js'
 import { buildJornadas, summarizeJornadasVista } from '../utils/jornadas.js'
 import {
   CLASSIFICATION_SOURCE,
@@ -42,7 +58,7 @@ import {
   classificationSource,
   construirJornadasSegunFuente,
 } from '../utils/classification-source.js'
-import { CAPABILITY, noteExtendedMetadata, resolveCapability } from '../api/capabilities.js'
+import { CAPABILITY, CAPABILITY_STATUS, noteExtendedMetadata, resolveCapability } from '../api/capabilities.js'
 import { CLASIFICACION_JORNADA_AYUDA } from '../utils/movimientos.js'
 import {
   FICHADAS_JORNADAS_TAB_TOOLTIP,
@@ -198,6 +214,7 @@ export async function renderFichadas(container, extras = {}) {
     return
   }
 
+  const registrarActions = registrarMenuActions(getCurrentUser())
   const view = document.createElement('div')
   view.className = 'space-y-6'
 
@@ -205,6 +222,7 @@ export async function renderFichadas(container, extras = {}) {
     ${pageHeadingMarkup({
       title: 'Consultá las fichadas',
       description: 'Filtrá y revisá los registros de ingreso y egreso.',
+      actionsId: registrarActions.length ? 'fichadas-registrar' : '',
     })}
     <div id="fichadas-summary"></div>
     <section class="rounded-xl border border-slate-200 bg-white px-3 py-3 shadow-sm dark:border-slate-700 dark:bg-slate-900">
@@ -380,6 +398,12 @@ export async function renderFichadas(container, extras = {}) {
   let observacionSession = 0
   let csvExportModal = null
   let returnToJornada = null
+  let registrarMenu = null
+  let calendarRoot = null
+  let alertasApi = null
+  let laborKind = ''
+  let calendarCursor = null
+  let manualDisponible = false
   const columnStorage = window.localStorage
   const isMobileColumns = isMobileColumnViewport(window.innerWidth)
   const columnPrefs = {
@@ -454,6 +478,37 @@ export async function renderFichadas(container, extras = {}) {
     view.querySelector('#fichadas-franja-custom')?.classList.toggle('hidden', activeView !== 'timeline' || franjaMode !== 'custom')
     view.querySelector('#fichadas-franja-custom')?.classList.toggle('flex', activeView === 'timeline' && franjaMode === 'custom')
     view.querySelector('#fichadas-legend')?.classList.toggle('hidden', activeView === 'movimientos')
+    applyLaborChrome()
+  }
+
+  function applyLaborChrome() {
+    const labor = laborKind === 'calendario' || laborKind === 'alertas'
+    const pageSizeLabel = pageSizeSelect.closest('label')
+    pageSizeLabel?.classList.toggle('inline-flex', !labor)
+    ;[
+      pageSizeLabel,
+      periodoSelect.closest('div'),
+      tipoSelect.closest('div'),
+      metodoSelect.closest('div'),
+      view.querySelector('#fichadas-tipo-metodo-info'),
+      clearButton,
+      csvButton,
+      printButton,
+    ].forEach((node) => node?.classList.toggle('hidden', labor))
+    empleadoWrap.classList.toggle('hidden', laborKind === 'calendario')
+    empleadoWrap.closest('section')?.classList.toggle('hidden', laborKind === 'calendario')
+    if (labor) {
+      countLabel.classList.add('hidden')
+      view.querySelector('#fichadas-legend')?.classList.add('hidden')
+      customDates.classList.add('hidden')
+      view.querySelector('#fichadas-franja-wrap')?.classList.add('hidden')
+      view.querySelector('#fichadas-franja-wrap')?.classList.remove('flex')
+      view.querySelector('#fichadas-franja-custom')?.classList.add('hidden')
+      view.querySelector('#fichadas-franja-custom')?.classList.remove('flex')
+      return
+    }
+    countLabel.classList.remove('hidden')
+    syncCustomDates()
   }
 
   function setExportEnabled({ canPrint = false, canOpenCsv = false, disableReason = '' } = {}) {
@@ -583,6 +638,8 @@ export async function renderFichadas(container, extras = {}) {
   }
 
   function openObservacion(fichada) {
+    hideTooltip()
+    closeObservacionesJornada()
     observacionSession += 1
     const session = observacionSession
     observacionModal?.close({ force: true })
@@ -611,7 +668,24 @@ export async function renderFichadas(container, extras = {}) {
     })
   }
 
+  function permisoManual() {
+    return {
+      permitido: puedeRegistrarFichadaManual(getCurrentUser()),
+      manualDisponible,
+    }
+  }
+
+  function abrirCompletar(preset, opener) {
+    void openFichadaManual({
+      getEmpleados: () => [...empleadoById.values()],
+      preset,
+      opener,
+      onSaved: savedManual,
+    })
+  }
+
   function renderResults() {
+    closeObservacionesJornada()
     if (!loaded) return
 
     const filters = getFilters()
@@ -680,6 +754,12 @@ export async function renderFichadas(container, extras = {}) {
             now,
             includesToday: periodIncludesToday,
             franja: { mode: franjaMode, start: franjaCustom.start, end: franjaCustom.end },
+            puedeCompletar: (jornada) => puedeCompletarSalida(jornada, permisoManual()),
+            puedeCompletarEntrada: (jornada) => puedeCompletarEntrada(jornada, permisoManual()),
+            puedeAgregar: (jornada) => puedeAgregarFichada(jornada, permisoManual()),
+            onCompletarSalida: (jornada, opener) => abrirCompletar(presetCompletarSalida(jornada), opener),
+            onCompletarEntrada: (jornada, opener) => abrirCompletar(presetCompletarEntrada(jornada), opener),
+            onAgregarFichada: (jornada, opener) => abrirCompletar(presetAgregarFichada(jornada), opener),
           })
         : isMovimientos
         ? createFichadasTable(paged.items, {
@@ -764,6 +844,8 @@ export async function renderFichadas(container, extras = {}) {
       }
 
       fichadas = fichadasResult.value
+      const manual = await resolveCapability(CAPABILITY.fichadasManual)
+      manualDisponible = manual.status === CAPABILITY_STATUS.available
       if (empleadosResult.status === 'fulfilled') {
         const empleados = empleadosResult.value
         empleadoById = new Map(empleados.map((empleado) => [Number(empleado.id), empleado]))
@@ -807,6 +889,7 @@ export async function renderFichadas(container, extras = {}) {
   }
 
   function onServerFilterChange() {
+    closeObservacionesJornada()
     syncCustomDates()
     resetPages()
     loadFichadas()
@@ -830,6 +913,8 @@ export async function renderFichadas(container, extras = {}) {
   }
 
   function setView(nextView) {
+    hideTooltip()
+    closeObservacionesJornada()
     closeLaborModule()
     activeView = nextView
     setTabStyles()
@@ -997,28 +1082,101 @@ export async function renderFichadas(container, extras = {}) {
   const laborHost = view.querySelector('#fichadas-labor')
   const modules = view.querySelector('#fichadas-modules')
 
-  function closeLaborModule() {
-    laborHost.classList.add('hidden')
+  function discardLabor() {
+    alertasApi?.close?.()
+    alertasApi = null
+    calendarRoot = null
     laborHost.replaceChildren()
+  }
+
+  function closeLaborModule() {
+    discardLabor()
+    laborKind = ''
+    laborHost.classList.add('hidden')
     results.classList.remove('hidden')
     paginationContainer.classList.remove('hidden')
+    setTabStyles()
+  }
+
+  async function savedManual(saved) {
+    await loadFichadas()
+    if (calendarRoot?.isConnected) await calendarRoot.reload()
+    if (!saved?.origenAlerta || !alertasApi) return null
+    try {
+      const list = await alertasApi.reload()
+      if (!Array.isArray(list)) {
+        showToast({ message: 'La salida manual se registró, pero no se pudieron actualizar las alertas.', tone: 'warning' })
+        return { suppressToast: true }
+      }
+      const outcome = resultadoSalidaManual(saved.origenAlerta, list)
+      showToast({
+        message: outcome.message,
+        tone: outcome.completa ? 'success' : 'warning',
+      })
+    } catch (error) {
+      if (error?.status !== 401) {
+        showToast({ message: error.message || 'No se pudieron actualizar las alertas.', tone: 'warning' })
+      }
+    }
+    return { suppressToast: true }
+  }
+
+  function verMovimientosDelDia(alerta) {
+    const filtros = filtrosMovimientosDeAlerta(alerta)
+    periodoSelect.value = filtros.periodo
+    desdeInput.value = filtros.desde
+    hastaInput.value = filtros.hasta
+    tipoSelect.value = filtros.tipo
+    metodoSelect.value = filtros.metodo
+    syncCustomDates()
+    empleadoCombobox.setEmpleadoId(filtros.empleadoId, { silent: true })
+    resetPages()
+    setView(filtros.view)
+    return loadFichadas()
+  }
+
+  let laborSeq = 0
+  function verFichadasDelPeriodo({ empleadoId, desde, hasta, year, monthIndex }) {
+    calendarCursor = { year, monthIndex }
+    empleadoCombobox.setEmpleadoId(empleadoId, { silent: true })
+    periodoSelect.value = 'personalizado'
+    desdeInput.value = desde
+    hastaInput.value = hasta
+    tipoSelect.value = 'todos'
+    metodoSelect.value = 'todos'
+    syncCustomDates()
+    resetPages()
+    setView('jornadas')
+    return loadFichadas()
   }
 
   async function openLabor(kind) {
+    const seq = ++laborSeq
+    closeObservacionesJornada()
+    discardLabor()
+    laborKind = kind
+    applyLaborChrome()
     laborHost.classList.remove('hidden')
     results.classList.add('hidden')
     paginationContainer.classList.add('hidden')
-    laborHost.replaceChildren()
     const empleados = [...empleadoById.values()]
     if (kind === 'alertas') {
-      const panel = createAlertasPanel({
+      if (seq !== laborSeq) return
+      alertasApi = createAlertasPanel({
         empleados,
-        onRevisar: () => {
-          closeLaborModule()
-          setView('jornadas')
+        onVerMovimientos: (alerta) => {
+          void verMovimientosDelDia(alerta)
+        },
+        onRegistrarSalida: (alerta, opener) => {
+          void openFichadaManual({
+            getEmpleados: () => [...empleadoById.values()],
+            preset: presetSalidaManual(alerta),
+            opener,
+            onSaved: savedManual,
+          })
         },
       })
-      laborHost.append(panel.element)
+      laborHost.append(alertasApi.element)
       return
     }
     let sucursales = []
@@ -1029,16 +1187,31 @@ export async function renderFichadas(container, extras = {}) {
       sucursales = []
       departamentos = []
     }
-    if (!laborHost.isConnected) return
-    laborHost.append(createJornadasCalendarPanel({
+    if (seq !== laborSeq || !laborHost.isConnected) return
+    calendarRoot = createJornadasCalendarPanel({
       empleados,
       sucursales,
       departamentos,
-      onRevisar: () => {
-        closeLaborModule()
-        setView('jornadas')
+      empleadoId: empleadoCombobox.getEmpleadoId(),
+      year: calendarCursor?.year,
+      monthIndex: calendarCursor?.monthIndex,
+      onEmpleadoChange: (id) => {
+        empleadoCombobox.setEmpleadoId(id, { silent: true })
+        resetPages()
+        return loadFichadas()
       },
-    }))
+      onCursor: (cursor) => {
+        calendarCursor = cursor
+      },
+      onVerPeriodo: verFichadasDelPeriodo,
+      puedeCompletar: (jornada) => puedeCompletarSalida(jornada, permisoManual()),
+      puedeCompletarEntrada: (jornada) => puedeCompletarEntrada(jornada, permisoManual()),
+      puedeAgregar: (jornada) => puedeAgregarFichada(jornada, permisoManual()),
+      onCompletarSalida: (jornada, opener) => abrirCompletar(presetCompletarSalida(jornada), opener),
+      onCompletarEntrada: (jornada, opener) => abrirCompletar(presetCompletarEntrada(jornada), opener),
+      onAgregarFichada: (jornada, opener) => abrirCompletar(presetAgregarFichada(jornada), opener),
+    })
+    laborHost.append(calendarRoot)
   }
 
   const calendarButton = document.createElement('button')
@@ -1052,11 +1225,33 @@ export async function renderFichadas(container, extras = {}) {
   alertsButton.textContent = 'Alertas de jornadas'
   alertsButton.addEventListener('click', () => openLabor('alertas'))
   modules.append(calendarButton, alertsButton)
-  const manualControl = createFichadaManualControl({
-    getEmpleados: () => [...empleadoById.values()],
-    onSaved: () => loadFichadas(),
-  })
-  if (manualControl) modules.append(manualControl)
+  const registrarSlot = view.querySelector('#fichadas-registrar')
+  if (registrarSlot && registrarActions.length) {
+    registrarMenu = createRegistrarMenu({
+      actions: registrarActions,
+      onSelect: (action) => {
+        const empleados = () => [...empleadoById.values()]
+        if (action.id === 'fichada-manual') {
+          void openFichadaManual({
+            getEmpleados: empleados,
+            opener: registrarMenu?.trigger,
+            onSaved: savedManual,
+          })
+        }
+        if (action.id === 'dia-libre') {
+          void openDiaLibre({
+            getEmpleados: empleados,
+            opener: registrarMenu?.trigger,
+            onChanged: async () => {
+              if (calendarRoot?.isConnected) await calendarRoot.reload()
+              await loadFichadas()
+            },
+          })
+        }
+      },
+    })
+    registrarMenu?.root && registrarSlot.append(registrarMenu.root)
+  }
   const tabs = [tabTimeline, tabJornadas, tabMovimientos]
   const tabViews = ['timeline', 'jornadas', 'movimientos']
   tabs.forEach((tab, index) => {
@@ -1077,9 +1272,13 @@ export async function renderFichadas(container, extras = {}) {
   container.replaceChildren(view)
   await loadFichadas()
   return () => {
+    closeObservacionesJornada()
     unbindTooltipRoot(view)
     columnPicker.destroy()
     empleadoCombobox.destroy()
+    registrarMenu?.destroy()
+    alertasApi?.close?.()
+    closeFichadasOverlays()
     csvExportModal?.close({ force: true })
     returnToJornada = null
     observacionSession += 1

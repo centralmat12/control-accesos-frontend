@@ -254,6 +254,9 @@ export function createEmpleadoCombobox({ id = 'fichadas-empleado', onChange } = 
     reset() {
       choose(TODOS_VALUE, { silent: true })
     },
+    setEmpleadoId(id, { silent = false } = {}) {
+      choose(id ? String(id) : TODOS_VALUE, { silent })
+    },
     destroy() {
       setOpen(false)
       abort.abort()

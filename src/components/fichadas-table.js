@@ -15,6 +15,8 @@ import {
 import { allColumnIds, visibleColumns } from '../utils/fichadas-columns.js'
 import { badgeHtml, movementBadge } from './badge.js'
 import { observacionHumanaBadgeButton } from './observacion-badge.js'
+import { hideTooltip } from './tooltip.js'
+import { closeObservacionesJornada } from './jornada-observaciones.js'
 import { bindTooltipRoot } from './tooltip.js'
 import { FICHADAS_BODY_CLASS } from './fichadas-frame.js'
 
@@ -175,10 +177,13 @@ export function createFichadasTable(
   if (placeholder?.actionLabel && onPlaceholderAction) {
     section.querySelector('[data-action="table-placeholder"]')?.addEventListener('click', onPlaceholderAction)
   }
-  if (onObservacion) {
+  if (onObservacion && section.dataset.observacionBound !== 'true') {
+    section.dataset.observacionBound = 'true'
     section.addEventListener('click', (event) => {
       const button = event.target.closest('[data-action="observacion-fichada"]')
       if (!button || !section.contains(button)) return
+      hideTooltip()
+      closeObservacionesJornada()
       const id = String(button.dataset.id ?? '')
       const fichada = fichadas.find((item) => String(item?.id) === id)
       if (fichada) onObservacion(fichada)

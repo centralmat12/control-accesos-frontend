@@ -155,6 +155,28 @@ function zoneDateParts(date, timeZone) {
   }
 }
 
+/** Reloj de negocio. No usa la zona del navegador, del sistema ni del servidor. */
+export function businessNow(now = new Date(), timeZone = FICHADA_TIME_ZONE) {
+  const date = now instanceof Date ? now : new Date(now)
+  if (Number.isNaN(date.getTime())) return null
+  const parts = zoneDateParts(date, timeZone)
+  let hour = parts.hour
+  if (hour === '24') hour = '00'
+  hour = String(hour).padStart(2, '0')
+  const minute = String(parts.minute || '00').padStart(2, '0')
+  const second = String(parts.second || '00').padStart(2, '0')
+  const month = String(parts.month).padStart(2, '0')
+  const day = String(parts.day).padStart(2, '0')
+  return {
+    dateKey: `${parts.year}-${month}-${day}`,
+    hour,
+    minute,
+    second,
+    timeKey: `${hour}:${minute}`,
+    timeKeyWithSeconds: `${hour}:${minute}:${second}`,
+  }
+}
+
 /**
  * Fecha calendario de una fichada en America/Argentina/Buenos_Aires.
  * Un instante con zona se convierte. Un reloj sin zona se toma como hora local de esa zona.

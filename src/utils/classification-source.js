@@ -1,6 +1,6 @@
 import { SERVER_CLASSIFICATION_ID } from '../api/capabilities.js'
 import { fichadaDateKey, formatFichadaHora } from './format.js'
-import { buildJornadas } from './jornadas.js'
+import { buildJornadas, empleadoPorId } from './jornadas.js'
 import { formatMinutosInformados } from './labor-format.js'
 import { annotateMovimientos } from './movimientos.js'
 
@@ -93,7 +93,7 @@ function jornadasDesdeApi(fichadas, empleadoById = new Map()) {
     const movimientos = [...group.movimientos]
     const ingreso = movimientos.find((item) => item.movimientoVisual === 'Entrada') ?? null
     const egreso = [...movimientos].reverse().find((item) => item.movimientoVisual === 'Salida') ?? null
-    const empleado = empleadoById.get(Number(group.empleadoId))
+    const empleado = empleadoPorId(empleadoById, group.empleadoId)
     return {
       ...group,
       horarioPrevisto: empleado?.horario ?? 'No asignado',

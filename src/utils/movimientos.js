@@ -37,7 +37,7 @@ export const MOTIVO_DURACION = 'La duración entre la primera y la última ficha
 export const TEXTO_INCOMPLETA = 'Jornada incompleta: no se registró la fichada de salida.'
 
 export function parseHorarioRango(label) {
-  const match = String(label ?? '').match(/(\d{1,2}):(\d{2})\s*[-–]\s*(\d{1,2}):(\d{2})/)
+  const match = String(label ?? '').match(/(\d{1,2}):(\d{2})(?::\d{2})?\s*(?:[-–—]|a|hasta)\s*(\d{1,2}):(\d{2})(?::\d{2})?/i)
   if (!match) return null
   const start = Number(match[1]) * 60 + Number(match[2])
   const end = Number(match[3]) * 60 + Number(match[4])
@@ -90,6 +90,53 @@ export function jornadaFechaDeFichada(fechaHora, horarioLabel) {
 }
 
 /** Ventana local de presentación; no es una regla de la API. */
+export const SINGLE_PUNCH_PROXIMITY_MINUTES = 120
+
+function minutosDeReloj(value) {
+  const match = String(fichadaSortKey(value) ?? '').match(/T(\d{2}):(\d{2})/)
+  if (!match) return null
+  return Number(match[1]) * 60 + Number(match[2])
+}
+
+function distanciaReloj(left, right) {
+  const diff = Math.abs(left - right)
+  return Math.min(diff, 24 * 60 - diff)
+}
+
+function horaDeMinutos(minutos) {
+  return `${String(Math.floor(minutos / 60)).padStart(2, '0')}:${String(minutos % 60).padStart(2, '0')}`
+}
+
+export function aplicarHorarioDelDia(jornada, dia) {
+  if (!jornada || !dia || dia.esDiaLibre) return jornada
+  const entrada = String(dia.horaEntrada ?? '').trim()
+  const salida = String(dia.horaSalida ?? '').trim()
+  if (parseHorarioRango(`${entrada}-${salida}`)) {
+    return { ...jornada, horarioPrevisto: `${entrada}–${salida}` }
+  }
+  if (dia.tieneTurnoAsignado === false && !dia.esExcepcionManual && !dia.tieneHorarioConfigurado) {
+    return { ...jornada, horarioPrevisto: 'No asignado' }
+  }
+  return jornada
+}
+
+export function interpretarFichadaUnica(jornada) {
+  const estado = String(jornada?.estado ?? '')
+  if (estado !== 'Incompleta' && estado !== 'Revisar') return null
+  const efectivas = (Array.isArray(jornada?.movimientos) ? jornada.movimientos : []).filter((item) => item && !item.esPosibleDuplicado)
+  if (efectivas.length !== 1) return null
+  const minutos = minutosDeReloj(efectivas[0].fechaHora)
+  if (minutos == null) return null
+  const lectura = { hora: horaDeMinutos(minutos), fechaHora: efectivas[0].fechaHora }
+  const rango = parseHorarioRango(jornada?.horarioPrevisto)
+  if (!rango) return { ...lectura, lado: 'ambigua' }
+  const aEntrada = distanciaReloj(minutos, rango.start)
+  const aSalida = distanciaReloj(minutos, rango.end)
+  if (aSalida <= SINGLE_PUNCH_PROXIMITY_MINUTES && aSalida < aEntrada) return { ...lectura, lado: 'egreso' }
+  if (aEntrada <= SINGLE_PUNCH_PROXIMITY_MINUTES && aEntrada < aSalida) return { ...lectura, lado: 'ingreso' }
+  return { ...lectura, lado: 'ambigua' }
+}
+
 export const DUPLICATE_WINDOW_SECONDS = 60
 export const DUPLICATE_WINDOW_MS = DUPLICATE_WINDOW_SECONDS * 1000
 
@@ -182,9 +229,14 @@ function cloneMovimiento(item) {
 
 function horarioDe(item, horarioByEmpleado) {
   if (!horarioByEmpleado) return ''
-  const id = Number(item?.empleadoId)
-  if (horarioByEmpleado instanceof Map) return horarioByEmpleado.get(id)?.horario ?? horarioByEmpleado.get(id) ?? ''
-  return horarioByEmpleado[id]?.horario ?? horarioByEmpleado[id] ?? ''
+  const keys = [item?.empleadoId, Number(item?.empleadoId), String(item?.empleadoId ?? '')]
+  for (const key of keys) {
+    if (key == null || key === '' || Number.isNaN(key)) continue
+    const value = horarioByEmpleado instanceof Map ? horarioByEmpleado.get(key) : horarioByEmpleado[key]
+    if (value == null || value === '') continue
+    return typeof value === 'string' ? value : value.horario ?? ''
+  }
+  return ''
 }
 
 function groupByEmpleadoFecha(items, horarioByEmpleado) {
