@@ -16,6 +16,8 @@ import {
   validateSalidaContraEntrada,
 } from '../utils/fichada-manual-time.js'
 import { BTN_SECONDARY_CLASS } from './button-styles.js'
+import { createEmpleadoCombobox } from './empleado-combobox.js'
+import { bindTooltipRoot, helpText, infoHelpButton } from './tooltip.js'
 import { openFormModal, openReviewConfirm, trackFichadasOverlay } from './modal.js'
 import { panelForCapability } from './maintenance-panel.js'
 import { showToast } from './toast.js'
@@ -29,9 +31,13 @@ function empleadoNombre(empleados, id) {
   return [item?.nombre, item?.apellido].filter(Boolean).join(' ') || item?.empleado || 'Empleado'
 }
 
-function readManualForm(form) {
+function readManualForm(form, combo) {
+  const escrito = String(combo?.input?.value ?? '').trim()
+  const elegido = String(combo?.getSelectedLabel?.() ?? '').trim()
+  const empleadoId = combo && escrito === elegido ? combo.getEmpleadoId() : form.empleadoId.value
+  if (combo) form.empleadoId.value = empleadoId
   return {
-    empleadoId: form.empleadoId.value,
+    empleadoId,
     fecha: form.fecha.value,
     hora: form.hora.value,
     tipo: form.tipo.value,
@@ -102,35 +108,41 @@ export async function openFichadaManual({ getEmpleados = () => [], onSaved, pres
   const form = document.createElement('form')
   form.className = 'space-y-3'
   form.innerHTML = `
-      <label class="block text-sm" for="fichada-manual-empleado">Empleado
-        <select id="fichada-manual-empleado" name="empleadoId" required class="${FIELD_CLASS}">
-          <option value="">Seleccioná</option>
-          ${empleados.map((item) => `<option value="${escapeHtml(item.id)}">${escapeHtml([item.nombre, item.apellido].filter(Boolean).join(' ') || item.empleado || 'Empleado')}</option>`).join('')}
-        </select>
-      </label>
+      <div data-empleado></div>
+      <input type="hidden" name="empleadoId" />
       <div class="grid gap-3 sm:grid-cols-2">
-        <label class="block text-sm" for="fichada-manual-fecha">Fecha
-          <input id="fichada-manual-fecha" name="fecha" type="date" required class="${FIELD_CLASS}" />
+        <label class="block text-sm" for="fichada-manual-fecha">
+          <span class="mb-1 flex items-center gap-1">Fecha ${infoHelpButton('No puede ser posterior a hoy.')}</span>
+          ${helpText('fichada-manual-fecha-help', 'No puede ser posterior a hoy.')}
+          <input id="fichada-manual-fecha" name="fecha" type="date" required aria-describedby="fichada-manual-fecha-help" data-help-id="fichada-manual-fecha-help" class="${FIELD_CLASS}" />
         </label>
-        <label class="block text-sm" for="fichada-manual-hora">Hora
-          <input id="fichada-manual-hora" name="hora" type="time" required class="${FIELD_CLASS}" />
+        <label class="block text-sm" for="fichada-manual-hora">
+          <span class="mb-1 flex items-center gap-1">Hora ${infoHelpButton('No puede ser posterior a la hora actual.')}</span>
+          ${helpText('fichada-manual-hora-help', 'No puede ser posterior a la hora actual.')}
+          <input id="fichada-manual-hora" name="hora" type="time" required aria-describedby="fichada-manual-hora-help" data-help-id="fichada-manual-hora-help" class="${FIELD_CLASS}" />
         </label>
       </div>
-      <label class="block text-sm" for="fichada-manual-tipo">Tipo
-        <select id="fichada-manual-tipo" name="tipo" required class="${FIELD_CLASS}">
+      <label class="block text-sm" for="fichada-manual-tipo">
+        <span class="mb-1 flex items-center gap-1">Tipo ${infoHelpButton('Indicá si corresponde a una entrada o una salida.')}</span>
+        ${helpText('fichada-manual-tipo-help', 'Indicá si corresponde a una entrada o una salida.')}
+        <select id="fichada-manual-tipo" name="tipo" required aria-describedby="fichada-manual-tipo-help" data-help-id="fichada-manual-tipo-help" class="${FIELD_CLASS}">
           ${preset?.agregarFichada ? '<option value="">Seleccioná</option>' : ''}
           <option value="Entrada">Entrada</option>
           <option value="Salida">Salida</option>
         </select>
       </label>
-      <label class="block text-sm" for="fichada-manual-motivo">Motivo
-        <select id="fichada-manual-motivo" name="motivo" required class="${FIELD_CLASS}">
+      <label class="block text-sm" for="fichada-manual-motivo">
+        <span class="mb-1 flex items-center gap-1">Motivo ${infoHelpButton('Seleccioná el motivo del registro manual.')}</span>
+        ${helpText('fichada-manual-motivo-help', 'Seleccioná el motivo del registro manual.')}
+        <select id="fichada-manual-motivo" name="motivo" required aria-describedby="fichada-manual-motivo-help" data-help-id="fichada-manual-motivo-help" class="${FIELD_CLASS}">
           ${motivoPendiente ? '<option value="">Seleccioná</option>' : ''}
           ${OBSERVACION_MOTIVOS.map((item) => `<option value="${item.value}">${escapeHtml(item.label)}</option>`).join('')}
         </select>
       </label>
-      <label class="block text-sm" for="fichada-manual-detalle">Observación
-        <textarea id="fichada-manual-detalle" name="detalle" required maxlength="500" class="${FIELD_CLASS}"></textarea>
+      <label class="block text-sm" for="fichada-manual-detalle">
+        <span class="mb-1 flex items-center gap-1">Observación ${infoHelpButton('Agregá el detalle que justifica la fichada.')}</span>
+        ${helpText('fichada-manual-detalle-help', 'Agregá el detalle que justifica la fichada.')}
+        <textarea id="fichada-manual-detalle" name="detalle" required maxlength="500" aria-describedby="fichada-manual-detalle-help" data-help-id="fichada-manual-detalle-help" class="${FIELD_CLASS}"></textarea>
       </label>
       <p id="fichada-manual-aviso" class="hidden text-sm text-slate-600 dark:text-slate-300"></p>
       <p id="fichada-manual-duracion" class="hidden text-sm text-amber-700 dark:text-amber-300" role="status"></p>
@@ -155,26 +167,45 @@ export async function openFichadaManual({ getEmpleados = () => [], onSaved, pres
     error.classList.add('hidden')
     ;[form.fecha, form.hora, form.detalle, form.motivo, form.empleadoId].forEach((field) => {
       field.removeAttribute('aria-invalid')
-      if (field.getAttribute('aria-describedby') === error.id) field.removeAttribute('aria-describedby')
+      if (field.getAttribute('aria-describedby') === error.id) {
+        if (field.dataset.helpId) field.setAttribute('aria-describedby', field.dataset.helpId)
+        else field.removeAttribute('aria-describedby')
+      }
     })
   }
+
+  const empleadoFijo = Boolean(preset?.bloquear && preset?.empleadoId)
+  const catalogo = [...empleados]
+  if (preset?.empleadoId && !catalogo.some((item) => String(item.id) === String(preset.empleadoId))) {
+    const nombre = preset.empleadoNombre || empleadoNombre(empleados, preset.empleadoId)
+    catalogo.push({ id: preset.empleadoId, nombre, apellido: '', legajo: '' })
+  }
+  const empleadoCombo = createEmpleadoCombobox({
+    id: 'fichada-manual-empleado',
+    mode: 'select',
+    locked: empleadoFijo,
+    help: 'Buscá por nombre, apellido o legajo.',
+    helpMode: 'icon',
+    emptyMessage: 'No se encontraron empleados.',
+    onChange: (id) => {
+      form.empleadoId.value = id || ''
+    },
+  })
+  form.querySelector('[data-empleado]').replaceChildren(empleadoCombo.root)
+  bindTooltipRoot(form)
+  empleadoCombo.setEmpleados(catalogo)
+  if (preset?.empleadoId) empleadoCombo.setEmpleadoId(String(preset.empleadoId), { silent: true })
+  form.empleadoId.value = empleadoCombo.getEmpleadoId()
 
   function showError(message, field) {
     error.textContent = message
     error.classList.remove('hidden')
     if (!field) return
-    field.setAttribute('aria-invalid', 'true')
-    field.setAttribute('aria-describedby', error.id)
-    if (typeof field.focus === 'function' && field.tabIndex >= 0) field.focus()
+    const target = field === form.empleadoId ? empleadoCombo.input : field
+    target.setAttribute('aria-invalid', 'true')
+    target.setAttribute('aria-describedby', error.id)
+    if (typeof target.focus === 'function' && target.tabIndex >= 0) target.focus()
   }
-
-  if (preset?.empleadoId && ![...form.empleadoId.options].some((option) => option.value === String(preset.empleadoId))) {
-    const option = document.createElement('option')
-    option.value = String(preset.empleadoId)
-    option.textContent = empleadoNombre(empleados, preset.empleadoId)
-    form.empleadoId.append(option)
-  }
-  if (preset?.empleadoId) form.empleadoId.value = String(preset.empleadoId)
   if (preset?.fecha) form.fecha.value = preset.fecha
   form.hora.value = preset?.hora || ''
   if (preset?.tipo) form.tipo.value = preset.tipo
@@ -182,7 +213,6 @@ export async function openFichadaManual({ getEmpleados = () => [], onSaved, pres
   else if (motivoPendiente) form.motivo.value = ''
   form.detalle.value = preset?.detalle || ''
   if (preset?.bloquear) {
-    form.empleadoId.disabled = true
     form.fecha.disabled = true
     if (!preset.agregarFichada) form.tipo.disabled = true
   }
@@ -200,7 +230,11 @@ export async function openFichadaManual({ getEmpleados = () => [], onSaved, pres
   ;(preset?.fecha && preset.hora === '' ? form.hora : form.fecha).setAttribute('data-autofocus', 'true')
 
   focusOpener(opener)
-  const modal = trackFichadasOverlay(openFormModal({ title: 'Registrar fichada manual', content: form }))
+  const modal = trackFichadasOverlay(openFormModal({
+    title: 'Registrar fichada manual',
+    content: form,
+    onClose: () => empleadoCombo.destroy(),
+  }))
   form.querySelector('[data-cancel]').addEventListener('click', () => modal.close())
 
   function extremoExtra(input) {
@@ -213,7 +247,7 @@ export async function openFichadaManual({ getEmpleados = () => [], onSaved, pres
   function refreshDuracion() {
     const note = form.querySelector('#fichada-manual-duracion')
     if (!preset?.completarSalida && !preset?.completarEntrada && !preset?.agregarFichada) return
-    const check = extremoExtra(readManualForm(form))
+    const check = extremoExtra(readManualForm(form, empleadoCombo))
     note.textContent = check.ok ? check.warning || '' : ''
     note.classList.toggle('hidden', !note.textContent)
   }
@@ -222,7 +256,7 @@ export async function openFichadaManual({ getEmpleados = () => [], onSaved, pres
   form.tipo.addEventListener('change', refreshDuracion)
   form.fecha.addEventListener('change', () => {
     applyLimits(new Date())
-    const input = readManualForm(form)
+    const input = readManualForm(form, empleadoCombo)
     if (!input.fecha || !input.hora) return
     const check = validateManualFichadaTime(input, new Date())
     if (!check.ok && check.message === FUTURE_FICHADA_MESSAGE) showError(check.message, form[check.field] || form.fecha)
@@ -237,7 +271,7 @@ export async function openFichadaManual({ getEmpleados = () => [], onSaved, pres
     try {
       clearError()
       applyLimits(new Date())
-      const input = readManualForm(form)
+      const input = readManualForm(form, empleadoCombo)
       if (!input.empleadoId) {
         showError('Seleccioná un empleado.', form.empleadoId)
         return
@@ -294,7 +328,7 @@ export async function openFichadaManual({ getEmpleados = () => [], onSaved, pres
         cancelLabel: model.cancel,
         onConfirm: async () => {
           applyLimits(new Date())
-          const live = readManualForm(form)
+          const live = readManualForm(form, empleadoCombo)
           try {
             const beforeSend = extremoExtra(live)
             if (!beforeSend.ok) {

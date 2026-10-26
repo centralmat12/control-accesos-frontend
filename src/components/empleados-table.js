@@ -1,6 +1,7 @@
 import { displayValue, escapeHtml } from '../utils/format.js'
 import { listLegajoWarnings } from '../utils/empleado-data.js'
 import { employeeStatusBadge } from './badge.js'
+import { actionButtonMarkup } from './button-styles.js'
 import { iconAlertTriangle } from './icons.js'
 import { bindTooltipRoot, tooltipTriggerAttributes } from './tooltip.js'
 
@@ -90,15 +91,13 @@ export function createEmpleadosTable(
           <td class="whitespace-nowrap px-4 py-3 text-sm text-slate-600">${displayValue(empleado.dni)}</td>
           <td class="whitespace-nowrap px-4 py-3 text-sm text-slate-600">${displayValue(empleado.departamento)}</td>
           <td class="whitespace-nowrap px-4 py-3">${employeeStatusBadge(empleado.activo)}</td>
-          <td class="w-28 whitespace-nowrap px-4 py-3 text-right">
-        <button
-  type="button"
-  data-action="view"
-  data-id="${Number(empleado.id)}"
-  class="inline-flex items-center justify-center rounded-lg bg-blue-50 px-2.5 py-1.5 text-xs font-semibold text-blue-700 ring-1 ring-inset ring-blue-200 transition-all duration-150 ease-out hover:bg-blue-100 hover:ring-blue-300 hover:shadow-sm active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-blue-500/10 dark:text-blue-300 dark:ring-blue-500/40 dark:hover:bg-blue-500/20 dark:hover:ring-blue-400/60 motion-reduce:transform-none motion-reduce:transition-none"
->
-  Ver/Editar
-</button>
+          <td class="whitespace-nowrap px-4 py-3 text-right">
+        ${actionButtonMarkup({
+          label: 'Editar',
+          ariaLabel: 'Editar empleado',
+          attrs: `data-action="view" data-id="${Number(empleado.id)}"`,
+          compact: true,
+        })}
           </td>
         </tr>
       `

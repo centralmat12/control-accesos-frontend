@@ -1,5 +1,4 @@
 import { apiFetch, createApiError, readErrorMessage } from './http.js'
-import { duracionReloj } from '../utils/labor-format.js'
 
 function text(value) {
   const raw = String(value ?? '').trim()
@@ -18,7 +17,6 @@ export function mapTurnoDia(raw) {
     horaEntrada,
     horaSalida,
     minutosAlmuerzo: Number.isFinite(minutosAlmuerzo) ? minutosAlmuerzo : null,
-    duracionReloj: duracionReloj(horaEntrada, horaSalida),
   }
 }
 
@@ -30,14 +28,11 @@ export function mapTurno(raw) {
   const diasRaw = raw.dias ?? raw.Dias
   const dias = Array.isArray(diasRaw) ? diasRaw.map(mapTurnoDia).filter(Boolean) : []
   const tolerancia = Number(raw.toleranciaMinutos ?? raw.ToleranciaMinutos)
-  const activo = raw.activo ?? raw.Activo
   return {
     id,
     nombre,
     toleranciaMinutos: Number.isFinite(tolerancia) ? tolerancia : null,
     dias,
-    empleadosAsignados: null,
-    activo: typeof activo === 'boolean' ? activo : null,
   }
 }
 

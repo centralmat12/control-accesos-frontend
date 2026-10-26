@@ -1,6 +1,8 @@
 import { escapeHtml, normalizarFiltro } from '../utils/format.js'
 import { claimOpenDropdown, positionDropdownPanel, releaseOpenDropdown } from './dropdown.js'
 import { DROPDOWN_PANEL_CLASS, DROPDOWN_OPTION_CLASS, DROPDOWN_OPTION_ACTIVE_CLASS } from './dropdown-styles.js'
+import { FORM_HELP_CLASS } from './form-field.js'
+import { helpText, infoHelpButton } from './tooltip.js'
 
 const TODOS_VALUE = ''
 const TODOS_LABEL = 'Todos los empleados'
@@ -38,25 +40,87 @@ function sortEmpleados(empleados) {
     .sort((a, b) => empleadoDisplayLabel(a).localeCompare(empleadoDisplayLabel(b), 'es'))
 }
 
-export function createEmpleadoCombobox({ id = 'fichadas-empleado', onChange } = {}) {
+export function nombreEmpleado(empleado) {
+  return [empleado?.nombre, empleado?.apellido].filter(Boolean).join(' ') || String(empleado?.empleado ?? '').trim()
+}
+
+export function departamentosParaDistinguir(empleados) {
+  const counts = new Map()
+  empleados.forEach((empleado) => {
+    const key = normalizarFiltro(nombreEmpleado(empleado))
+    if (!key) return
+    counts.set(key, (counts.get(key) ?? 0) + 1)
+  })
+  return counts
+}
+
+export function textoOpcionCalendario(empleado) {
+  const nombre = nombreEmpleado(empleado) || 'Empleado'
+  const legajo = String(empleado?.legajo ?? '').trim()
+  const principal = legajo ? `${nombre} · Legajo ${legajo}` : nombre
+  const sucursal = String(empleado?.sucursalNombre ?? empleado?.sucursal ?? '').trim()
+  const departamento = String(empleado?.departamento ?? empleado?.departamentoNombre ?? '').trim()
+  return {
+    principal,
+    secundaria: [sucursal, departamento].filter(Boolean).join(' · '),
+  }
+}
+
+export function opcionEmpleado(empleado, duplicados = new Map()) {
+  const nombre = nombreEmpleado(empleado) || 'Empleado'
+  const legajo = String(empleado?.legajo ?? '').trim()
+  const departamento = String(empleado?.departamento ?? '').trim()
+  const repetido = (duplicados.get(normalizarFiltro(nombre)) ?? 0) > 1
+  return {
+    id: String(empleado?.id ?? ''),
+    nombre,
+    legajo,
+    departamento: repetido ? departamento : '',
+  }
+}
+
+export function createEmpleadoCombobox({
+  id = 'fichadas-empleado',
+  onChange,
+  mode = 'filter',
+  placeholder = '',
+  emptyMessage = 'No se encontraron empleados.',
+  help = '',
+  helpClass = FORM_HELP_CLASS,
+  helpMode = 'text',
+  presentation = 'default',
+  rootClass = '',
+  labelClass = 'mb-1.5 block text-sm font-medium text-slate-700 dark:text-slate-200',
+  locked = false,
+} = {}) {
   const listId = `${id}-list`
+  const seleccionar = mode === 'select'
+  const placeholderText = placeholder || (seleccionar ? 'Buscar por nombre o legajo' : TODOS_LABEL)
   let empleados = []
   let selectedId = TODOS_VALUE
   let highlightedIndex = 0
   let open = false
   let options = []
+  let fijo = locked
 
   const root = document.createElement('div')
-  root.className = 'relative min-w-0'
+  root.className = `relative min-w-0 ${rootClass}`.trim()
   const abort = new AbortController()
   const overlayApi = {
     close() {
       setOpen(false)
     },
   }
+  const helpId = help ? `${id}-help` : ''
 
+  const helpMarkup = help
+    ? helpMode === 'icon'
+      ? `<span class="inline-flex items-center gap-1">${infoHelpButton(help)}</span>${helpText(helpId, help)}`
+      : `<p id="${helpId}" class="${helpClass}">${escapeHtml(help)}</p>`
+    : ''
   root.innerHTML = `
-    <label for="${id}" class="mb-1.5 block text-sm font-medium text-slate-700 dark:text-slate-200">Empleado</label>
+    <span class="${labelClass} flex items-center gap-1"><label for="${id}">Empleado</label>${helpMode === 'icon' && help ? infoHelpButton(help) : ''}</span>
+    ${helpMode === 'icon' && help ? helpText(helpId, help) : ''}
     <input
       id="${id}"
       type="text"
@@ -66,9 +130,11 @@ export function createEmpleadoCombobox({ id = 'fichadas-empleado', onChange } = 
       aria-autocomplete="list"
       aria-expanded="false"
       aria-controls="${listId}"
-      placeholder="${TODOS_LABEL}"
+      placeholder="${escapeHtml(placeholderText)}"
+      ${helpId ? `aria-describedby="${helpId}"` : ''}
       class="${CONTROL_CLASS} min-h-11 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"
     />
+    ${helpMode === 'icon' ? '' : helpMarkup}
   `
 
   const input = root.querySelector('input')
@@ -79,10 +145,17 @@ export function createEmpleadoCombobox({ id = 'fichadas-empleado', onChange } = 
   list.className = DROPDOWN_PANEL_CLASS
   document.body.append(list)
 
+  function selectedEmpleado() {
+    if (!selectedId) return null
+    return empleados.find((item) => String(item.id) === String(selectedId)) ?? null
+  }
+
   function selectedLabel() {
-    if (!selectedId) return TODOS_LABEL
-    const empleado = empleados.find((item) => String(item.id) === String(selectedId))
-    return empleado ? empleadoDisplayLabel(empleado) : TODOS_LABEL
+    if (!selectedId) return seleccionar ? '' : TODOS_LABEL
+    const empleado = selectedEmpleado()
+    if (!empleado) return ''
+    if (presentation === 'calendario') return textoOpcionCalendario(empleado).principal
+    return empleadoDisplayLabel(empleado)
   }
 
   function listQuery() {
@@ -102,14 +175,25 @@ export function createEmpleadoCombobox({ id = 'fichadas-empleado', onChange } = 
 
   function renderList() {
     const matches = visibleEmpleados()
-    options = [{ id: TODOS_VALUE, label: TODOS_LABEL }, ...matches.map((empleado) => ({
-      id: String(empleado.id),
-      label: empleadoDisplayLabel(empleado),
-    }))]
+    const duplicados = departamentosParaDistinguir(empleados)
+    const encontrados = matches.map((empleado) => opcionEmpleado(empleado, duplicados))
+    options = seleccionar
+      ? encontrados
+      : [{ id: TODOS_VALUE, nombre: TODOS_LABEL, legajo: '', departamento: '' }, ...encontrados]
 
-    if (highlightedIndex >= options.length) highlightedIndex = Math.max(0, options.length - 1)
+    if (!options.length) highlightedIndex = -1
+    else if (highlightedIndex >= options.length || highlightedIndex < 0) highlightedIndex = 0
 
     list.replaceChildren()
+    if (!options.length) {
+      const vacio = document.createElement('li')
+      vacio.className = `${DROPDOWN_OPTION_CLASS} text-slate-500`
+      vacio.setAttribute('role', 'presentation')
+      vacio.textContent = emptyMessage
+      list.append(vacio)
+      input.removeAttribute('aria-activedescendant')
+      return
+    }
     options.forEach((option, index) => {
       const item = document.createElement('li')
       item.id = `${id}-option-${index}`
@@ -117,10 +201,16 @@ export function createEmpleadoCombobox({ id = 'fichadas-empleado', onChange } = 
       item.setAttribute('aria-selected', String(index === highlightedIndex))
       item.dataset.id = option.id
       item.className = optionClass(index === highlightedIndex)
-      item.innerHTML =
-        option.id === TODOS_VALUE
-          ? escapeHtml(option.label)
-          : `${escapeHtml(option.label)}`
+      const empleado = empleados.find((entry) => String(entry.id) === option.id)
+      if (presentation === 'calendario' && empleado) {
+        const texto = textoOpcionCalendario(empleado)
+        item.innerHTML = `<span class="block truncate">${escapeHtml(texto.principal)}</span>${texto.secundaria ? `<span class="block truncate text-xs font-normal text-slate-500 dark:text-slate-400">${escapeHtml(texto.secundaria)}</span>` : ''}`
+      } else if (!seleccionar) {
+        item.textContent = empleado ? empleadoDisplayLabel(empleado) : option.nombre
+      } else {
+        const secundario = [option.legajo, option.departamento].filter(Boolean).join(' · ')
+        item.innerHTML = `<span class="block truncate">${escapeHtml(option.nombre)}</span>${secundario ? `<span class="block truncate text-xs font-normal text-slate-500 dark:text-slate-400">${escapeHtml(secundario)}</span>` : ''}`
+      }
       item.addEventListener('mousedown', (event) => {
         event.preventDefault()
         choose(option.id)
@@ -165,9 +255,11 @@ export function createEmpleadoCombobox({ id = 'fichadas-empleado', onChange } = 
 
   function choose(idValue, { silent = false } = {}) {
     const previous = selectedId
-    selectedId = idValue ? String(idValue) : TODOS_VALUE
+    const next = idValue ? String(idValue) : TODOS_VALUE
+    if (seleccionar && next && !empleados.some((item) => String(item.id) === next)) return
+    selectedId = next
     input.value = selectedId ? selectedLabel() : ''
-    input.placeholder = TODOS_LABEL
+    input.placeholder = placeholderText
     setOpen(false)
     if (!silent && previous !== selectedId) onChange?.(selectedId)
   }
@@ -178,6 +270,7 @@ export function createEmpleadoCombobox({ id = 'fichadas-empleado', onChange } = 
   }
 
   input.addEventListener('focus', () => {
+    if (fijo) return
     setOpen(true)
     highlightedIndex = Math.max(
       0,
@@ -187,12 +280,20 @@ export function createEmpleadoCombobox({ id = 'fichadas-empleado', onChange } = 
   })
 
   input.addEventListener('input', () => {
+    if (fijo) {
+      input.value = selectedLabel()
+      return
+    }
     highlightedIndex = 0
     setOpen(true)
     renderList()
   })
 
   input.addEventListener('keydown', (event) => {
+    if (fijo) {
+      if (event.key === 'ArrowDown' || event.key === 'ArrowUp' || event.key === 'Enter') event.preventDefault()
+      return
+    }
     if (event.key === 'ArrowDown') {
       event.preventDefault()
       if (!open) setOpen(true)
@@ -213,7 +314,7 @@ export function createEmpleadoCombobox({ id = 'fichadas-empleado', onChange } = 
 
     if (event.key === 'Enter') {
       event.preventDefault()
-      if (open && options[highlightedIndex]) choose(options[highlightedIndex].id)
+      if (open && options[highlightedIndex]?.id != null && highlightedIndex >= 0) choose(options[highlightedIndex].id)
       return
     }
 
@@ -235,9 +336,11 @@ export function createEmpleadoCombobox({ id = 'fichadas-empleado', onChange } = 
     }, 0)
   })
 
-  return {
+  const api = {
     root,
+    input,
     getEmpleadoId() {
+      if (seleccionar && !selectedEmpleado()) return ''
       return selectedId
     },
     getSelectedLabel() {
@@ -257,10 +360,18 @@ export function createEmpleadoCombobox({ id = 'fichadas-empleado', onChange } = 
     setEmpleadoId(id, { silent = false } = {}) {
       choose(id ? String(id) : TODOS_VALUE, { silent })
     },
+    setLocked(next = true) {
+      fijo = Boolean(next)
+      input.readOnly = fijo
+      input.setAttribute('aria-readonly', String(fijo))
+      if (fijo) setOpen(false)
+    },
     destroy() {
       setOpen(false)
       abort.abort()
       list.remove()
     },
   }
+  if (fijo) api.setLocked(true)
+  return api
 }

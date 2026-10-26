@@ -1085,6 +1085,7 @@ export async function renderFichadas(container, extras = {}) {
   function discardLabor() {
     alertasApi?.close?.()
     alertasApi = null
+    calendarRoot?.destroy?.()
     calendarRoot = null
     laborHost.replaceChildren()
   }
@@ -1101,6 +1102,7 @@ export async function renderFichadas(container, extras = {}) {
   async function savedManual(saved) {
     await loadFichadas()
     if (calendarRoot?.isConnected) await calendarRoot.reload()
+    if (saved?.origenAlerta) window.dispatchEvent(new CustomEvent('ca:jornadas-incompletas'))
     if (!saved?.origenAlerta || !alertasApi) return null
     try {
       const list = await alertasApi.reload()
@@ -1271,6 +1273,10 @@ export async function renderFichadas(container, extras = {}) {
   setExportEnabled({ canPrint: false, canOpenCsv: false })
   container.replaceChildren(view)
   await loadFichadas()
+  if (extras.fichadasLabor === 'alertas') {
+    await openLabor('alertas')
+    if (extras.openAlertaDetalle) await alertasApi?.openFirst?.()
+  }
   return () => {
     closeObservacionesJornada()
     unbindTooltipRoot(view)

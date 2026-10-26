@@ -17,17 +17,45 @@ import {
   shiftMonth,
   turnoHabitual,
 } from '../utils/labor-format.js'
+import { createEmpleadoCombobox } from './empleado-combobox.js'
+import { FORM_LABEL_CLASS } from './form-field.js'
 import { bindTooltipRoot } from './tooltip.js'
 
-const CONTROL = 'rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-sm dark:border-slate-600 dark:bg-slate-900'
 const VACIO = 'Seleccioná un empleado para consultar su calendario.'
 
 function empleadoNombre(empleado) {
   return [empleado?.nombre, empleado?.apellido].filter(Boolean).join(' ') || empleado?.empleado || 'Empleado'
 }
 
+export function empleadosDeFiltro(empleados, { sucursalId = '', departamentoId = '' } = {}) {
+  return empleados.filter((empleado) => {
+    if (sucursalId && String(empleado.sucursalId ?? '') !== String(sucursalId)) return false
+    if (departamentoId && String(empleado.departamentoId ?? '') !== String(departamentoId)) return false
+    return true
+  })
+}
+
+export function textoCalendarioEmpleado(empleado) {
+  const nombre = empleadoNombre(empleado)
+  const legajo = String(empleado?.legajo ?? '').trim()
+  return legajo ? `Calendario de ${nombre} · Legajo ${legajo}` : `Calendario de ${nombre}`
+}
+
 function mesLabel(year, monthIndex) {
   return new Intl.DateTimeFormat('es-AR', { month: 'long', year: 'numeric', timeZone: 'UTC' }).format(new Date(Date.UTC(year, monthIndex, 1)))
+}
+
+export function periodoNegocio(now = new Date()) {
+  const clock = businessNow(now)
+  const [year, month, day] = String(clock?.dateKey ?? '').split('-').map(Number)
+  if (!year || !month || !day) return null
+  return { year, monthIndex: month - 1, dateKey: clock.dateKey }
+}
+
+export function mesPermitido(year, monthIndex, now = new Date()) {
+  const actual = periodoNegocio(now)
+  if (!actual) return false
+  return year < actual.year || (year === actual.year && monthIndex <= actual.monthIndex)
 }
 
 export function createJornadasCalendarPanel({
@@ -53,25 +81,24 @@ export function createJornadasCalendarPanel({
   const inicial = clock?.dateKey?.split('-').map(Number) ?? [1970, 1]
   let year = Number.isInteger(yearInicial) ? yearInicial : inicial[0]
   let monthIndex = Number.isInteger(monthInicial) ? monthInicial : inicial[1] - 1
+  if (!mesPermitido(year, monthIndex)) {
+    const actual = periodoNegocio()
+    year = actual?.year ?? year
+    monthIndex = actual?.monthIndex ?? monthIndex
+  }
   let empleadoId = String(empleadoInicial ?? '')
-  let sucursalId = ''
-  let departamentoId = ''
 
   root.innerHTML = `
-    <div class="flex flex-wrap items-end gap-2">
-      <label class="text-xs text-slate-600 dark:text-slate-300">Sucursal
-        <select data-sucursal class="${CONTROL} mt-1 block max-w-full"></select>
-      </label>
-      <label class="text-xs text-slate-600 dark:text-slate-300">Departamento
-        <select data-departamento class="${CONTROL} mt-1 block max-w-full"></select>
-      </label>
-      <label class="text-xs text-slate-600 dark:text-slate-300">Empleado
-        <select data-empleado class="${CONTROL} mt-1 block min-w-40 max-w-full"></select>
-      </label>
-      <div class="ml-auto flex items-center gap-1">
-        <button type="button" data-prev class="${BTN_SECONDARY_CLASS}" aria-label="Mes anterior">←</button>
-        <p data-month class="min-w-32 text-center text-sm font-semibold capitalize"></p>
-        <button type="button" data-next class="${BTN_SECONDARY_CLASS}" aria-label="Mes siguiente">→</button>
+    <div data-empleado class="w-full max-w-[32.5rem]"></div>
+    <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+      <p data-identidad class="hidden min-w-0 text-sm text-slate-700 dark:text-slate-200"></p>
+      <div class="flex flex-col items-start gap-1 sm:ml-auto sm:items-end">
+        <div class="flex items-center gap-1">
+          <button type="button" data-prev class="${BTN_SECONDARY_CLASS} btn-secondary-compact" aria-label="Ver mes anterior">←</button>
+          <p data-month class="w-44 shrink-0 text-center text-sm font-semibold capitalize"></p>
+          <button type="button" data-next class="${BTN_SECONDARY_CLASS} btn-secondary-compact" aria-label="Ver mes siguiente">→</button>
+        </div>
+        <p id="calendario-futuro-help" class="hidden text-xs text-slate-500 dark:text-slate-400">No hay períodos futuros disponibles.</p>
       </div>
     </div>
     <p data-habitual class="hidden text-sm text-slate-600 dark:text-slate-300"></p>
@@ -79,56 +106,47 @@ export function createJornadasCalendarPanel({
   `
   bindTooltipRoot(root)
   const host = root.querySelector('[data-host]')
-  const sucursalSelect = root.querySelector('[data-sucursal]')
-  const departamentoSelect = root.querySelector('[data-departamento]')
-  const empleadoSelect = root.querySelector('[data-empleado]')
   const habitualNode = root.querySelector('[data-habitual]')
-
-  function fillSelect(select, options, placeholder) {
-    select.replaceChildren()
-    const empty = document.createElement('option')
-    empty.value = ''
-    empty.textContent = placeholder
-    select.append(empty)
-    options.forEach((option) => {
-      const node = document.createElement('option')
-      node.value = String(option.id)
-      node.textContent = option.label
-      select.append(node)
-    })
-  }
-
-  function filteredEmpleados() {
-    return empleados.filter((empleado) => {
-      if (sucursalId && String(empleado.sucursalId ?? '') !== sucursalId) return false
-      if (departamentoId && String(empleado.departamentoId ?? '') !== departamentoId) return false
-      return true
-    })
-  }
+  const identidadNode = root.querySelector('[data-identidad]')
+  const empleadoCombo = createEmpleadoCombobox({
+    id: 'calendario-empleado',
+    mode: 'select',
+    presentation: 'calendario',
+    rootClass: 'w-full max-w-[32.5rem]',
+    help: 'Seleccioná a quién querés consultar.',
+    helpMode: 'icon',
+    labelClass: FORM_LABEL_CLASS,
+    emptyMessage: 'No se encontraron empleados.',
+    onChange: (id) => {
+      const next = String(id || '')
+      if (next === empleadoId) return
+      empleadoId = next
+      onEmpleadoChange?.(empleadoId)
+      void load(false)
+    },
+  })
+  root.querySelector('[data-empleado]').replaceChildren(empleadoCombo.root)
 
   function syncFilters() {
-    fillSelect(sucursalSelect, sucursales.map((item) => ({ id: item.id, label: item.nombre })), 'Todas')
-    fillSelect(departamentoSelect, departamentos.map((item) => ({ id: item.id, label: item.nombre })), 'Todos')
-    sucursalSelect.value = sucursalId
-    departamentoSelect.value = departamentoId
-    const options = filteredEmpleados().map((item) => ({ id: item.id, label: empleadoNombre(item) }))
-    const selected = empleados.find((item) => String(item.id) === empleadoId)
-    if (selected && !options.some((item) => String(item.id) === empleadoId)) {
-      options.unshift({ id: selected.id, label: empleadoNombre(selected) })
-    }
-    fillSelect(empleadoSelect, options, 'Seleccioná un empleado')
-    empleadoSelect.value = options.some((item) => String(item.id) === empleadoId) ? empleadoId : ''
+    const compatibles = Array.isArray(empleados) ? empleados : []
+    const sigue = compatibles.some((item) => String(item.id) === empleadoId)
+    if (empleadoId && !sigue) empleadoId = ''
+    empleadoCombo.setEmpleados(compatibles)
+    empleadoCombo.setEmpleadoId(empleadoId, { silent: true })
+    empleadoId = empleadoCombo.getEmpleadoId()
+    const elegido = compatibles.find((item) => String(item.id) === empleadoId)
+    identidadNode.textContent = elegido ? textoCalendarioEmpleado(elegido) : ''
+    identidadNode.classList.toggle('hidden', !elegido)
   }
 
   function renderDetail({ fecha, dia, jornada, estado, resumenDia }) {
     const detail = document.createElement('section')
+    if (estado?.codigo === 'futuro') return detail
     detail.className = 'rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm dark:border-slate-700 dark:bg-slate-800/60'
     const rows = [['Fecha', formatFichadaFecha(fecha) || fecha]]
     const estadoTexto = estado.codigo === 'vacaciones'
       ? 'Vacaciones / día libre'
-      : estado.codigo === 'futuro'
-        ? 'Jornada prevista'
-        : estado.etiqueta
+      : estado.etiqueta
     if (estadoTexto) rows.push(['Estado', estadoTexto])
     if (dia?.horaEntrada && dia?.horaSalida) rows.push(['Horario previsto', `${dia.horaEntrada}–${dia.horaSalida}`])
     if (jornada?.ingresoHora && jornada.ingresoHora !== 'Sin ingreso') rows.push(['Primera fichada', jornada.ingresoHora])
@@ -234,7 +252,7 @@ export function createJornadasCalendarPanel({
     info.type = 'button'
     info.className = 'mb-2 rounded-md px-1 text-xs text-slate-500 underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500'
     info.textContent = 'Información de estados'
-    info.setAttribute('data-tooltip', 'Completa, en curso, incompleta, revisar, vacaciones o día libre, sin registros y sin jornada prevista. El color acompaña al texto.')
+    info.setAttribute('data-tooltip', 'Completa, en curso, incompleta, revisar, vacaciones o día libre, sin registros, sin jornada prevista y fecha futura. El color acompaña al texto.')
     info.setAttribute('aria-label', 'Información de los estados del calendario')
     const week = document.createElement('div')
     week.className = 'grid grid-cols-7 gap-1 text-center text-[11px] font-semibold uppercase text-slate-500'
@@ -262,6 +280,14 @@ export function createJornadasCalendarPanel({
       const estado = estadoCeldaCalendario({ dia, jornada, fecha, hoy, habitual, fichadasConocidas })
       if (estado.codigo) presentes.add(estado.codigo)
       evaluadas.push(estado)
+      if (estado.codigo === 'futuro') {
+        const futura = document.createElement('div')
+        futura.className = `flex min-h-9 min-w-0 items-start rounded-md border px-1 py-1 text-left text-xs ${claseCeldaCalendario('futuro')}`
+        futura.innerHTML = `<span class="block font-semibold">${escapeHtml(fecha.slice(-2))}</span>`
+        futura.setAttribute('aria-label', ariaCeldaCalendario(fecha, estado))
+        cells.append(futura)
+        return
+      }
       const button = document.createElement('button')
       button.type = 'button'
       const today = fecha === hoy
@@ -291,8 +317,9 @@ export function createJornadasCalendarPanel({
       vacaciones: 'Vacaciones / día libre',
       sinRegistros: 'Sin registros',
       sinPrevista: 'Sin jornada prevista',
+      futuro: 'Fecha futura',
     }
-    ;['completa', 'enCurso', 'incompleta', 'revisar', 'vacaciones', 'sinRegistros', 'sinPrevista'].forEach((codigo) => {
+    ;['completa', 'enCurso', 'incompleta', 'revisar', 'vacaciones', 'sinRegistros', 'sinPrevista', 'futuro'].forEach((codigo) => {
       if (!presentes.has(codigo)) return
       const li = document.createElement('li')
       li.className = `rounded px-1.5 py-0.5 ${claseCeldaCalendario(codigo)}`
@@ -310,16 +337,42 @@ export function createJornadasCalendarPanel({
     return { grid, detailHost }
   }
 
+  function syncMes() {
+    if (!mesPermitido(year, monthIndex)) {
+      const actual = periodoNegocio()
+      year = actual?.year ?? year
+      monthIndex = actual?.monthIndex ?? monthIndex
+    }
+    const actual = periodoNegocio()
+    const bloqueado = actual && year === actual.year && monthIndex === actual.monthIndex
+    const next = root.querySelector('[data-next]')
+    const ayuda = root.querySelector('#calendario-futuro-help')
+    next.disabled = bloqueado
+    next.setAttribute('aria-disabled', bloqueado ? 'true' : 'false')
+    if (bloqueado) next.setAttribute('aria-describedby', 'calendario-futuro-help')
+    else next.removeAttribute('aria-describedby')
+    ayuda.classList.toggle('hidden', !bloqueado)
+    root.querySelector('[data-month]').textContent = mesLabel(year, monthIndex)
+  }
+
+  function irMes(delta) {
+    const destino = shiftMonth(year, monthIndex, delta)
+    if (!mesPermitido(destino.year, destino.monthIndex)) return
+    year = destino.year
+    monthIndex = destino.monthIndex
+    void load(false)
+  }
+
   async function load(force = false) {
     syncFilters()
-    const label = mesLabel(year, monthIndex)
-    root.querySelector('[data-month]').textContent = label
+    syncMes()
     onCursor?.({ year, monthIndex })
     if (!empleadoId) {
       habitualNode.classList.add('hidden')
       host.innerHTML = `<p class="rounded-xl border border-slate-200 bg-white px-4 py-8 text-center text-sm text-slate-500 shadow-sm dark:border-slate-700 dark:bg-slate-900">${VACIO}</p>`
       return
     }
+    if (!mesPermitido(year, monthIndex)) return
     host.textContent = 'Cargando calendario...'
     const { desde, hasta } = grillaMensual(year, monthIndex)
     const context = { empleadoId: Number(empleadoId), desde, hasta }
@@ -392,36 +445,26 @@ export function createJornadasCalendarPanel({
     }
   }
 
-  sucursalSelect.addEventListener('change', () => {
-    sucursalId = sucursalSelect.value
-    load(false)
+  root.querySelector('[data-prev]').addEventListener('click', () => irMes(-1))
+  const nextMonth = root.querySelector('[data-next]')
+  const bloquearFuturo = (event) => {
+    const destino = shiftMonth(year, monthIndex, 1)
+    if (mesPermitido(destino.year, destino.monthIndex)) return
+    event.preventDefault()
+    event.stopPropagation()
+  }
+  nextMonth.addEventListener('click', (event) => {
+    bloquearFuturo(event)
+    if (event.defaultPrevented) return
+    irMes(1)
   })
-  departamentoSelect.addEventListener('change', () => {
-    departamentoId = departamentoSelect.value
-    load(false)
-  })
-  empleadoSelect.addEventListener('change', () => {
-    empleadoId = empleadoSelect.value
-    onEmpleadoChange?.(empleadoId)
-    load(false)
-  })
-  root.querySelector('[data-prev]').addEventListener('click', () => {
-    const next = shiftMonth(year, monthIndex, -1)
-    year = next.year
-    monthIndex = next.monthIndex
-    load(false)
-  })
-  root.querySelector('[data-next]').addEventListener('click', () => {
-    const next = shiftMonth(year, monthIndex, 1)
-    year = next.year
-    monthIndex = next.monthIndex
-    load(false)
-  })
+  nextMonth.addEventListener('keydown', bloquearFuturo)
   load(false)
   root.reload = () => load(true)
   root.setEmpleadoId = (id) => {
     empleadoId = String(id ?? '')
     return load(false)
   }
+  root.destroy = () => empleadoCombo.destroy()
   return root
 }

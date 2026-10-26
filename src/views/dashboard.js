@@ -17,7 +17,6 @@ import { openEnrolarHuellaModal } from '../components/enrolar-huella-modal.js'
 import {
   createDashboardAlerts,
   dashboardContentLayout,
-  dashboardHasAlertas,
   focusDashboardAlertasPanel,
 } from '../components/dashboard-alerts.js'
 import { formatDashboardLastUpdate } from '../utils/format.js'
@@ -27,7 +26,9 @@ import { createRecentPunchesTable } from '../components/recent-punches-table.js'
 import { pageHeadingMarkup } from '../components/page-heading.js'
 import { createDashboardSkeleton } from '../components/skeleton.js'
 import { createStatCard } from '../components/stat-card.js'
-import { createJornadasPendientesIndicator } from '../components/jornadas-alertas-panel.js'
+import { CAPABILITY, CAPABILITY_STATUS, resolveCapability } from '../api/capabilities.js'
+import { getAlertasIncompletas } from '../api/jornadas.js'
+import { puedeVerAlertasJornada } from '../config/labor-access.js'
 import { iconClock, iconLogin, iconLogout, iconUsers } from '../components/icons.js'
 import {
   baseDatosStatus,
@@ -79,6 +80,7 @@ export function renderDashboard(container, { onNavigate } = {}) {
     <div id="dashboard-content"></div>
   `
 
+  let jornadasIncompletas = null
   const refreshButton = view.querySelector('#dashboard-refresh')
   const refreshHint = view.querySelector('#dashboard-refresh-hint')
   const banner = view.querySelector('#dashboard-banner')
@@ -181,13 +183,14 @@ export function renderDashboard(container, { onNavigate } = {}) {
   function currentAlertasStatus(alertas = currentAlertas()) {
     const hasCatalog = Array.isArray(lastData?.empleadosCatalog)
     const pendingCount = Number(alertas?.pendingCount) || 0
-    const hasAlertas = dashboardHasAlertas(alertas)
+    const sistemaItems = (alertas?.items ?? []).filter((item) => item.type !== 'jornada')
+    const hasAlertas = sistemaItems.length > 0
     const failed = !hasCatalog && Boolean(lastRequestError)
     return alertasPendientesStatus({
       catalogReady: hasCatalog,
       empleadosConsultaOk: hasCatalog,
       hasAlertas,
-      pendingCount: pendingCount || (hasAlertas ? alertas.items.length : 0),
+      pendingCount: pendingCount || (hasAlertas ? sistemaItems.length : 0),
       loading: !hasCatalog && !failed && inFlight,
       failed,
       worst: alertas?.worst,
@@ -210,6 +213,7 @@ export function renderDashboard(container, { onNavigate } = {}) {
       },
       isSuperadminViewer: isSuperadmin(user),
       catalogReady: lastData?.catalogReady === true && lastData?.empleadosConsultaOk === true,
+      jornadasIncompletas,
     })
   }
 
@@ -339,7 +343,6 @@ export function renderDashboard(container, { onNavigate } = {}) {
       cards.append(card)
     }
     statsCol.append(cards)
-    statsCol.append(createJornadasPendientesIndicator())
 
     if (data.alcanzoLimite) {
       const note = document.createElement('p')
@@ -419,6 +422,8 @@ export function renderDashboard(container, { onNavigate } = {}) {
           if (action.openEdit) options.openEdit = true
           if (action.estadoDatos) options.estadoDatos = action.estadoDatos
           if (action.initialQuery) options.initialQuery = action.initialQuery
+          if (action.fichadasLabor) options.fichadasLabor = action.fichadasLabor
+          if (action.openAlertaDetalle) options.openAlertaDetalle = true
           onNavigate?.(action.view, options)
         },
       })
@@ -621,6 +626,7 @@ export function renderDashboard(container, { onNavigate } = {}) {
         loadDispositivos(user),
         loadHealth(),
         loadUsuariosGestion(),
+        loadJornadasIncompletas(),
       ])
       if (cancelled || seq !== loadSeq) return
 
@@ -771,7 +777,32 @@ export function renderDashboard(container, { onNavigate } = {}) {
     }
   }
 
+  async function loadJornadasIncompletas() {
+    if (!puedeVerAlertasJornada(getCurrentUser())) {
+      jornadasIncompletas = null
+      return
+    }
+    const capability = await resolveCapability(CAPABILITY.fichadasIncompleteAlerts)
+    if (capability.status !== CAPABILITY_STATUS.available) {
+      jornadasIncompletas = null
+      return
+    }
+    try {
+      const list = await getAlertasIncompletas()
+      jornadasIncompletas = Array.isArray(list) ? list.length : null
+    } catch (error) {
+      if (error?.status === 401) return
+      jornadasIncompletas = null
+    }
+  }
+
+  async function onJornadasIncompletas() {
+    await loadJornadasIncompletas()
+    if (!cancelled && lastData) renderData(lastData)
+  }
+
   window.addEventListener(EMPRESAS_CATALOG_EVENT, onEmpresasCatalogChange)
+  window.addEventListener('ca:jornadas-incompletas', onJornadasIncompletas)
 
   container.replaceChildren(view)
   void load()
@@ -782,5 +813,6 @@ export function renderDashboard(container, { onNavigate } = {}) {
     stopAutoRefresh()
     stopLabelClock()
     window.removeEventListener(EMPRESAS_CATALOG_EVENT, onEmpresasCatalogChange)
+    window.removeEventListener('ca:jornadas-incompletas', onJornadasIncompletas)
   }
 }

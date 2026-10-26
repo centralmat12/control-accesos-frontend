@@ -1,7 +1,7 @@
 import { escapeHtml } from '../utils/format.js'
-import { dashboardAlertasHeading } from '../utils/dashboard-alertas.js'
+import { textoResumenAlertas } from '../utils/dashboard-alertas.js'
 import { formatAttentionIssue } from '../utils/empleado-alerts.js'
-import { iconAlertTriangle, iconChevronRight } from './icons.js'
+import { iconAlertTriangle, iconChevronRight, iconClock } from './icons.js'
 
 export const DASHBOARD_ALERTS_SCROLL_AFTER = 3
 export const DASHBOARD_SEE_ALL_PENDIENTES_LABEL = 'Ver todos los empleados con pendientes'
@@ -93,7 +93,7 @@ function otherItemsMarkup(item, index) {
         data-alert-index="${index}"
         class="dashboard-alerts-card w-full rounded-lg border px-3 py-2.5 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500 ${tone} ${clickable ? 'cursor-pointer' : ''}"
       >
-        <span class="block text-sm font-semibold">${escapeHtml(item.title ?? '')}</span>
+        <span class="flex items-center gap-1.5 text-sm font-semibold">${item.type === 'jornada' ? `<span class="[&_svg]:h-4 [&_svg]:w-4" aria-hidden="true">${iconClock()}</span>` : ''}${escapeHtml(item.title ?? '')}</span>
         ${detailHtml}
         ${actionHtml}
       </${clickable ? 'button' : 'div'}>
@@ -186,12 +186,7 @@ export function createDashboardAlerts(alertas, { onAction } = {}) {
   const otherItems = items.filter((item) => item.type !== 'empleado')
 
   const employeeCount = alertas?.employeeCount ?? employeeItems.length
-  const pendingCount = alertas?.pendingCount ?? employeeItems.reduce((total, item) => total + (item.pendingCount || 0), 0)
-  const headingText = employeeItems.length
-    ? dashboardAlertasHeading(employeeCount, pendingCount)
-    : otherItems.length === 1
-      ? String(otherItems[0].title || 'Hay alertas que requieren atención')
-      : 'Hay alertas que requieren atención'
+  const headingText = textoResumenAlertas(alertas)
 
   const section = document.createElement('section')
   section.className = SECTION_CLASS

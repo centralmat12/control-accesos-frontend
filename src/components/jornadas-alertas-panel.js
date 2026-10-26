@@ -21,6 +21,10 @@ export function createAlertasPanel({ empleados = [], onVerMovimientos, onRegistr
   bindTooltipRoot(root)
   let painted = false
   let reviewModal = null
+  let resolveReady = () => {}
+  const ready = new Promise((resolve) => {
+    resolveReady = resolve
+  })
 
   function legajoDe(empleadoId) {
     const empleado = empleados.find((item) => Number(item.id) === Number(empleadoId))
@@ -150,19 +154,23 @@ export function createAlertasPanel({ empleados = [], onVerMovimientos, onRegistr
     if (!painted) host.textContent = 'Cargando alertas...'
     if (!puedeVerAlertasJornada(getCurrentUser())) {
       host.replaceChildren(panelForCapability({ status: CAPABILITY_STATUS.forbidden, reason: 'role' }))
+      resolveReady(null)
       return []
     }
     const capability = await resolveCapability(CAPABILITY.fichadasIncompleteAlerts, { force })
     if (capability.status !== CAPABILITY_STATUS.available) {
       if (!painted) host.replaceChildren(panelForCapability(capability, { onRetry: () => load(true) }))
+      resolveReady(null)
       return null
     }
     try {
       const alertas = await getAlertasIncompletas()
       paint(alertas)
       painted = true
+      resolveReady(alertas)
       return alertas
     } catch (error) {
+      resolveReady(null)
       if (error.status === 401) return null
       if (painted) throw error
       const kind = estadoErrorAlertas(error)
@@ -175,57 +183,47 @@ export function createAlertasPanel({ empleados = [], onVerMovimientos, onRegistr
         { status, reason: kind === 'contrato' ? 'contract' : error.status ? 'server' : 'network' },
         { onRetry: () => load(true) },
       ))
+      resolveReady(null)
       return null
     }
   }
 
   load(true)
-  return { element: root, reload: () => load(true), close: closeReview }
+  return {
+    element: root,
+    reload: () => load(true),
+    close: closeReview,
+    openFirst: async () => {
+      const list = await ready
+      if (Array.isArray(list) && list.length === 1) openReview(list[0])
+    },
+  }
 }
 
-export function createJornadasPendientesIndicator() {
-  const card = document.createElement('article')
-  card.className = 'rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-900'
-  card.innerHTML = `
-    <p class="text-sm font-medium text-slate-500">Jornadas pendientes</p>
-    <p data-value class="mt-2 text-3xl font-semibold tracking-tight text-slate-900 dark:text-slate-100" tabindex="0">—</p>
-  `
-  const value = card.querySelector('[data-value]')
+export const JORNADAS_INCOMPLETAS_DETAIL = 'Falta revisar o completar una fichada.'
 
-  async function load(force = false) {
-    if (!puedeVerAlertasJornada(getCurrentUser())) {
-      value.textContent = '—'
-      value.dataset.tooltip = 'No tenés permiso para consultar las alertas de jornadas.'
-      return
-    }
-    const capability = await resolveCapability(CAPABILITY.fichadasIncompleteAlerts, { force })
-    if (capability.status === CAPABILITY_STATUS.available) {
-      try {
-        const alertas = await getAlertasIncompletas()
-        value.textContent = String(alertas.length)
-        delete value.dataset.tooltip
-        return
-      } catch (error) {
-        if (error.status === 403) {
-          value.textContent = '—'
-          value.dataset.tooltip = 'No tenés permiso para consultar las alertas de jornadas.'
-          return
-        }
-      }
-    }
-    if (capability.status === CAPABILITY_STATUS.forbidden) {
-      value.textContent = '—'
-      value.dataset.tooltip = 'No tenés permiso para consultar las alertas de jornadas.'
-      return
-    }
-    value.textContent = '—'
-    value.dataset.tooltip = capability.status === CAPABILITY_STATUS.unavailable
-      ? 'Esta información se habilitará cuando la API publique las alertas de jornadas.'
-      : 'No se pudo consultar las jornadas pendientes.'
+export function presentarConteoJornadasIncompletas({ phase = 'cargando', count, message } = {}) {
+  const base = {
+    value: '—',
+    tone: 'neutral',
+    detail: JORNADAS_INCOMPLETAS_DETAIL,
+    action: true,
   }
-
-  load(false)
-  bindTooltipRoot(card)
-  card.reload = () => load(true)
-  return card
+  if (phase === 'ok') {
+    const total = Number(count)
+    if (!Number.isInteger(total) || total < 0) return { ...base, detail: 'No se pudo consultar las jornadas incompletas.' }
+    return {
+      value: String(total),
+      tone: total > 0 ? 'amber' : 'neutral',
+      detail: JORNADAS_INCOMPLETAS_DETAIL,
+      action: true,
+    }
+  }
+  if (phase === 'prohibido') {
+    return { ...base, detail: 'Acceso restringido.', action: false }
+  }
+  if (phase === 'error') {
+    return { ...base, detail: message || 'No se pudo consultar las jornadas incompletas.' }
+  }
+  return base
 }

@@ -2,6 +2,7 @@ import { displayMetodoLabel, displayTipoLabel, displayValue, escapeHtml, formatD
 import { hasObservacionHumana } from '../utils/fichada-observacion.js'
 import { describeDetalleLinea, INTERMEDIATE_MOVIMIENTO_TOOLTIP, TIPO_INFORMADO_TOOLTIP } from '../utils/movimientos.js'
 import { badgeHtml, movementBadge } from './badge.js'
+import { actionButtonMarkup } from './button-styles.js'
 import { observacionHumanaBadgeButton } from './observacion-badge.js'
 import { openModal } from './modal.js'
 import { bindTooltipRoot, hideTooltip } from './tooltip.js'
@@ -51,12 +52,11 @@ export function createJornadaDetalleContent(jornada, { canEditObservacion = fals
             <p class="text-sm text-slate-700 dark:text-slate-200" data-observacion-detalle></p>
             ${
               canEditObservacion && onEditObservacion
-                ? `<button
-                    type="button"
-                    data-action="editar-observacion"
-                    data-id="${escapeHtml(String(item.id ?? ''))}"
-                    class="mt-2 inline-flex items-center rounded-md bg-violet-600 px-2 py-1 text-xs font-semibold text-white hover:bg-violet-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 dark:bg-violet-500 dark:hover:bg-violet-400"
-                  >Editar</button>`
+                ? `<div class="mt-2">${actionButtonMarkup({
+                    label: 'Editar',
+                    ariaLabel: 'Editar observación',
+                    attrs: `data-action="editar-observacion" data-id="${escapeHtml(String(item.id ?? ''))}"`,
+                  })}</div>`
                 : ''
             }
           </div>`

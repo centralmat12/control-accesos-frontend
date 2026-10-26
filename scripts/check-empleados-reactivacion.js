@@ -104,7 +104,8 @@ check('Tabla inactiva no tacha y Ver/Editar conserva la acción', () => {
   const table = read('src/components/empleados-table.js')
   assert.equal(table.includes('line-through'), false)
   assert.match(table, /data-action="view"/)
-  assert.match(table, /Ver\/Editar/)
+  assert.match(table, /ariaLabel: 'Editar empleado'/)
+  assert.match(table, /actionButtonMarkup/)
   assert.match(table, /empleado.activo === false/)
 })
 
