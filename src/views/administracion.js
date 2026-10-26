@@ -47,7 +47,7 @@ import { createDepartamentosAdmin } from '../components/departamentos-admin.js'
 import { createTurnosPanel } from '../components/turnos-panel.js'
 import { puedeAdministrarTurnos } from '../config/labor-access.js'
 import { iconBuilding } from '../components/icons.js'
-import { BTN_SECONDARY_CLASS } from '../components/button-styles.js'
+import { actionButtonMarkup, BTN_SECONDARY_CLASS } from '../components/button-styles.js'
 import { pageHeadingMarkup } from '../components/page-heading.js'
 import {
   API_ENABLEMENT_HINT,
@@ -119,16 +119,18 @@ export function usuariosTableHeadMarkup(columns = USUARIOS_TABLE_COLUMNS) {
     .join('')
 }
 
-const USUARIO_FILA_ACCION_CLASS =
-  'inline-flex items-center justify-center rounded-lg bg-blue-50 px-2.5 py-1.5 text-xs font-semibold text-blue-700 ring-1 ring-inset ring-blue-200 transition-all duration-150 ease-out hover:bg-blue-100 hover:ring-blue-300 hover:shadow-sm active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-blue-500/10 dark:text-blue-300 dark:ring-blue-500/40 dark:hover:bg-blue-500/20 dark:hover:ring-blue-400/60 motion-reduce:transform-none motion-reduce:transition-none'
-
 export function usuarioFilaAccionesMarkup(operador, usuario) {
   if (!puedeEditarUsuarioObjetivo(operador, usuario)) {
     return '<div class="flex justify-center text-slate-400">—</div>'
   }
 
   return `<div class="flex flex-col items-center justify-center gap-1.5">
-      <button type="button" class="${USUARIO_FILA_ACCION_CLASS}" data-usuario-accion="editar" data-usuario-id="${usuario.id}" aria-label="Editar usuario">Editar usuario</button>
+      ${actionButtonMarkup({
+        label: 'Editar',
+        ariaLabel: 'Editar usuario',
+        attrs: `data-usuario-accion="editar" data-usuario-id="${usuario.id}"`,
+        compact: true,
+      })}
     </div>`
 }
 
@@ -1170,14 +1172,12 @@ export async function renderAdministracion(container) {
                   sameEmpresa && puedeAdministrarAgentes(user, sucursal.empresaId)
                 const actions = []
                 if (canEditSucursal) {
-                  actions.push(`<button
-                    type="button"
-                    data-action="edit-sucursal"
-                    data-id="${Number(sucursal.id)}"
-                    class="rounded-lg px-2.5 py-1.5 text-sm font-medium text-blue-700 hover:bg-blue-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
-                  >
-                    Editar
-                  </button>`)
+                  actions.push(actionButtonMarkup({
+                    label: 'Editar',
+                    ariaLabel: 'Editar sucursal',
+                    attrs: `data-action="edit-sucursal" data-id="${Number(sucursal.id)}"`,
+                    compact: true,
+                  }))
                 }
                 if (canManageSucursalAgentes) {
                   actions.push(`<button

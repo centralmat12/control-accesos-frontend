@@ -170,7 +170,7 @@ export function agenteSinConfigurarStatus() {
 export function systemStatusRowLabels({ dispositivos } = {}) {
   const labels = ['Sistema', 'Base de datos']
   if (dispositivos) labels.push('Dispositivos')
-  labels.push('Alertas y pendientes')
+  labels.push('Alertas del sistema')
   return labels
 }
 
@@ -197,7 +197,7 @@ export function createSystemStatusCard({
   const alertasStatus = alertas ?? {
     tone: 'neutral',
     label: 'Verificando…',
-    detail: 'Se están consultando las alertas y los pendientes.',
+    detail: 'Se están consultando las alertas del sistema.',
     interactive: false,
   }
 
@@ -212,7 +212,7 @@ export function createSystemStatusCard({
 
   const alertasRow = rowMarkup({
     icon: alertasRowIcon(alertasStatus),
-    label: 'Alertas y pendientes',
+    label: 'Alertas del sistema',
     badgeId: 'system-status-alertas',
     status: alertasStatus,
     interactive: alertasStatus.interactive === true,

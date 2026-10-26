@@ -21,7 +21,7 @@ import { getDepartamentos, notifyDepartamentosLoadError } from '../api/departame
 import { getSucursales } from '../api/sucursales.js'
 import { normalizeRole } from '../config/roles.js'
 import { puedeCrearDepartamentos, puedeMostrarAltaDepartamento } from '../config/administracion.js'
-import { iconPencil, iconSettings, iconStatusOff, iconStatusOk } from './icons.js'
+import { iconSettings, iconStatusOff, iconStatusOk } from './icons.js'
 import { createDepartamentosAdmin } from './departamentos-admin.js'
 import { biometricStatusBadge, employeeStatusBadge } from './badge.js'
 import { openFormModal, openModal } from './modal.js'
@@ -35,7 +35,7 @@ import {
 import { refreshEnhancedSelect } from './dropdown.js'
 import { showToast } from './toast.js'
 import { bindTooltipRoot } from './tooltip.js'
-import { BTN_DANGER_CLASS, BTN_POSITIVE_CLASS, BTN_SECONDARY_CLASS } from './button-styles.js'
+import { actionButtonMarkup, BTN_DANGER_CLASS, BTN_POSITIVE_CLASS, BTN_SECONDARY_CLASS } from './button-styles.js'
 import { mountHorarioLaboral, guardarAsignacionSiCorresponde, turnoAsignacionDesdeForm } from './horario-laboral.js'
 import {
   FORM_ERROR_CLASS,
@@ -1054,14 +1054,11 @@ export function createEmpleadoRecord({
       : ''
     actions.innerHTML = `
       ${deactivateMarkup}
-      <button
-        type="button"
-        id="empleado-edit"
-        class="${BTN_SECONDARY_CLASS} w-full gap-2 sm:w-auto"
-      >
-        ${iconPencil()}
-        Editar datos
-      </button>
+      ${actionButtonMarkup({
+        label: 'Editar',
+        ariaLabel: 'Editar datos',
+        attrs: 'id="empleado-edit"',
+      })}
     `
     const editButton = actions.querySelector('#empleado-edit')
     const deactivateButton = actions.querySelector('#empleado-deactivate')

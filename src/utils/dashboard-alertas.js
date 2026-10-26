@@ -36,8 +36,11 @@ export function buildDashboardAlertas({
   isSuperadminViewer = false,
   catalogReady = false,
   now = new Date(),
+  jornadasIncompletas = null,
 } = {}) {
   const items = []
+  const jornada = itemJornadasIncompletas(jornadasIncompletas)
+  if (jornada) items.push(jornada)
 
   if (sistema?.baseDatosConectada === false) {
     items.push({
@@ -207,6 +210,57 @@ function worstSeverity(items) {
   if (items.some((item) => item.severity === 'warning' || item.severity === 'important')) return 'warning'
   if (items.length) return 'info'
   return null
+}
+
+export function itemJornadasIncompletas(count) {
+  const total = Number(count)
+  if (!Number.isInteger(total) || total < 1) return null
+  if (total === 1) {
+    return {
+      id: 'jornadas-incompletas',
+      type: 'jornada',
+      severity: 'warning',
+      tone: 'warning',
+      title: 'Jornada incompleta',
+      detail: 'Falta revisar o completar una fichada.',
+      action: {
+        view: 'fichadas',
+        label: 'Revisar jornada',
+        fichadasLabor: 'alertas',
+        openAlertaDetalle: true,
+      },
+    }
+  }
+  return {
+    id: 'jornadas-incompletas',
+    type: 'jornada',
+    severity: 'warning',
+    tone: 'warning',
+    title: `${total} jornadas incompletas`,
+    detail: 'Hay fichadas que requieren revisión.',
+    action: {
+      view: 'fichadas',
+      label: 'Ver jornadas',
+      fichadasLabor: 'alertas',
+    },
+  }
+}
+
+export function textoResumenAlertas(alertas) {
+  const items = Array.isArray(alertas?.items) ? alertas.items : []
+  const employees = items.filter((item) => item.type === 'empleado')
+  const jornada = items.find((item) => item.type === 'jornada')
+  const others = items.filter((item) => item.type !== 'empleado' && item.type !== 'jornada')
+  const parts = []
+  if (employees.length) {
+    const pending = employees.reduce((total, item) => total + (Number(item.pendingCount) || 0), 0)
+    parts.push(dashboardAlertasHeading(employees.length, pending))
+  }
+  if (jornada) parts.push(jornada.title)
+  if (!employees.length && others.length === 1) parts.push(String(others[0].title || 'Alerta del sistema'))
+  else if (!employees.length && others.length > 1) parts.push(`${others.length} alertas del sistema`)
+  if (!parts.length) return 'Hay alertas que requieren atención'
+  return parts.join(' · ')
 }
 
 export function dashboardAlertasHeading(employeeCount, pendingCount = 0) {

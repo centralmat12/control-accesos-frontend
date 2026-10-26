@@ -253,7 +253,7 @@ check('SuperAdmin ve Dispositivos; ADMIN y RRHH no ven la fila ni No disponible'
       dispositivos: superadminStatus,
       alertas: { label: 'Sin pendientes' },
     }),
-    ['Sistema', 'Base de datos', 'Dispositivos', 'Alertas y pendientes'],
+    ['Sistema', 'Base de datos', 'Dispositivos', 'Alertas del sistema'],
   )
 
   const adminStatus = dispositivosResumenStatus({ loaded: true, reason: 'unsupported', hidden: true })
@@ -265,7 +265,7 @@ check('SuperAdmin ve Dispositivos; ADMIN y RRHH no ven la fila ni No disponible'
       dispositivos: null,
       alertas: { label: 'Sin pendientes' },
     }),
-    ['Sistema', 'Base de datos', 'Alertas y pendientes'],
+    ['Sistema', 'Base de datos', 'Alertas del sistema'],
   )
   assert.equal(systemStatusRowLabels({ dispositivos: null, alertas: { label: 'Sin pendientes' } }).includes('Dispositivos'), false)
   assert.equal(JSON.stringify(adminStatus || {}).includes('No disponible'), false)
@@ -376,7 +376,7 @@ check('La fila permanente de alertas resume el total de problemas', () => {
   const statusSrc = readFileSync(join(dirname(fileURLToPath(import.meta.url)), '../src/components/system-status.js'), 'utf8')
   const alertsSrc = readFileSync(join(dirname(fileURLToPath(import.meta.url)), '../src/components/dashboard-alerts.js'), 'utf8')
   const dashboard = readFileSync(join(dirname(fileURLToPath(import.meta.url)), '../src/views/dashboard.js'), 'utf8')
-  assert.match(statusSrc, /label: 'Alertas y pendientes'/)
+  assert.match(statusSrc, /label: 'Alertas del sistema'/)
   assert.match(statusSrc, /data-system-alertas-action/)
   assert.match(statusSrc, /interactive === true/)
   assert.match(statusSrc, /flex h-full min-h-0 flex-col justify-between/)

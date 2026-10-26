@@ -18,19 +18,16 @@ import {
   ADMIN_TABLE_ROW_CLASS,
   ADMIN_TABLE_SHELL_CLASS,
 } from './admin-panel-layout.js'
-import { BTN_DANGER_CLASS, BTN_SECONDARY_CLASS } from './button-styles.js'
+import { actionButtonMarkup, BTN_DANGER_CLASS, BTN_SECONDARY_CLASS } from './button-styles.js'
 import { createDepartamentoForm } from './departamento-form.js'
 import { fieldIds, FORM_HELP_CLASS, FORM_INPUT_CLASS, FORM_LABEL_CLASS, formFieldMarkup, validateRequiredText, wireFormFields } from './form-field.js'
-import { iconPencil, iconPlus, iconTrash } from './icons.js'
+import { iconPlus } from './icons.js'
 import { openFormModal, openModal } from './modal.js'
 import { showToast } from './toast.js'
 import { escapeHtml } from '../utils/format.js'
 
 const PRIMARY_BTN_CLASS =
   'inline-flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 disabled:cursor-not-allowed disabled:opacity-60'
-const ACTION_EDIT_CLASS = `${BTN_SECONDARY_CLASS} h-8 gap-1.5 whitespace-nowrap px-2.5! py-1! text-sm`
-const ACTION_DELETE_CLASS = `${BTN_DANGER_CLASS} h-8 gap-1.5 whitespace-nowrap px-2.5! py-1! text-sm`
-
 export const MENSAJE_ELIMINACION_TITULO = 'No se puede eliminar el departamento'
 
 export const MENSAJE_ELIMINACION_ASIGNADOS =
@@ -221,8 +218,19 @@ export function createDepartamentosAdmin({
     const reason = blocked ? tooltipEliminarBloqueado(item.cantidadEmpleados) : ''
     const reasonId = `dept-delete-reason-${item.id}-${layout}`
     return `<div class="${rowClass}">
-      <button type="button" data-action="edit" class="${ACTION_EDIT_CLASS}" aria-label="Editar">${iconPencil()}<span>Editar</span></button>
-      <button type="button" data-action="delete" class="${ACTION_DELETE_CLASS} disabled:cursor-not-allowed disabled:opacity-50" aria-label="Eliminar" ${blocked ? 'disabled data-blocked="true"' : ''} ${reason ? `title="${escapeHtml(reason)}" aria-describedby="${reasonId}"` : ''}>${iconTrash()}<span>Eliminar</span></button>
+      ${actionButtonMarkup({
+        label: 'Editar',
+        ariaLabel: 'Editar departamento',
+        attrs: 'data-action="edit"',
+        compact: true,
+      })}
+      ${actionButtonMarkup({
+        variant: 'delete',
+        label: 'Eliminar',
+        ariaLabel: 'Eliminar departamento',
+        attrs: `data-action="delete"${blocked ? ' disabled data-blocked="true"' : ''}${reason ? ` title="${escapeHtml(reason)}" aria-describedby="${reasonId}"` : ''}`,
+        compact: true,
+      })}
       ${reason ? `<span id="${reasonId}" class="sr-only">${escapeHtml(reason)}</span>` : ''}
     </div>`
   }

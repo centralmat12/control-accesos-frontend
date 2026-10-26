@@ -35,6 +35,38 @@ export function horarioNocturnoNoSoportado(entrada, salida) {
   return start != null && end != null && end <= start
 }
 
+/** Minutos netos: duración entre entrada y salida, con el descanso restado una sola vez. */
+export function minutosNetosProgramados(entrada, salida, descanso) {
+  const start = parseHora(entrada)
+  const end = parseHora(salida)
+  const restText = String(descanso ?? '').trim()
+  if (start == null || end == null || start === end || !/^\d+$/.test(restText)) return null
+  const rest = Number(restText)
+  const span = end > start ? end - start : end + 24 * 60 - start
+  if (rest >= span) return null
+  return span - rest
+}
+
+/** Valor visible de un día. No forma parte del DTO. */
+export function textoHorasProgramadas(entrada, salida, descanso) {
+  const minutes = minutosNetosProgramados(entrada, salida, descanso)
+  if (minutes == null) return { valido: false, texto: '—' }
+  return { valido: true, texto: formatMinutosInformados(minutes) }
+}
+
+/** Mismo cálculo para la tabla: un valor, un rango, o sin días configurados. */
+export function textoHorasProgramadasDias(dias) {
+  const minutes = (Array.isArray(dias) ? dias : [])
+    .map((dia) => minutosNetosProgramados(dia?.horaEntrada, dia?.horaSalida, dia?.minutosAlmuerzo))
+    .filter((value) => value != null)
+  if (!minutes.length) return 'Sin configurar'
+  const min = Math.min(...minutes)
+  const max = Math.max(...minutes)
+  if (min === max) return formatMinutosInformados(min)
+  if (min % 60 === 0 && max % 60 === 0) return `${min / 60}–${max / 60} h`
+  return `${formatMinutosInformados(min)}–${formatMinutosInformados(max)}`
+}
+
 export const NOCTURNO_PENDIENTE =
   'El horario nocturno se habilitará cuando el servicio acepte una salida del día siguiente. Hoy el servicio solo admite horarios que terminan el mismo día.'
 
@@ -122,7 +154,7 @@ export function claseCeldaCalendario(codigo) {
   if (codigo === 'enCurso') return 'border-emerald-500/40 bg-emerald-50 text-emerald-950 dark:bg-emerald-950/40 dark:text-emerald-100 bg-[repeating-linear-gradient(135deg,transparent,transparent_4px,rgba(16,185,129,0.18)_4px,rgba(16,185,129,0.18)_8px)]'
   if (codigo === 'vacaciones') return 'border-violet-500/40 bg-violet-50 text-violet-950 dark:border-violet-400/30 dark:bg-violet-950/40 dark:text-violet-100'
   if (codigo === 'sinRegistros') return 'border-slate-300 bg-slate-100 text-slate-600 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300'
-  if (codigo === 'sinPrevista') return 'border-slate-200 bg-slate-50 text-slate-400 dark:border-slate-800 dark:bg-slate-950/50 dark:text-slate-500'
+  if (codigo === 'sinPrevista' || codigo === 'futuro') return 'border-slate-200 bg-slate-50 text-slate-400 dark:border-slate-800 dark:bg-slate-950/50 dark:text-slate-500'
   return 'border-slate-200 bg-white text-slate-800 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100'
 }
 
@@ -131,7 +163,8 @@ export function estadoCeldaCalendario({ dia = null, jornada = null, fecha = '', 
   const movimientos = Array.isArray(jornada?.movimientos) ? jornada.movimientos.length : 0
   const estado = String(jornada?.estado ?? '')
   let codigo = ''
-  if (dia?.esDiaLibre) codigo = 'vacaciones'
+  if (fecha && hoy && fecha > hoy) codigo = 'futuro'
+  else if (dia?.esDiaLibre) codigo = 'vacaciones'
   else if (estado === 'Revisar') codigo = 'revisar'
   else if (estado === 'Incompleta') codigo = 'incompleta'
   else if (estado === 'En curso') codigo = 'enCurso'
@@ -164,10 +197,10 @@ export function ariaCeldaCalendario(fecha, estado) {
   else if (estado?.codigo === 'enCurso') extra.push('Jornada en curso.')
   else if (estado?.codigo === 'vacaciones') extra.push('Vacaciones / día libre.')
   else if (estado?.codigo === 'sinRegistros') extra.push('Sin registros.')
-  else if (estado?.codigo === 'futuro') extra.push('Jornada prevista.')
   else if (estado?.codigo === 'sinPrevista') extra.push('Sin jornada prevista.')
   if (estado?.fichadasEnLibre) extra.push('Hay movimientos registrados.')
   if (estado?.excepcion) extra.push('Excepción horaria.')
+  if (estado?.codigo === 'futuro') return `${larga.replace(/\.+$/, '')}, fecha futura`
   const fechaTexto = /[.]$/.test(larga) ? larga : `${larga}.`
   return [fechaTexto, ...extra].join(' ').replace(/\s+/g, ' ').trim()
 }
