@@ -403,6 +403,7 @@ await check('textos de mantenimiento y horario único', () => {
   assert.equal(readFileSync(join(root, 'src/views/dashboard.js'), 'utf8').includes('loadJornadasIncompletas'), true)
   assert.equal(readFileSync(join(root, 'src/views/dashboard.js'), 'utf8').includes('createJornadasPendientesIndicator'), false)
   const calendario = readFileSync(join(root, 'src/components/jornadas-calendar-panel.js'), 'utf8')
+    + readFileSync(join(root, 'src/utils/labor-format.js'), 'utf8')
   assert.equal(calendario.includes('Actividad informada'), false)
   assert.equal(calendario.includes('Actividad registrada'), true)
   assert.equal(calendario.includes('Minutos trabajados'), true)

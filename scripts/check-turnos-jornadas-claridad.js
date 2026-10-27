@@ -19,15 +19,18 @@ const alerts = read('src/components/jornadas-alertas-panel.js')
 const table = turnos.slice(turnos.indexOf('function renderTable'), turnos.indexOf('function openEliminarTurnoConfirm'))
 
 assert.equal(table.includes('Estado'), false)
-assert.equal(table.includes('Empleados asignados'), false)
+assert.match(table, /Empleados asignados/)
 assert.equal(table.includes('Duración prevista'), false)
 assert.equal(table.includes('La API no informa'), false)
 assert.equal(table.includes('data-tooltip'), false)
-assert.match(table, /Horas programadas/)
+assert.match(table, /Horas semanales/)
+assert.match(table, /Horario habitual/)
 assert.match(table, /Sin días configurados/)
 assert.equal(table.includes('colspan='), false)
-assert.match(turnos, /minmax\(180px,220px\)_minmax\(260px,1fr\)_130px_100px_100px/)
+assert.match(turnos, /minmax\(0,1\.2fr\)_minmax\(0,0\.7fr\)_minmax\(0,1\.5fr\)_minmax\(0,0\.9fr\)_minmax\(0,1fr\)_auto/)
 assert.match(table, /TURNOS_COLUMNS/)
+assert.match(table, /md:hidden/)
+assert.match(turnos, /overflow-x-hidden/)
 assert.equal(table.includes('table-fixed'), false)
 assert.equal(table.includes('w-[21%]'), false)
 assert.equal(table.includes('colgroup'), false)
@@ -36,15 +39,15 @@ assert.equal(table.includes('<td'), false)
 assert.match(turnos, /max-w-\[min\(100%,65rem\)\]/)
 assert.match(turnos, /text-center/)
 assert.match(table, /label: 'Editar'/)
-assert.equal(api.includes('empleadosAsignados'), false)
+assert.match(api, /cantidadEmpleadosAsignados/)
 assert.equal(api.includes('duracionReloj'), false)
 const domingo = presentarFilaTurno({
   nombre: 'domingos',
   dias: [{ diaSemana: 0, horaEntrada: '09:00', horaSalida: '18:00', minutosAlmuerzo: 60 }],
 })
-assert.equal(domingo.horario, 'Domingo 09:00–18:00')
+assert.equal(domingo.horario, 'Dom · 09:00–18:00')
 assert.equal(domingo.horas, '8 h')
-assert.equal(domingo.descanso, '1 h')
+assert.equal(domingo.texto, '1 día')
 const noche = presentarFilaTurno({
   dias: [{ diaSemana: 1, horaEntrada: '22:00', horaSalida: '06:00', minutosAlmuerzo: 60 }],
 })
@@ -55,16 +58,16 @@ assert.equal(presentarFilaTurno({
 const sinDias = presentarFilaTurno({ nombre: '09:00-18:00', dias: [] })
 assert.equal(sinDias.vacio, true)
 assert.equal(sinDias.texto, 'Sin días configurados')
-assert.equal(sinDias.horas, 'Sin configurar')
-assert.equal(sinDias.horario, undefined)
+assert.equal(sinDias.horas, '—')
+assert.equal(sinDias.horario, '—')
 const nombreHorario = presentarFilaTurno({ nombre: '08:00-17:00', dias: [] })
-assert.equal(nombreHorario.horas, 'Sin configurar')
+assert.equal(nombreHorario.horas, '—')
 assert.equal(presentarFilaTurno({
   dias: [
     { diaSemana: 1, horaEntrada: '09:00', horaSalida: '18:00', minutosAlmuerzo: 60 },
     { diaSemana: 2, horaEntrada: '08:30', horaSalida: '18:30', minutosAlmuerzo: 60 },
   ],
-}).horas, '8–9 h')
+}).horas, '17 h')
 assert.equal(presentarFilaTurno({
   dias: [{ diaSemana: 1, horaEntrada: '08:30', horaSalida: '18:30', minutosAlmuerzo: 60 }],
 }).horas, '9 h')
@@ -78,8 +81,8 @@ assert.equal(turnos.includes('openConfirmModal'), false)
 assert.match(turnos, /minmax\(240px,320px\)_100px/)
 assert.match(turnos, /sm:w-\[320px\]/)
 assert.match(turnos, /justify-start/)
-assert.match(turnos, /minmax\(9rem,1\.2fr\)/)
-assert.match(turnos, /minmax\(7\.5rem,1fr\)/)
+assert.match(turnos, /minmax\(0,1\.15fr\)_minmax\(0,0\.85fr\)_minmax\(0,0\.85fr\)_minmax\(0,0\.95fr\)_minmax\(0,0\.8fr\)_auto/)
+assert.match(turnos, /Horas netas/)
 assert.match(turnos, /dialogClass: 'max-w-\[45rem\]'/)
 assert.match(turnos, /aplicarTurnoGuardado/)
 assert.match(turnos, /silent: true/)
