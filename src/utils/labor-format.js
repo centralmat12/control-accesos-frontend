@@ -232,6 +232,31 @@ function minutosPositivos(value) {
   return typeof value === 'number' && Number.isFinite(value) && value > 0
 }
 
+export const TARJETAS_RESUMEN_LABORAL = Object.freeze([
+  ['minutosProgramados', 'Horas programadas', 'Minutos previstos de los días laborables ya ocurridos, según el turno vigente. El descanso se descuenta una sola vez.', 'minutos'],
+  ['actividadRegistrada', 'Actividad registrada', 'Presencia entre la primera y la última fichada. No descuenta el descanso.', 'minutos'],
+  ['minutosTrabajados', 'Minutos trabajados', 'Actividad registrada menos el descanso, una sola vez. La tolerancia no suma minutos trabajados.', 'minutos'],
+  ['minutosRepuestos', 'Repuestos', 'Minutos de reposición informados por la API dentro de los días ya ocurridos.', 'minutos'],
+  ['minutosAdeudados', 'Horas que debe', 'Parte del saldo que quedó por debajo de lo programado. No incluye días futuros, no laborables ni días libres.', 'minutos'],
+  ['minutosAFavor', 'Horas a favor', 'Parte del saldo que supera lo programado, después de descontar el descanso y sumar los repuestos.', 'minutos'],
+  ['llegadasDentroTolerancia', 'Llegadas en tolerancia', 'Primera fichada después de la entrada prevista y hasta la entrada más la tolerancia.', 'cantidad'],
+  ['llegadasTarde', 'Llegadas tarde', 'Primera fichada después de la entrada prevista más la tolerancia.', 'cantidad'],
+  ['salidasDentroTolerancia', 'Salidas en tolerancia', 'Última fichada antes de la salida prevista y desde la salida menos la tolerancia.', 'cantidad'],
+  ['salidasTempranas', 'Salidas tempranas', 'Última fichada antes de la salida prevista menos la tolerancia.', 'cantidad'],
+  ['diasSinRegistros', 'Días sin registros', 'Día laborable ya pasado, con horario previsto, sin fichadas.', 'cantidad'],
+  ['jornadasIncompletas', 'Jornadas incompletas', 'Jornada con fichadas a la que le falta la salida.', 'cantidad'],
+])
+
+export function tarjetasResumenLaboral(resumen) {
+  return TARJETAS_RESUMEN_LABORAL.map(([clave, etiqueta, ayuda, tipo]) => {
+    const valor = resumen?.[clave]
+    const texto = tipo === 'cantidad'
+      ? (Number.isInteger(valor) ? String(valor) : '—')
+      : (formatMinutosInformados(valor) ?? '—')
+    return { clave, etiqueta, ayuda, texto }
+  })
+}
+
 export function presentarSaldo(resumen) {
   const programados = resumen?.minutosProgramados
   if (!programadosInformados(programados) || programados < 0) {

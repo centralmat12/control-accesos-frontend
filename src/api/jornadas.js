@@ -54,6 +54,12 @@ function minutosInformados(value) {
   return Number.isFinite(number) ? number : null
 }
 
+function enteroInformado(value) {
+  if (value == null || value === '') return null
+  const number = Number(value)
+  return Number.isInteger(number) ? number : null
+}
+
 export function mapResumen(raw) {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null
   const minutosProgramados = minutosInformados(raw.minutosProgramados ?? raw.MinutosProgramados)
@@ -61,6 +67,8 @@ export function mapResumen(raw) {
   const minutosTrabajados = minutosInformados(raw.minutosTrabajados ?? raw.MinutosTrabajados)
   const minutosRepuestos = minutosInformados(raw.minutosRepuestos ?? raw.MinutosRepuestos)
   const saldoMinutos = minutosInformados(raw.saldoMinutos ?? raw.SaldoMinutos)
+  const minutosAdeudados = enteroInformado(raw.minutosAdeudados ?? raw.MinutosAdeudados)
+  const minutosAFavor = enteroInformado(raw.minutosAFavor ?? raw.MinutosAFavor)
   const diasRaw = raw.dias ?? raw.Dias
   return {
     empleadoId: Number(raw.empleadoId ?? raw.EmpleadoId) || null,
@@ -71,6 +79,14 @@ export function mapResumen(raw) {
     minutosTrabajados,
     minutosRepuestos,
     saldoMinutos,
+    minutosAdeudados: minutosAdeudados ?? (saldoMinutos == null ? null : Math.max(0, -saldoMinutos)),
+    minutosAFavor: minutosAFavor ?? (saldoMinutos == null ? null : Math.max(0, saldoMinutos)),
+    llegadasDentroTolerancia: enteroInformado(raw.llegadasDentroTolerancia ?? raw.LlegadasDentroTolerancia),
+    llegadasTarde: enteroInformado(raw.llegadasTarde ?? raw.LlegadasTarde),
+    salidasDentroTolerancia: enteroInformado(raw.salidasDentroTolerancia ?? raw.SalidasDentroTolerancia),
+    salidasTempranas: enteroInformado(raw.salidasTempranas ?? raw.SalidasTempranas),
+    diasSinRegistros: enteroInformado(raw.diasSinRegistros ?? raw.DiasSinRegistros),
+    jornadasIncompletas: enteroInformado(raw.jornadasIncompletas ?? raw.JornadasIncompletas),
     horasPrevistas: formatMinutosInformados(minutosProgramados),
     recuperacionesInformadas: formatMinutosInformados(minutosRepuestos),
     saldoPeriodo: formatMinutosInformados(saldoMinutos),
@@ -137,9 +153,14 @@ export async function getAsignaciones(empleadoId) {
   return Array.isArray(payload) ? payload.map(mapAsignacion).filter(Boolean) : []
 }
 
-export async function assignTurno(empleadoId, { turnoId, fechaInicio, fechaFin = null }) {
+export function buildAsignacionBody({ turnoId, fechaInicio, fechaFin = null }) {
   const body = { turnoId: Number(turnoId), fechaInicio }
   if (fechaFin) body.fechaFin = fechaFin
+  return body
+}
+
+export async function assignTurno(empleadoId, { turnoId, fechaInicio, fechaFin = null }) {
+  const body = buildAsignacionBody({ turnoId, fechaInicio, fechaFin })
   const { response } = await apiFetch(`/api/jornadas/empleados/${empleadoId}/asignaciones`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },

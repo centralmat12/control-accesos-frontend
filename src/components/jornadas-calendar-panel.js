@@ -13,13 +13,13 @@ import {
   formatMinutosInformados,
   grillaMensual,
   mesSinAtencion,
-  presentarSaldo,
   shiftMonth,
+  tarjetasResumenLaboral,
   turnoHabitual,
 } from '../utils/labor-format.js'
 import { createEmpleadoCombobox } from './empleado-combobox.js'
 import { FORM_LABEL_CLASS } from './form-field.js'
-import { bindTooltipRoot } from './tooltip.js'
+import { bindTooltipRoot, infoHelpButton } from './tooltip.js'
 
 const VACIO = 'Seleccioná un empleado para consultar su calendario.'
 
@@ -197,31 +197,18 @@ export function createJornadasCalendarPanel({
     title.textContent = `Resumen de ${nombre} · ${mesLabel(year, monthIndex)}`
     box.append(title)
     const grid = document.createElement('div')
-    grid.className = 'grid gap-2 sm:grid-cols-2 xl:grid-cols-5'
-    const minutos = (value) => formatMinutosInformados(value) ?? '—'
-    const saldoInfo = presentarSaldo(resumen)
-    const saldo = saldoInfo.valor
-    const items = [
-      ['Actividad registrada', minutos(resumen?.actividadRegistrada)],
-      ['Minutos trabajados', minutos(resumen?.minutosTrabajados)],
-      ['Horas programadas', minutos(resumen?.minutosProgramados)],
-      ['Repuestos', minutos(resumen?.minutosRepuestos)],
-      ['Saldo', saldo],
-    ]
-    items.forEach(([label, value]) => {
+    grid.className = 'grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-4'
+    tarjetasResumenLaboral(resumen).forEach((item) => {
       const card = document.createElement('article')
-      card.className = 'rounded-lg border border-slate-200 bg-white px-3 py-2 dark:border-slate-700 dark:bg-slate-900'
-      card.innerHTML = `<p class="text-xs font-medium text-slate-500">${escapeHtml(label)}</p><p class="mt-0.5 text-sm font-semibold">${escapeHtml(value ?? '—')}</p>`
+      card.className = 'rounded-lg border border-slate-200 bg-white px-2.5 py-2 dark:border-slate-700 dark:bg-slate-900'
+      card.innerHTML = `<div class="flex items-start justify-between gap-1"><p class="text-xs font-medium leading-4 text-slate-500">${escapeHtml(item.etiqueta)}</p>${infoHelpButton(item.ayuda)}</div><p class="mt-1 text-sm font-semibold tabular-nums">${escapeHtml(item.texto)}</p>`
       grid.append(card)
     })
     box.append(grid)
     const note = document.createElement('p')
     note.className = 'text-xs text-slate-500'
-    note.textContent = saldoInfo.detalle
-      || (saldo === 'Al día' || saldo.startsWith('Debe ') || saldo.startsWith('A favor ')
-        ? 'La actividad registrada es la presencia entre la primera y la última fichada. Los minutos trabajados ya descuentan el almuerzo informado por la API.'
-        : '')
-    if (note.textContent) box.append(note)
+    note.textContent = 'Horas que debe y horas a favor salen del saldo de la API por separado. Un valor no se muestra como negativo.'
+    box.append(note)
     if (Array.isArray(reposiciones) && reposiciones.length) {
       const list = document.createElement('ul')
       list.className = 'space-y-1 text-sm'
