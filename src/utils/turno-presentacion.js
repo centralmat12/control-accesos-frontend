@@ -57,7 +57,7 @@ export function notaDescanso(valor) {
 
 export function textoJornadaNeta(entrada, salida, descanso) {
   const resumen = textoHorasProgramadas(entrada, salida, descanso)
-  return resumen.valido ? `Jornada neta: ${resumen.texto}` : '—'
+  return resumen.valido ? `${resumen.texto} netas` : '—'
 }
 
 export function parseMinutosAlmuerzo(value) {
@@ -153,6 +153,15 @@ export function textoEmpleadosAsignados(cantidad) {
   if (!Number.isInteger(value) || value < 0) return '—'
   if (value === 1) return '1 asignado'
   return `${value} asignados`
+}
+
+export function textoResumenAsignadosTurno(cantidad) {
+  if (cantidad == null || cantidad === '') return '—'
+  const value = Number(cantidad)
+  if (!Number.isInteger(value) || value < 0) return '—'
+  if (value === 0) return 'Sin empleados asignados'
+  if (value === 1) return '1 empleado asignado'
+  return `${value} empleados asignados`
 }
 
 export function coincideEmpleadoTurno(empleado, query) {

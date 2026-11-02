@@ -25,7 +25,7 @@ export const JORNADA_CLASIFICACION = {
 }
 
 export const CLASIFICACION_JORNADA_AYUDA =
-  'La primera fichada válida de la jornada es la entrada y la última, si hay más de una, es la salida. Las demás son intermedias. El día calendario es America/Argentina/Buenos_Aires. Una jornada sin salida deja de estar en curso a las 12 horas o al terminar el día, salvo un horario nocturno configurado.'
+  'La jornada se calcula desde la primera entrada hasta la última salida registrada.'
 
 export const JORNADA_LIMITE_MS = 12 * 60 * 60 * 1000
 
@@ -140,9 +140,9 @@ export function interpretarFichadaUnica(jornada) {
 export const DUPLICATE_WINDOW_SECONDS = 60
 export const DUPLICATE_WINDOW_MS = DUPLICATE_WINDOW_SECONDS * 1000
 
-export const TIPO_INFORMADO_TOOLTIP = 'Tipo informado por el agente o dispositivo.'
+export const TIPO_INFORMADO_TOOLTIP = 'Tipo registrado por el dispositivo.'
 export const INTERMEDIATE_MOVIMIENTO_TOOLTIP =
-  'Esta fichada se registró entre la primera y la última marcación de la jornada. Se conserva para auditoría, pero no modifica el ingreso ni el egreso calculados.'
+  'Esta fichada quedó entre la primera y la última marcación. No modifica el ingreso ni el egreso calculados.'
 
 export function empleadoMovimientoKey(item) {
   if (item?.empleadoId != null && String(item.empleadoId).trim() !== '') {

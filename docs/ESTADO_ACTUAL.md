@@ -1,5 +1,34 @@
 # Estado actual
 
+Cierre del 2 de noviembre de 2026 en `control-accesos-frontend`, rama `feat/turnos-asignaciones-ux`. El remoto es `https://github.com/centralmat12/control-accesos-frontend.git`. No implica despliegue ni merge a `main`.
+
+## Verificación del 2 de noviembre de 2026
+
+Comandos ejecutados en el frontend, con `TZ=UTC`:
+
+- `npm run check` (`node scripts/run-checks.js`): 57 scripts pasaron, incluido `check-deploy-archive.js`.
+- `npm run build`: terminó bien. El artefacto de esa corrida fue `dist/assets/index-_g0BTJe9.js`. `dist/` no se versiona.
+- `git diff --check`: sin errores de espacio en blanco.
+
+En el navegador, con sesión ya iniciada en `http://127.0.0.1:5173/`:
+
+- Dashboard mostró Estado del sistema, empleados activos, fichadas de hoy, entradas, salidas y actividad.
+- Fichadas abrió las pestañas Consulta de fichadas e Informes de asistencia. Consulta mostró filtros, Registrar, Exportar y las vistas Línea de tiempo, Resumen de jornadas, Movimientos registrados y Calendario. Informes dejó el hash `#/fichadas?seccion=informe`.
+- Empleados mostró Nuevo empleado, búsqueda, sucursal, departamento, estado y el selector de página.
+- Administración mostró las cuatro pestañas en una barra ajustada al texto, no al ancho completo.
+
+No se recorrió cada filtro, cada página ni cada formulario hasta el guardado. Exportar quedó deshabilitado en la consulta vacía que se vio; la generación de archivos se comprobó con `scripts/check-exportacion-fichadas.js` y con un PDF armado por `buildPdfBytes`.
+
+## Informe y PDF
+
+El informe de asistencia se arma en el frontend con empleados, fichadas, calendario, asignaciones y alertas ya existentes. No hay un endpoint nuevo de informe. El PDF lo escribe `src/utils/pdf-document.js` con Helvetica y WinAnsi. El texto extraído del ejemplo de dos páginas contenía `Peña Ñandú`, `Período: Últimos 60 días`, `31/10/2026`, `0003`, `Página 1 de 2`, `Página 2 de 2` y el pie `Informe operativo | …`. No contenía el texto `Control de Accesos`. Una captura posterior del visor quedó en blanco; la revisión visual anterior de la misma plantilla sí mostró logo, bloques de resumen y columnas completas.
+
+## Lo que sigue visible y no se dio por eliminado
+
+Siguen en pantalla títulos o descripciones internas: «Resumen general del sistema y la actividad de hoy.», «Administración de la organización», «Consultá las fichadas», «Informe de asistencia» y «Administrá la nómina, sus asignaciones y su estado.». La limpieza estricta pedida después no se aplicó en este cierre.
+
+## Relevamiento anterior
+
 Relevado el 28 de octubre de 2026. Solo se lista lo que está en Git o lo que se ejecutó en la sesión anterior. No implica despliegue ni merge a `main`.
 
 ## Ramas

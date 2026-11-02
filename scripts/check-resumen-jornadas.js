@@ -53,7 +53,7 @@ assert.equal(tarjetas.find((item) => item.etiqueta === 'Horas a favor').texto, '
 assert.equal(tarjetas.find((item) => item.etiqueta === 'Días sin registros').texto, '1')
 assert.equal(tarjetas.every((item) => item.ayuda.length > 20), true)
 assert.equal(tarjetas.some((item) => item.texto.includes('-') || item.texto.includes('−')), false)
-assert.equal(panel.includes('tarjetasResumenLaboral'), true)
+assert.equal(panel.includes('filasDesgloseMensual'), true)
 assert.equal(panel.includes("['Saldo'"), false)
 assert.equal(tarjetas.some((item) => item.etiqueta === 'Minutos trabajados'), true)
 assert.equal(tarjetas.some((item) => item.etiqueta === 'Actividad registrada'), true)

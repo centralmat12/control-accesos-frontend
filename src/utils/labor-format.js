@@ -271,3 +271,106 @@ export function presentarSaldo(resumen) {
   }
   return { valor: 'Sin jornada programada', detalle: '' }
 }
+
+export const AYUDA_RESUMEN_MENSUAL =
+  'Las horas programadas son las previstas y las trabajadas descuentan el descanso. Un saldo negativo es tiempo adeudado y uno positivo, tiempo a favor.'
+
+const DESGLOSE_MENSUAL_CLAVES = Object.freeze([
+  'actividadRegistrada',
+  'minutosRepuestos',
+  'llegadasDentroTolerancia',
+  'llegadasTarde',
+  'salidasDentroTolerancia',
+  'salidasTempranas',
+  'diasSinRegistros',
+  'jornadasIncompletas',
+])
+
+const ETIQUETA_DESGLOSE = Object.freeze({
+  minutosRepuestos: 'Reposiciones',
+})
+
+const INCIDENCIA_CLAVES = Object.freeze([
+  'llegadasTarde',
+  'salidasTempranas',
+  'jornadasIncompletas',
+  'diasSinRegistros',
+])
+
+export function motivoBreveCelda(motivo) {
+  const text = String(motivo ?? '').trim()
+  if (text === 'Falta fichada de salida') return 'Sin salida'
+  if (text === 'Hay fichadas posiblemente duplicadas') return 'Posible duplicado'
+  if (text === 'La salida queda antes de la entrada') return 'Horario a revisar'
+  if (text.startsWith('La duración')) return 'Más de 12 h'
+  if (/futura/i.test(text)) return 'Fecha a revisar'
+  if (text === 'No se puede interpretar la jornada') return 'A revisar'
+  if (!text) return 'Requiere atención'
+  return text.length > 22 ? `${text.slice(0, 21)}…` : text
+}
+
+/** Texto corto de la celda. El estado completo queda en el nombre accesible. */
+export function textoVisibleCelda(estado, resumenDia = null) {
+  const codigo = estado?.codigo ?? ''
+  if (codigo === 'incompleta' || codigo === 'revisar') return motivoBreveCelda(estado?.motivo)
+  if (codigo === 'enCurso') return 'En curso'
+  if (codigo === 'vacaciones') return 'Libre'
+  if (Number(resumenDia?.minutosTarde) > 0 && codigo === 'completa') return 'Llegada tarde'
+  return ''
+}
+
+export function marcaVisibleCelda(estado, resumenDia = null) {
+  const breve = textoVisibleCelda(estado, resumenDia)
+  if (breve) return breve
+  if (estado?.codigo === 'completa') return '✓'
+  if (estado?.codigo === 'sinRegistros' || estado?.codigo === 'sinPrevista') return '—'
+  return ''
+}
+
+export function textoHorasTrabajadas(resumen) {
+  return formatMinutosInformados(resumen?.minutosTrabajados) ?? '—'
+}
+
+export function textoSaldoPeriodo(resumen) {
+  const saldo = presentarSaldo(resumen)
+  if (saldo.valor === 'Al día') return { texto: 'Sin saldo pendiente', tono: 'neutro' }
+  if (String(saldo.valor).startsWith('Debe')) {
+    return { texto: saldo.valor.replace(/ 00 min$/, ''), tono: 'deuda' }
+  }
+  if (String(saldo.valor).startsWith('A favor')) {
+    return { texto: saldo.valor.replace(/ 00 min$/, ''), tono: 'favor' }
+  }
+  return { texto: saldo.valor, tono: 'neutro' }
+}
+
+/** Suma contadores ya informados. No incluye tolerancia ni días no laborables. */
+export function totalIncidencias(resumen) {
+  const valores = INCIDENCIA_CLAVES.map((clave) => resumen?.[clave])
+  if (valores.some((value) => !Number.isInteger(value))) return null
+  return valores.reduce((sum, value) => sum + value, 0)
+}
+
+export function detalleIncidencias(resumen) {
+  const partes = []
+  const agregar = (valor, uno, varios) => {
+    if (!Number.isInteger(valor) || valor <= 0) return
+    partes.push(`${valor} ${valor === 1 ? uno : varios}`)
+  }
+  agregar(resumen?.llegadasTarde, 'tardanza', 'tardanzas')
+  agregar(resumen?.salidasTempranas, 'salida temprana', 'salidas tempranas')
+  agregar(resumen?.jornadasIncompletas, 'incompleta', 'incompletas')
+  agregar(resumen?.diasSinRegistros, 'sin registros', 'sin registros')
+  return partes.join(' · ')
+}
+
+export function filasDesgloseMensual(resumen) {
+  const porClave = new Map(tarjetasResumenLaboral(resumen).map((item) => [item.clave, item]))
+  return DESGLOSE_MENSUAL_CLAVES.map((clave) => {
+    const item = porClave.get(clave)
+    return {
+      clave,
+      etiqueta: ETIQUETA_DESGLOSE[clave] ?? item?.etiqueta ?? clave,
+      texto: item?.texto ?? '—',
+    }
+  })
+}

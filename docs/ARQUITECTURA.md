@@ -11,6 +11,10 @@ Relevado el 28 de octubre de 2026 en el workspace local. Este archivo está dupl
 
 No hay otros repositorios Git dentro del workspace. El programa que habla con el lector biométrico no está en este directorio. La API lo nombra como aplicación o instalador local y le ofrece autenticación de agente.
 
+## Panel, informe y PDF
+
+El panel no consulta MySQL. El informe de asistencia reutiliza empleados, fichadas, calendario, asignaciones y alertas, y los combina en `src/utils/informe-asistencia.js`. El PDF de Consulta y de Informe sale de `src/utils/pdf-document.js` en el navegador. No hay un endpoint de informe en esta arquitectura mientras la API no lo publique.
+
 ## Componentes
 
 ```text

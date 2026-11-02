@@ -1,12 +1,28 @@
 # Pendientes
 
-Hechos abiertos al 28 de octubre de 2026. No se resolvieron en este relevamiento.
+Hechos abiertos al 2 de noviembre de 2026.
 
 ## Publicación
 
-- `feat/turnos-asignaciones-ux` está en los dos remotos y no está mergeada a `main`.
-- No se desplegó la API ni el frontend. Un proxy apuntando al servidor ya desplegado puede seguir ejecutando el código de `main` hasta que alguien publique estas ramas.
-- Esta documentación nueva está solo en el working tree. No se commiteó ni se hizo push.
+- `feat/turnos-asignaciones-ux` del frontend no está mergeada a `main` y no se desplegó.
+- El clon local `api` apunta a `https://github.com/SamusSalinas/ControlFichajes.API.git`, rama `fix/departamentos-gestion-segura`, y no tiene las cuatro guías de `docs/`. No se modificó. La copia publicada de esas guías queda en este repositorio.
+
+## Informe de asistencia
+
+- El panel calcula el informe con los datos que el frontend ya puede consultar. Falta un endpoint autoritativo de la API para informes históricos y exportables. Hasta que exista, no tratar el resultado del navegador como cierre contable.
+
+## Interfaz pedida y no cerrada
+
+- Siguen títulos y descripciones internas en Dashboard, Fichadas, Empleados y Administración. La limpieza que los quitaba no se implementó en este cierre.
+- La columna ID de Empresas sigue visible. No se confirmó en esta sesión si el usuario la usa para una acción.
+
+## Entorno
+
+- El 2 de noviembre de 2026, `check-deploy-archive.js` pasó en esta máquina, incluido `bash -n`. El fallo `/bin/bash` exit 127 del 27 de octubre no se reprodujo aquí. Puede volver en un Windows sin Bash.
+
+## Relevamiento del 28 de octubre de 2026
+
+Hechos que seguían abiertos en ese relevamiento y no se revalidaron contra la API.
 
 ## Entorno y pruebas
 
@@ -23,25 +39,6 @@ Hechos abiertos al 28 de octubre de 2026. No se resolvieron en este relevamiento
 
 ## Documentación
 
-- Las guías compartidas están duplicadas en los dos repositorios. Hay que editar las dos copias hasta que exista un repositorio común.
-- La propuesta de skill de traspaso está descrita abajo y no se creó.
-
-## Propuesta de skill, sin implementar
-
-Nombre tentativo: `traspaso-computadora`.
-
-Ubicación sugerida: una skill de proyecto en cada repositorio, `.cursor/skills/traspaso-computadora/SKILL.md`, no en el directorio personal ni en `skills-cursor`. Hace falta confirmación antes de crearla.
-
-Cuándo usarla: al empezar en otra computadora, al cerrar una sesión para continuarla en otro equipo, o si se pide sincronizar el contexto sin desplegar.
-
-Pasos propuestos:
-
-1. En cada clon, leer `AGENTS.md` y las cuatro guías de `docs/`.
-2. Ejecutar `git status -sb`, `git branch -vv` y `git log -1` sin hacer fetch forzado, reset ni merge.
-3. Comparar las copias duplicadas de la documentación y señalar diferencias, sin elegir una en silencio.
-4. Actualizar `ESTADO_ACTUAL.md` y `PENDIENTES.md` solo con comandos o archivos vistos en esa sesión.
-5. No copiar `.env.local`, `appsettings.*.local.json`, secretos ni datos biométricos.
-6. No hacer push, merge ni deploy salvo pedido explícito.
-7. Dejar un resumen de archivos de documentación tocados.
-
-No incluye scripts todavía. El detalle para revisión está en la respuesta de la fase 1, no en un `SKILL.md`.
+- La skill `traspaso-computadora` ya está en el repositorio. El procedimiento completo está en `.cursor/skills/traspaso-computadora/SKILL.md`. `.agents/skills/traspaso-computadora/SKILL.md` solo remite a ese archivo.
+- `.agents/rules/continuidad.md` y `.cursor/rules/continuidad.mdc` remiten a `AGENTS.md` y a las cuatro guías de `docs/`. No copian su contenido.
+- El clon de la API presente en este equipo no tiene esas guías. No hay una segunda copia local para sincronizar.

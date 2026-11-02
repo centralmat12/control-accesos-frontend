@@ -15,12 +15,12 @@ import {
   estadoSeleccionVisible,
   NOMINA_SIN_COINCIDENCIAS,
   NOMINA_VACIA,
-  notaDescanso,
   parseMinutosAlmuerzo,
   textoCantidadSeleccionada,
   textoConfirmacionAsignacion,
   textoDiasConfigurados,
   textoEmpleadosAsignados,
+  textoResumenAsignadosTurno,
   textoHorarioHabitual,
   textoHorasSemanales,
   textoJornadaNeta,
@@ -29,10 +29,18 @@ import {
   valorCampoDescanso,
   horaTexto,
 } from '../utils/turno-presentacion.js'
-import { actionButtonMarkup, BTN_SECONDARY_CLASS, createActionButton } from './button-styles.js'
-import { enhanceSelectsIn } from './dropdown.js'
+import { actionButtonMarkup, BTN_DELETE_CLASS, BTN_SECONDARY_CLASS, createActionButton } from './button-styles.js'
+import {
+  ADMIN_FIELD_CONTROL_CLASS,
+  ADMIN_FILTER_GRID_CLASS,
+  ADMIN_PRIMARY_BUTTON_CLASS,
+  adminSectionHeaderMarkup,
+  createAdminEmptyState,
+} from './admin-panel-layout.js'
+import { FORM_INPUT_CLASS, FORM_LABEL_CLASS } from './form-field.js'
+import { claimOpenDropdown, enhanceSelectsIn, positionDropdownPanel, releaseOpenDropdown } from './dropdown.js'
 import { createTurnoHoraField } from './turno-hora-field.js'
-import { iconPlus } from './icons.js'
+import { iconPlus, iconTrash, iconUsers } from './icons.js'
 import { panelForCapability } from './maintenance-panel.js'
 import { openFormModal, openModal } from './modal.js'
 import { showToast } from './toast.js'
@@ -48,7 +56,8 @@ function loadingState() {
 const DAY_LABELS = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado']
 const SHELL = 'w-full min-w-0 max-w-full overflow-x-hidden rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-900'
 const TURNOS_COLUMNS = 'md:grid-cols-[minmax(0,1.2fr)_minmax(0,0.7fr)_minmax(0,1.5fr)_minmax(0,0.9fr)_minmax(0,1fr)_auto]'
-const DIA_COLUMNS = 'md:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)_minmax(0,0.85fr)_minmax(0,0.95fr)_minmax(0,0.8fr)_auto]'
+const DIA_COLUMNS = 'xl:grid-cols-[minmax(130px,1.35fr)_minmax(92px,1fr)_minmax(92px,1fr)_minmax(115px,1fr)_minmax(90px,auto)_40px]'
+const DIA_COLUMNS_MEDIO = 'md:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)_minmax(0,1fr)]'
 const CELL = 'min-w-0 break-words px-3 py-3 text-left'
 const CELL_CENTER = 'min-w-0 break-words px-3 py-3 text-center'
 
@@ -79,7 +88,6 @@ export function decidirEliminacionTurno(error) {
   return { message: 'No se pudo eliminar el turno. Podés reintentar.' }
 }
 
-const HORAS_CAMPO = 'flex h-10 w-full min-w-0 items-center rounded-lg border border-slate-200 bg-slate-50 px-3 text-sm dark:border-slate-600 dark:bg-slate-950'
 const SUFIJO_CAMPO = 'inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 focus-within:border-blue-500 focus-within:ring-2 focus-within:ring-blue-500/20 dark:border-slate-600 dark:bg-slate-900'
 const SUFIJO_INPUT = 'border-0 bg-transparent p-0 text-sm outline-none [appearance:textfield] dark:bg-transparent [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none'
 
@@ -92,20 +100,174 @@ function fijarOpcion(select, value) {
   select.value = text
 }
 
-function turnoForm(initial, { canAssign = false } = {}) {
+function montarPopoverDescanso({ input, toggle, control, onSelect }) {
+  const panel = document.createElement('div')
+  const panelId = `descanso-menu-${secuenciaDescanso += 1}`
+  panel.id = panelId
+  panel.hidden = true
+  panel.className = 'z-[80] overflow-auto rounded-lg border border-slate-200 bg-white p-1 shadow-lg dark:border-slate-600 dark:bg-slate-900'
+  panel.style.position = 'fixed'
+  panel.setAttribute('role', 'listbox')
+  panel.setAttribute('aria-label', 'Accesos rápidos de descanso')
+  panel.innerHTML = ACCESOS_DESCANSO.map((acceso) => (
+    `<button type="button" role="option" data-descanso-rapido="${acceso.minutos}" aria-selected="false" class="flex h-9 w-full items-center rounded-md px-2 text-left text-sm text-slate-700 hover:bg-slate-100 focus:outline-none dark:text-slate-200 dark:hover:bg-slate-800">${escapeHtml(acceso.etiqueta)}</button>`
+  )).join('')
+  document.body.append(panel)
+  toggle.setAttribute('aria-controls', panelId)
+  toggle.setAttribute('aria-haspopup', 'listbox')
+  toggle.setAttribute('aria-expanded', 'false')
+  input.setAttribute('aria-controls', panelId)
+  input.setAttribute('aria-haspopup', 'listbox')
+  input.setAttribute('aria-expanded', 'false')
+
+  let open = false
+  let active = 0
+  const api = { close() { setOpen(false) } }
+
+  function options() {
+    return [...panel.querySelectorAll('[data-descanso-rapido]')]
+  }
+
+  function paintActive() {
+    const value = String(input.value).trim()
+    options().forEach((button, index) => {
+      const selected = button.dataset.descansoRapido === value
+      const current = index === active
+      button.setAttribute('aria-selected', selected ? 'true' : 'false')
+      button.classList.toggle('bg-slate-100', current)
+      button.classList.toggle('dark:bg-slate-800', current)
+      button.classList.toggle('font-medium', selected)
+      button.classList.toggle('text-blue-700', selected)
+      button.classList.toggle('dark:text-blue-200', selected)
+    })
+  }
+
+  function setOpen(next) {
+    if (open === next) {
+      if (next) positionDropdownPanel(control, panel)
+      return
+    }
+    open = next
+    panel.hidden = !open
+    toggle.setAttribute('aria-expanded', String(open))
+    input.setAttribute('aria-expanded', String(open))
+    if (open) {
+      claimOpenDropdown(api)
+      const match = options().findIndex((button) => button.dataset.descansoRapido === String(input.value).trim())
+      active = match >= 0 ? match : 0
+      paintActive()
+      positionDropdownPanel(control, panel)
+    } else {
+      releaseOpenDropdown(api)
+    }
+  }
+
+  function elegir(button) {
+    if (!button) return
+    input.value = button.dataset.descansoRapido
+    onSelect()
+    setOpen(false)
+    input.focus()
+  }
+
+  function onReposition() {
+    if (open) positionDropdownPanel(control, panel)
+  }
+
+  function onPointerDown(event) {
+    if (!open) return
+    if (control.contains(event.target) || panel.contains(event.target)) return
+    setOpen(false)
+  }
+
+  function onKeyCapture(event) {
+    if (!open) return
+    const list = options()
+    if (event.key === 'Escape') {
+      event.preventDefault()
+      event.stopImmediatePropagation()
+      setOpen(false)
+      input.focus()
+      return
+    }
+    if (event.key === 'ArrowDown') {
+      event.preventDefault()
+      active = (active + 1) % list.length
+      paintActive()
+      return
+    }
+    if (event.key === 'ArrowUp') {
+      event.preventDefault()
+      active = (active - 1 + list.length) % list.length
+      paintActive()
+      return
+    }
+    if (event.key === 'Enter') {
+      event.preventDefault()
+      event.stopImmediatePropagation()
+      elegir(list[active])
+      return
+    }
+    if (event.key === 'Tab') setOpen(false)
+  }
+
+  input.addEventListener('click', () => setOpen(true))
+  input.addEventListener('keydown', (event) => {
+    if (open || event.key !== 'ArrowDown') return
+    event.preventDefault()
+    setOpen(true)
+  })
+  toggle.addEventListener('click', (event) => {
+    event.preventDefault()
+    event.stopPropagation()
+    const next = !open
+    setOpen(next)
+    if (!next) input.focus()
+  })
+  toggle.addEventListener('keydown', (event) => {
+    if (open || event.key !== 'ArrowDown') return
+    event.preventDefault()
+    setOpen(true)
+    input.focus()
+  })
+  panel.addEventListener('click', (event) => {
+    const button = event.target.closest('[data-descanso-rapido]')
+    if (!button) return
+    event.preventDefault()
+    elegir(button)
+  })
+  document.addEventListener('pointerdown', onPointerDown)
+  document.addEventListener('keydown', onKeyCapture, true)
+  window.addEventListener('resize', onReposition)
+  window.addEventListener('scroll', onReposition, true)
+
+  return {
+    sync: paintActive,
+    destroy() {
+      setOpen(false)
+      document.removeEventListener('pointerdown', onPointerDown)
+      document.removeEventListener('keydown', onKeyCapture, true)
+      window.removeEventListener('resize', onReposition)
+      window.removeEventListener('scroll', onReposition, true)
+      panel.remove()
+    },
+  }
+}
+
+function turnoForm(initial, { canAssign = false, onCantidad } = {}) {
   const form = document.createElement('form')
-  form.className = 'flex min-h-0 flex-col gap-3'
+  form.className = 'flex min-h-0 flex-1 flex-col gap-2 overflow-x-hidden'
   const dias = initial?.dias?.length ? initial.dias : [{ diaSemana: 1, horaEntrada: '09:00', horaSalida: '18:00', minutosAlmuerzo: 60 }]
   const fieldLabel = 'mb-1 inline-flex min-h-5 items-center gap-1 text-sm font-medium leading-5 text-slate-700 dark:text-slate-200'
   const controlClass = 'h-10 w-full min-w-0 rounded-lg border border-slate-200 px-3 text-sm dark:border-slate-600 dark:bg-slate-900'
   const submitLabel = initial?.id ? 'Guardar' : 'Crear turno'
   const mostrarAsignar = Boolean(initial?.id) && canAssign
   form.innerHTML = `
-    <div class="grid w-full shrink-0 grid-cols-1 items-end justify-start gap-4 ${mostrarAsignar ? 'sm:grid-cols-[minmax(240px,320px)_100px_minmax(0,1fr)]' : 'sm:w-fit sm:grid-cols-[minmax(240px,320px)_100px]'}">
+    <div class="grid w-full shrink-0 grid-cols-1 items-end justify-start gap-3 ${mostrarAsignar ? 'sm:grid-cols-[minmax(0,1fr)_7rem_auto]' : 'sm:grid-cols-[minmax(0,1fr)_7rem]'}">
       <label class="block min-w-0">
         <span class="${fieldLabel}">Nombre del turno ${infoHelpButton('Usá un nombre fácil de identificar.')}</span>
         ${helpText('turno-nombre-help', 'Usá un nombre fácil de identificar.')}
-        <input name="nombre" required maxlength="100" placeholder="Ej. Turno administrativo" aria-describedby="turno-nombre-help" class="${controlClass} max-w-full sm:w-[320px]" value="${escapeHtml(initial?.nombre ?? '')}" />
+        <input name="nombre" required maxlength="100" placeholder="Ej. Turno administrativo" aria-describedby="turno-nombre-help" class="${controlClass}" value="${escapeHtml(initial?.nombre ?? '')}" />
       </label>
       <label class="block min-w-0">
         <span class="${fieldLabel}">Tolerancia ${infoHelpButton('Minutos permitidos después del horario de entrada.')}</span>
@@ -115,23 +277,27 @@ function turnoForm(initial, { canAssign = false } = {}) {
           <span class="shrink-0 text-xs text-slate-500" aria-hidden="true">min</span>
         </span>
       </label>
-      ${mostrarAsignar ? `<div class="sm:justify-self-end"><button type="button" data-asignar-turno class="${BTN_SECONDARY_CLASS} h-10 w-full shrink-0 justify-center sm:w-auto">Asignar empleados</button></div>` : ''}
+      ${mostrarAsignar ? `<div class="flex min-h-10 min-w-0 flex-wrap items-center gap-2 sm:justify-self-end">
+        <span data-empleados-cantidad class="min-w-0 text-sm font-medium text-slate-700 dark:text-slate-200"></span>
+        <button type="button" data-gestionar-empleados class="${BTN_SECONDARY_CLASS} h-10 shrink-0 gap-1.5 px-3" aria-label="Gestionar empleados">${iconUsers('h-4 w-4')}<span>Gestionar empleados</span></button>
+      </div>` : ''}
     </div>
-    <div data-scroll class="min-h-0 max-h-[min(58vh,34rem)] space-y-3 overflow-y-auto overflow-x-hidden pr-1">
-      <div class="space-y-2 border-t border-slate-200 pt-3 dark:border-slate-700">
+    <div data-scroll class="min-h-0 flex-1 space-y-2 overflow-y-auto overflow-x-hidden pr-1">
+      <div class="space-y-1.5 border-t border-slate-200 pt-2 dark:border-slate-700">
         <div class="flex flex-wrap items-center justify-between gap-2">
           <h3 class="text-sm font-semibold text-slate-800 dark:text-slate-100">Días y horarios</h3>
           <button type="button" data-add-day class="${BTN_SECONDARY_CLASS} h-8 shrink-0 gap-1.5 px-2.5 text-[13px]">${iconPlus('h-3.5 w-3.5')}<span>Agregar día</span></button>
         </div>
-        <div class="hidden text-xs font-medium text-slate-500 dark:text-slate-400 md:grid ${DIA_COLUMNS} md:gap-2">
-          <span>Día</span><span>Entrada</span><span>Salida</span><span>Descanso</span><span>Horas netas</span><span class="sr-only">Quitar</span>
+        <div data-dias-grid class="xl:grid ${DIA_COLUMNS} xl:items-center xl:gap-x-2 xl:gap-y-1">
+          <div class="hidden text-xs font-medium text-slate-500 dark:text-slate-400 xl:contents">
+            <span>Día</span><span>Entrada</span><span>Salida</span><span>Descanso</span><span>Horas netas</span><span><span class="sr-only">Quitar</span></span>
+          </div>
+          <div data-dias class="contents space-y-1 xl:space-y-0"></div>
         </div>
-        <div data-dias class="space-y-2"></div>
       </div>
-      <div data-asignados></div>
     </div>
     <p data-error class="hidden shrink-0 text-sm text-red-600" role="alert"></p>
-    <div class="flex shrink-0 flex-wrap items-center gap-2 border-t border-slate-200 pt-3 dark:border-slate-700">
+    <div class="flex shrink-0 flex-wrap items-center gap-2 border-t border-slate-200 pt-2 dark:border-slate-700">
       <div data-delete-slot class="w-full sm:w-auto"></div>
       <div class="ml-auto flex flex-wrap items-center justify-end gap-2 max-sm:w-full">
         <button type="button" data-cancel class="${BTN_SECONDARY_CLASS} h-10 w-full justify-center sm:w-auto">Cancelar</button>
@@ -140,25 +306,30 @@ function turnoForm(initial, { canAssign = false } = {}) {
     </div>
   `
   const list = form.querySelector('[data-dias]')
-  const dayLabel = 'mb-1 inline-flex min-h-5 items-center gap-1 text-xs font-medium leading-4 text-slate-500 dark:text-slate-400 md:sr-only'
-  const dayControl = 'h-10 w-full min-w-0 rounded-lg border border-slate-200 px-2 text-sm dark:border-slate-600 dark:bg-slate-900'
+  const dayLabel = 'mb-0.5 inline-flex min-h-4 items-center gap-1 text-xs font-medium leading-4 text-slate-500 dark:text-slate-400 xl:sr-only'
+  const dayControl = 'h-9 w-full min-w-0 rounded-lg border border-slate-200 px-2 text-sm dark:border-slate-600 dark:bg-slate-900'
+  const horasClass = 'inline-flex h-9 items-center whitespace-nowrap text-sm'
+
+  function nombreDia(value) {
+    const nombre = DAY_LABELS[Number(value)] || 'día'
+    return nombre.toLocaleLowerCase('es')
+  }
 
   function paintHoras(row) {
     const input = row.querySelector('[name="minutosAlmuerzo"]')
-    const nota = row.querySelector('[data-descanso-nota]')
     const valor = input?.value ?? ''
-    if (nota) nota.textContent = notaDescanso(valor)
-    row.querySelectorAll('[data-descanso-rapido]').forEach((button) => {
-      button.setAttribute('aria-pressed', button.dataset.descansoRapido === String(valor).trim() ? 'true' : 'false')
-    })
+    row._descansoSync?.()
+    const quitar = row.querySelector('[data-remove-day]')
+    if (quitar) quitar.setAttribute('aria-label', `Quitar ${nombreDia(row.querySelector('[name="diaSemana"]')?.value)}`)
     const field = row.querySelector('[data-horas]')
     const resumen = textoJornadaNeta(
       row.querySelector('[name="horaEntrada"]')?.value,
       row.querySelector('[name="horaSalida"]')?.value,
       valor,
     )
+    const vacio = resumen === '—'
     field.textContent = resumen
-    field.className = `${HORAS_CAMPO} ${resumen === '—' ? 'text-slate-400' : 'font-medium text-emerald-700 dark:text-emerald-300'}`
+    field.className = `${horasClass} ${vacio ? 'text-slate-400' : 'font-medium text-emerald-700 dark:text-emerald-300'}`
   }
 
   function syncRemove() {
@@ -174,8 +345,8 @@ function turnoForm(initial, { canAssign = false } = {}) {
     const entrada = horaTexto(dia.horaEntrada)
     const salida = horaTexto(dia.horaSalida)
     const descanso = valorCampoDescanso(dia.minutosAlmuerzo)
-    const notaId = `descanso-nota-${secuenciaDescanso += 1}`
-    row.className = `grid w-full min-w-0 grid-cols-1 items-start gap-2 rounded-lg border border-slate-200 p-2 dark:border-slate-700 md:grid ${DIA_COLUMNS} md:items-start md:gap-2 md:rounded-none md:border-0 md:bg-transparent md:p-0`
+    row.dataset.diaRow = 'true'
+    row.className = `grid w-full min-w-0 grid-cols-1 items-center gap-1 rounded-lg border border-slate-200 p-1.5 dark:border-slate-700 ${DIA_COLUMNS_MEDIO} md:gap-x-2 md:gap-y-1 xl:contents`
     row.innerHTML = `
       <label class="min-w-0">
         <span class="${dayLabel}">Día</span>
@@ -193,22 +364,17 @@ function turnoForm(initial, { canAssign = false } = {}) {
       </label>
       <label class="min-w-0">
         <span class="${dayLabel}">Descanso ${infoHelpButton('Tiempo de descanso que se descuenta de la jornada programada.')}</span>
-        <span class="${SUFIJO_CAMPO} h-10 w-full">
-          <input name="minutosAlmuerzo" type="number" min="0" step="1" inputmode="numeric" aria-label="Descanso" aria-describedby="${notaId}" class="${SUFIJO_INPUT} min-w-0 flex-1" value="${escapeHtml(descanso)}" />
+        <span data-descanso-control class="${SUFIJO_CAMPO} h-9 w-full">
+          <input name="minutosAlmuerzo" type="number" min="0" step="1" inputmode="numeric" aria-label="Descanso" class="${SUFIJO_INPUT} min-w-0 flex-1" value="${escapeHtml(descanso)}" />
           <span class="shrink-0 text-xs text-slate-500" aria-hidden="true">min</span>
-        </span>
-        <span id="${notaId}" data-descanso-nota class="mt-1 block min-h-4 text-[11px] leading-4 text-slate-500"></span>
-        <span class="mt-1 flex flex-wrap gap-1" role="group" aria-label="Accesos rápidos de descanso">
-          ${ACCESOS_DESCANSO.map((acceso) => `<button type="button" data-descanso-rapido="${acceso.minutos}" class="h-6 rounded-md border border-slate-200 px-1.5 text-[11px] font-medium leading-none text-slate-600 hover:border-blue-400 hover:text-blue-700 dark:border-slate-600 dark:text-slate-300">${escapeHtml(acceso.etiqueta)}</button>`).join('')}
+          <button type="button" data-descanso-toggle class="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded text-slate-400 hover:bg-slate-100 hover:text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 dark:hover:bg-slate-800 dark:hover:text-slate-100" aria-label="Accesos rápidos de descanso" aria-haspopup="listbox" aria-expanded="false">▾</button>
         </span>
       </label>
       <div class="min-w-0">
         <span class="${dayLabel}">Horas netas</span>
-        <div data-horas class="${HORAS_CAMPO} text-slate-400" role="status" aria-readonly="true" aria-live="polite">—</div>
+        <span data-horas data-tooltip="Horas programadas después del descanso" class="${horasClass} text-slate-400" role="status" aria-readonly="true" aria-live="polite">—</span>
       </div>
-      <div class="min-w-0">
-        <button type="button" data-remove-day class="${BTN_SECONDARY_CLASS} h-10 w-full justify-center px-2.5 md:w-auto">Quitar</button>
-      </div>
+      <button type="button" data-remove-day data-tooltip="Quitar día" aria-label="Quitar ${escapeHtml(nombreDia(dia.diaSemana))}" class="${BTN_DELETE_CLASS} h-9 w-9 shrink-0 justify-self-end px-0 xl:justify-self-center">${iconTrash('h-4 w-4')}</button>
     `
     row.querySelector('[data-hora-entrada]').replaceWith(createTurnoHoraField({
       name: 'horaEntrada',
@@ -224,18 +390,20 @@ function turnoForm(initial, { canAssign = false } = {}) {
       required: true,
       onChange: () => paintHoras(row),
     }))
+    const descansoMenu = montarPopoverDescanso({
+      input: row.querySelector('[name="minutosAlmuerzo"]'),
+      toggle: row.querySelector('[data-descanso-toggle]'),
+      control: row.querySelector('[data-descanso-control]'),
+      onSelect: () => paintHoras(row),
+    })
+    row._descansoSync = descansoMenu.sync
+    row._descansoDestroy = descansoMenu.destroy
     row.addEventListener('change', () => paintHoras(row))
     row.querySelector('[name="minutosAlmuerzo"]').addEventListener('input', () => paintHoras(row))
-    row.querySelectorAll('[data-descanso-rapido]').forEach((button) => {
-      button.addEventListener('click', () => {
-        const input = row.querySelector('[name="minutosAlmuerzo"]')
-        input.value = button.dataset.descansoRapido
-        paintHoras(row)
-      })
-    })
     row.querySelector('[data-remove-day]').addEventListener('click', () => {
       row.querySelectorAll('select').forEach((select) => select._caSelect?.destroy())
       row.querySelectorAll('[data-turno-hora]').forEach((field) => field.destroy?.())
+      row._descansoDestroy?.()
       row.remove()
       syncRemove()
     })
@@ -251,12 +419,24 @@ function turnoForm(initial, { canAssign = false } = {}) {
   }
 
   dias.forEach(addDay)
+  let gestion = null
+  function pintarResumen(cantidad = initial?.cantidadEmpleadosAsignados) {
+    const node = form.querySelector('[data-empleados-cantidad]')
+    if (!node) return
+    node.textContent = textoResumenAsignadosTurno(cantidad)
+  }
+  pintarResumen()
   if (initial?.id) {
-    const asignadosHost = form.querySelector('[data-asignados]')
-    mountAsignados(asignadosHost, initial)
-    form.querySelector('[data-asignar-turno]')?.addEventListener('click', () => {
-      if (form.querySelector('[data-asignar-turno]')?.disabled) return
-      asignadosHost.abrirAsignacion?.()
+    form.querySelector('[data-gestionar-empleados]')?.addEventListener('click', () => {
+      const button = form.querySelector('[data-gestionar-empleados]')
+      if (!button || button.disabled || gestion) return
+      gestion = openGestionarEmpleados(initial, form, (cantidad) => {
+        if (initial) initial.cantidadEmpleadosAsignados = cantidad
+        pintarResumen(cantidad)
+        onCantidad?.(cantidad)
+      }, () => {
+        gestion = null
+      })
     })
     const remove = createActionButton({
       variant: 'delete',
@@ -306,6 +486,7 @@ function turnoForm(initial, { canAssign = false } = {}) {
       dias: parsed,
     }
   }
+  form.cerrarGestion = () => gestion?.close({ force: true })
   bindTooltipRoot(form)
   return form
 }
@@ -324,14 +505,14 @@ function nombreEmpleado(empleado) {
   return [empleado?.apellido, empleado?.nombre].filter(Boolean).join(', ') || empleado?.nombreCompleto || 'Empleado'
 }
 
-function mountAsignados(host, turno) {
+function mountAsignados(host, turno, { onCantidad, form } = {}) {
   let asignados = []
   let fase = 'cargando'
   let filtro = ''
   let estado = null
   host.innerHTML = `
-    <div data-toolbar class="min-w-0"></div>
-    <div data-lista class="min-w-0"></div>
+    <div data-toolbar class="min-w-0 shrink-0"></div>
+    <div data-lista class="min-h-0 min-w-0 max-h-[min(20rem,40vh)] overflow-x-hidden overflow-y-auto"></div>
   `
   const toolbar = host.querySelector('[data-toolbar]')
   const lista = host.querySelector('[data-lista]')
@@ -407,10 +588,10 @@ function mountAsignados(host, turno) {
   }
 
   function fijarAcciones(bloquear) {
-    const form = host.closest('form')
+    host.parentElement?.querySelector('[data-asignar-turno]')?.toggleAttribute('disabled', bloquear || estado?.asignar === false)
     form?.querySelector('[type="submit"]')?.toggleAttribute('disabled', bloquear)
     form?.querySelector('[data-delete-turno]')?.toggleAttribute('disabled', bloquear)
-    form?.querySelector('[data-asignar-turno]')?.toggleAttribute('disabled', bloquear || estado?.asignar === false)
+    form?.querySelector('[data-gestionar-empleados]')?.toggleAttribute('disabled', bloquear)
   }
 
   function aplicarEstado(next) {
@@ -439,6 +620,7 @@ function mountAsignados(host, turno) {
       fijarAcciones(false)
       toolbar.dataset.modo = ''
       pintar()
+      onCantidad?.(asignados.length)
     } catch (error) {
       if (error?.status === 401) return
       let turnoExiste = null
@@ -474,6 +656,47 @@ function mountAsignados(host, turno) {
     openAsignar(turno, fase === 'ok' ? asignados : null, () => cargar())
   }
   cargar()
+}
+
+function openGestionarEmpleados(turno, form, onCantidad, onDismiss) {
+  if (!puedeAdministrarTurnos(getCurrentUser()) || !idTurnoValido(turno?.id)) return null
+  if (document.querySelector('[data-gestionar-empleados-panel]')) return null
+  const content = document.createElement('div')
+  content.dataset.gestionarEmpleadosPanel = 'true'
+  content.className = 'flex min-h-0 w-full min-w-0 flex-col gap-3 overflow-x-hidden'
+  content.innerHTML = `
+    <p class="shrink-0 text-sm text-slate-600 dark:text-slate-300">Turno: <span class="font-medium text-slate-900 dark:text-slate-100">${escapeHtml(turno.nombre || 'turno')}</span></p>
+    <div data-asignados class="flex min-h-0 min-w-0 flex-col gap-3 overflow-hidden"></div>
+    <div class="flex shrink-0 flex-wrap items-center justify-between gap-2 border-t border-slate-200 pt-3 dark:border-slate-700">
+      <button type="button" data-asignar-turno class="${BTN_SECONDARY_CLASS} h-10 gap-1.5 px-3">${iconUsers('h-4 w-4')}<span>Asignar empleados</span></button>
+      <button type="button" data-cerrar class="${BTN_SECONDARY_CLASS} h-10 px-3">Cerrar</button>
+    </div>
+  `
+  const host = content.querySelector('[data-asignados]')
+  mountAsignados(host, turno, { onCantidad, form })
+  const modal = openModal({
+    title: 'Gestionar empleados',
+    content,
+    stacked: true,
+    labelledBy: 'gestionar-empleados-titulo',
+    closeOnBackdrop: false,
+    unsavedChanges: false,
+    scrollBody: false,
+    dialogClass: 'max-w-lg',
+    onClose: () => {
+      host.limpiar?.()
+      onDismiss?.()
+      const opener = form?.querySelector('[data-gestionar-empleados]')
+      if (opener instanceof HTMLElement && opener.isConnected) opener.focus()
+    },
+  })
+  const asignar = content.querySelector('[data-asignar-turno]')
+  asignar.addEventListener('click', () => {
+    if (asignar.disabled) return
+    host.abrirAsignacion?.()
+  })
+  content.querySelector('[data-cerrar]').addEventListener('click', () => modal.close())
+  return modal
 }
 
 function openAsignar(turno, nomina, onDone) {
@@ -759,7 +982,7 @@ function renderTable(turnos, canWrite, host, reload, onSaved) {
   }
   const section = document.createElement('div')
   section.className = SHELL
-  const head = 'bg-slate-50 text-xs font-medium uppercase tracking-wide text-slate-500 dark:bg-slate-800 dark:text-slate-400'
+  const head = 'bg-slate-50 text-xs font-medium text-slate-500 dark:bg-slate-800 dark:text-slate-400'
   const columns = canWrite ? TURNOS_COLUMNS : 'md:grid-cols-[minmax(0,1.2fr)_minmax(0,0.7fr)_minmax(0,1.5fr)_minmax(0,0.9fr)_minmax(0,1fr)]'
   const desktop = document.createElement('div')
   desktop.className = 'hidden md:block'
@@ -771,7 +994,7 @@ function renderTable(turnos, canWrite, host, reload, onSaved) {
         <div role="columnheader" class="${CELL} ${head}">Horario habitual</div>
         <div role="columnheader" class="${CELL_CENTER} ${head}">Horas semanales</div>
         <div role="columnheader" class="${CELL} ${head}">Empleados asignados</div>
-        ${canWrite ? `<div role="columnheader" class="${CELL} text-right ${head}">Acción</div>` : ''}
+        ${canWrite ? `<div role="columnheader" class="${CELL} text-right ${head}">Acciones</div>` : ''}
       </div>
     </div>
   `
@@ -839,8 +1062,8 @@ function openEliminarTurnoConfirm(nombre, onConfirm) {
     cancel.textContent = 'Cancelar'
     const confirm = document.createElement('button')
     confirm.type = 'button'
-    confirm.className = CONFIRM_DESTRUCTIVE_CLASS
-    confirm.textContent = 'Eliminar turno'
+    confirm.className = `${CONFIRM_DESTRUCTIVE_CLASS} inline-flex h-10 items-center justify-center gap-2`
+    confirm.innerHTML = `${iconTrash('h-4 w-4')}<span>Eliminar turno</span>`
     actions.append(cancel, confirm)
     content.append(question, detail, actions)
 
@@ -876,7 +1099,7 @@ function openEliminarTurnoConfirm(nombre, onConfirm) {
       confirm.disabled = true
       cancel.disabled = true
       confirm.setAttribute('aria-busy', 'true')
-      confirm.textContent = 'Eliminando…'
+      confirm.querySelector('span').textContent = 'Eliminando…'
       void (async () => {
         try {
           await onConfirm()
@@ -898,59 +1121,88 @@ function aplicarResultadoEliminacion(errorElement, decision) {
 }
 
 function openEditor(turno, reload, onSaved) {
-  const form = turnoForm(turno, { canAssign: puedeAdministrarTurnos(getCurrentUser()) })
+  const cantidadInicial = turno?.cantidadEmpleadosAsignados
+  const form = turnoForm(turno, {
+    canAssign: puedeAdministrarTurnos(getCurrentUser()),
+    onCantidad(cantidad) {
+      if (turno) turno.cantidadEmpleadosAsignados = cantidad
+    },
+  })
   const error = form.querySelector('[data-error]')
+  let deleting = false
+  let saving = false
+  let saved = false
   const modal = openFormModal({
     title: turno ? 'Editar turno' : 'Nuevo turno',
     content: form,
-    dialogClass: 'max-w-[45rem]',
+    dialogClass: 'max-w-[1080px]',
     scrollBody: false,
     onClose: () => {
-      form.querySelector('[data-asignados]')?.limpiar?.()
+      form.cerrarGestion?.()
       form.querySelectorAll('[data-turno-hora]').forEach((field) => field.destroy?.())
+      form.querySelectorAll('[data-dia-row]').forEach((row) => row._descansoDestroy?.())
+      if (!saved && turno?.id && turno.cantidadEmpleadosAsignados !== cantidadInicial) reload()
     },
   })
-  let deleting = false
-  let saving = false
   form.querySelector('[data-cancel]').addEventListener('click', () => modal.close())
   form.querySelector('[data-delete-turno]')?.addEventListener('click', async () => {
-    if (deleting || !turno?.id) return
+    if (deleting || saving || !turno?.id) return
     deleting = true
     const button = form.querySelector('[data-delete-turno]')
+    const submit = form.querySelector('[type="submit"]')
+    const gestionar = form.querySelector('[data-gestionar-empleados]')
     button.disabled = true
+    if (submit) submit.disabled = true
+    if (gestionar) gestionar.disabled = true
     const outcome = await openEliminarTurnoConfirm(turno.nombre || 'turno', () => deleteTurno(turno.id))
     deleting = false
     if (!outcome || outcome.cancelled) {
       button.disabled = false
+      if (submit) submit.disabled = false
+      if (gestionar) gestionar.disabled = false
       return
     }
     const decision = decidirEliminacionTurno(outcome.ok ? null : outcome.error)
     if (decision.session) {
       button.disabled = false
+      if (submit) submit.disabled = false
+      if (gestionar) gestionar.disabled = false
       return
     }
     aplicarResultadoEliminacion(error, decision)
     if (decision.closeEditor) modal.close({ force: true })
     if (decision.reload) reload()
-    if (!decision.closeEditor) button.disabled = false
+    if (!decision.closeEditor) {
+      button.disabled = false
+      if (submit) submit.disabled = false
+      if (gestionar) gestionar.disabled = false
+    }
   })
   form.addEventListener('submit', async (event) => {
     event.preventDefault()
     if (saving) return
+    if (deleting) return
     const body = form.collect()
     if (!body) return
     saving = true
     const submit = form.querySelector('[type="submit"]')
+    const removeButton = form.querySelector('[data-delete-turno]')
+    const gestionar = form.querySelector('[data-gestionar-empleados]')
+    const submitText = submit.textContent
     submit.disabled = true
     submit.setAttribute('aria-busy', 'true')
+    submit.textContent = 'Guardando…'
+    if (removeButton) removeButton.disabled = true
+    if (gestionar) gestionar.disabled = true
     try {
-      const saved = turno?.id
+      const guardado = turno?.id
         ? (await updateTurno(turno.id, body), { ...turno, ...body, id: turno.id })
         : await createTurno(body)
-      const row = saved?.id
-        ? { ...saved, ...body, id: saved.id, dias: saved.dias?.length ? saved.dias : body.dias }
+      const row = guardado?.id
+        ? { ...guardado, ...body, id: guardado.id, dias: guardado.dias?.length ? guardado.dias : body.dias }
         : { ...body, cantidadEmpleadosAsignados: 0 }
       showToast({ message: turno?.id ? 'Turno actualizado.' : 'Turno creado.', tone: 'success' })
+      saved = true
       modal.close({ force: true })
       if (onSaved) onSaved(row)
       else reload()
@@ -965,27 +1217,95 @@ function openEditor(turno, reload, onSaved) {
       saving = false
       if (form.isConnected) {
         submit.disabled = false
+        submit.textContent = submitText
         submit.removeAttribute('aria-busy')
+        if (removeButton && !deleting) removeButton.disabled = false
+        if (gestionar && !deleting) gestionar.disabled = false
       }
     }
   })
 }
 
-export function createTurnosPanel() {
+export function createTurnosPanel({ context = '' } = {}) {
   const root = document.createElement('section')
-  root.className = 'w-full min-w-0 max-w-[min(100%,65rem)] space-y-2 overflow-x-hidden'
-  const actions = document.createElement('div')
-  actions.className = 'flex flex-wrap items-center justify-end gap-2'
+  root.className = 'w-full min-w-0 space-y-4 overflow-x-hidden'
+  const header = document.createElement('div')
+  const filters = document.createElement('div')
+  filters.className = ADMIN_FILTER_GRID_CLASS
+  filters.innerHTML = `
+    <div class="min-w-0">
+      <label for="admin-turnos-search" class="${FORM_LABEL_CLASS}">Buscar</label>
+      <input id="admin-turnos-search" type="search" placeholder="Nombre del turno" class="${FORM_INPUT_CLASS} ${ADMIN_FIELD_CONTROL_CLASS}" />
+    </div>
+    <button type="button" id="admin-turnos-clear" class="${BTN_SECONDARY_CLASS} h-10" disabled>Limpiar</button>
+  `
   const host = document.createElement('div')
   host.className = 'min-w-0 overflow-x-hidden'
-  root.append(actions, host)
+  root.append(header, filters, host)
   let listaTurnos = []
   let puedeEscribir = false
+  let busqueda = ''
+  const search = filters.querySelector('#admin-turnos-search')
+  const clear = filters.querySelector('#admin-turnos-clear')
+
+  function turnosVisibles() {
+    const query = busqueda.trim().toLowerCase()
+    if (!query) return listaTurnos
+    return listaTurnos.filter((turno) => String(turno?.nombre ?? '').toLowerCase().includes(query))
+  }
+
+  function syncHeader() {
+    header.innerHTML = adminSectionHeaderMarkup({
+      titleId: 'admin-turnos-title',
+      title: 'Turnos de trabajo',
+      description: 'Configurá las jornadas y asignaciones de la nómina.',
+      context,
+    })
+    if (!puedeEscribir) return
+    const button = document.createElement('button')
+    button.type = 'button'
+    button.className = ADMIN_PRIMARY_BUTTON_CLASS
+    button.innerHTML = `${iconPlus('h-4 w-4')}<span>Nuevo turno</span>`
+    button.addEventListener('click', () => openEditor(null, () => load(false), aplicarTurnoGuardado))
+    header.querySelector('[data-admin-action]')?.append(button)
+  }
 
   function mostrarTurnos(turnos = listaTurnos) {
     listaTurnos = turnos
-    renderTable(listaTurnos, puedeEscribir, host, () => load(false), aplicarTurnoGuardado)
+    syncHeader()
+    const visibles = turnosVisibles()
+    if (!listaTurnos.length) {
+      host.replaceChildren(createAdminEmptyState({
+        title: 'No hay turnos de trabajo',
+        detail: 'Todavía no hay registros disponibles.',
+        actionLabel: puedeEscribir ? '+ Nuevo turno' : '',
+        onAction: puedeEscribir ? () => openEditor(null, () => load(false), aplicarTurnoGuardado) : undefined,
+      }))
+      return
+    }
+    if (!visibles.length) {
+      host.replaceChildren(createAdminEmptyState({
+        title: 'No encontramos resultados',
+        detail: 'Probá cambiar o limpiar los filtros aplicados.',
+        actionLabel: 'Limpiar filtros',
+        onAction: () => clear.click(),
+      }))
+      return
+    }
+    renderTable(visibles, puedeEscribir, host, () => load(false), aplicarTurnoGuardado)
   }
+
+  search.addEventListener('input', () => {
+    busqueda = search.value
+    clear.disabled = !busqueda.trim()
+    mostrarTurnos()
+  })
+  clear.addEventListener('click', () => {
+    busqueda = ''
+    search.value = ''
+    clear.disabled = true
+    mostrarTurnos()
+  })
 
   function aplicarTurnoGuardado(row) {
     if (!row) return
@@ -1001,21 +1321,14 @@ export function createTurnosPanel() {
     const user = getCurrentUser()
     const read = await resolveCapability(CAPABILITY.turnosRead, { force })
     if (read.status !== CAPABILITY_STATUS.available) {
-      actions.replaceChildren()
+      puedeEscribir = false
+      syncHeader()
       host.replaceChildren(panelForCapability(read, { onRetry: () => load(true) }))
       return
     }
     const write = await resolveCapability(CAPABILITY.turnosWrite, { force })
     puedeEscribir = write.status === CAPABILITY_STATUS.available && puedeAdministrarTurnos(user)
-    actions.replaceChildren()
-    if (puedeEscribir) {
-      const button = document.createElement('button')
-      button.type = 'button'
-      button.className = 'rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-500'
-      button.textContent = 'Nuevo turno'
-      button.addEventListener('click', () => openEditor(null, () => load(false), aplicarTurnoGuardado))
-      actions.append(button)
-    }
+    syncHeader()
     try {
       const turnos = await getTurnos()
       mostrarTurnos(turnos)
@@ -1029,6 +1342,7 @@ export function createTurnosPanel() {
   }
 
   load(false)
+  syncHeader()
   bindTooltipRoot(root)
   return root
 }

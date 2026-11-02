@@ -33,14 +33,22 @@ import { createSucursalMultiSelect } from '../components/sucursal-multi-select.j
 import { showToast } from '../components/toast.js'
 import { empleadosFiltersArePristine, filterEmpleados, sortEmpleados } from '../utils/empleado-list.js'
 import { empleadoPerteneceAEmpresaActiva, summarizeEmpleadoDatos } from '../utils/empleado-alerts.js'
-import { DEFAULT_PAGE_SIZE, PAGE_SIZE_OPTIONS, paginateItems } from '../utils/paginate.js'
+import { paginateItems } from '../utils/paginate.js'
 
 const CONTROL_CLASS = `h-11 min-w-0 max-w-full ${FORM_INPUT_CLASS}`
 
 const FILTER_FIELD_CLASS = 'flex min-w-0 w-full flex-col'
 const FILTER_LABEL_CLASS = 'mb-1.5 block text-sm font-medium text-slate-700'
+const EMPLEADOS_PAGE_SIZES = [10, 25, 50]
+const EMPLEADOS_DEFAULT_PAGE_SIZE = 10
+let sessionPageSize = EMPLEADOS_DEFAULT_PAGE_SIZE
+
+export function textoRangoEmpleados(from, to, total) {
+  const noun = total === 1 ? 'empleado' : 'empleados'
+  return `Mostrando ${from}–${to} de ${total} ${noun}`
+}
 const FILTERS_GRID_CLASS =
-  'grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-[minmax(0,1.6fr)_repeat(4,minmax(0,1fr))_auto]'
+  'grid min-w-0 grid-cols-1 items-end gap-3 sm:grid-cols-2 xl:grid-cols-[minmax(0,1.6fr)_repeat(3,minmax(0,1fr))_auto_auto]'
 
 function sessionEmpresaId() {
   return getOperativeEmpresaId(getCurrentUser())
@@ -69,8 +77,7 @@ export async function renderEmpleados(container, { initialQuery, empleadoId, ope
     view.className = 'space-y-6'
     view.innerHTML = `
       ${pageHeadingMarkup({
-        title: 'Gestioná los empleados',
-        description: 'Administrá sus datos laborales, asignaciones y estado.',
+        description: 'Administrá la nómina, sus asignaciones y su estado.',
       })}
     `
     view.append(createSelectEmpresaState())
@@ -79,14 +86,13 @@ export async function renderEmpleados(container, { initialQuery, empleadoId, ope
   }
 
   const view = document.createElement('div')
-  view.className = 'space-y-6'
+  view.className = 'mx-auto w-full max-w-[1200px] space-y-4'
 
   view.innerHTML = `
-    <div class="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+    <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
       <div class="min-w-0 flex-1">
         ${pageHeadingMarkup({
-          title: 'Gestioná los empleados',
-          description: 'Administrá sus datos laborales, asignaciones y estado.',
+          description: 'Administrá la nómina, sus asignaciones y su estado.',
         })}
       </div>
       <button
@@ -94,19 +100,19 @@ export async function renderEmpleados(container, { initialQuery, empleadoId, ope
         id="empleados-new"
         class="inline-flex h-11 w-full shrink-0 items-center justify-center rounded-lg bg-blue-600 px-4 text-sm font-semibold text-white hover:bg-blue-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
       >
-        Nuevo empleado
+        + Nuevo empleado
       </button>
     </div>
     <div id="empleados-banner"></div>
     <div id="empleados-summary" class="grid gap-3 sm:grid-cols-3"></div>
-    <section class="min-w-0 max-w-full overflow-x-visible rounded-xl border border-slate-200 bg-white px-3 py-3 shadow-sm sm:px-4">
+    <section class="min-w-0 max-w-full rounded-xl border border-slate-200 bg-white px-3 py-3 shadow-sm dark:border-slate-700 dark:bg-slate-900 sm:px-4">
       <div id="empleados-filters" class="${FILTERS_GRID_CLASS}">
-        <div class="${FILTER_FIELD_CLASS} sm:col-span-2 md:col-span-1">
+        <div class="${FILTER_FIELD_CLASS} sm:col-span-2 xl:col-span-1">
           <label for="empleados-search" class="${FILTER_LABEL_CLASS}">Buscar</label>
           <input
             id="empleados-search"
             type="search"
-            placeholder="Nombre, DNI o legajo"
+            placeholder="Buscar por nombre, DNI o legajo"
             aria-label="Buscar por nombre, DNI o legajo"
             class="${CONTROL_CLASS}"
           />
@@ -136,22 +142,22 @@ export async function renderEmpleados(container, { initialQuery, empleadoId, ope
             <option value="todos">Todos</option>
           </select>
         </div>
-        <div class="${FILTER_FIELD_CLASS}">
-          <label for="empleados-estado" class="${FILTER_LABEL_CLASS}">
-            <span aria-hidden="true">Datos</span>
-            <span class="sr-only">Estado de datos</span>
-          </label>
-          <select id="empleados-estado" class="${CONTROL_CLASS}" aria-label="Estado de datos">
-            <option value="todos">Todos</option>
-            <option value="completo">Completo</option>
-            <option value="pendientes">Con pendientes</option>
-          </select>
+        <div class="flex min-w-0">
+          <button
+            type="button"
+            id="empleados-more-filters"
+            class="${BTN_SECONDARY_CLASS} h-11 w-full"
+            aria-expanded="false"
+            aria-controls="empleados-more-panel"
+          >
+            Más filtros
+          </button>
         </div>
-        <div class="flex min-w-0 w-full items-end sm:col-span-2 md:col-span-1">
+        <div class="flex min-w-0">
           <button
             type="button"
             id="empleados-clear-filters"
-            class="${BTN_SECONDARY_CLASS} h-11 w-full min-w-0 max-w-full xl:w-auto"
+            class="${BTN_SECONDARY_CLASS} h-11 w-full"
             aria-label="Limpiar filtros"
             disabled
           >
@@ -159,18 +165,33 @@ export async function renderEmpleados(container, { initialQuery, empleadoId, ope
           </button>
         </div>
       </div>
+      <div id="empleados-more-panel" class="mt-3 hidden border-t border-slate-100 pt-3 dark:border-slate-800">
+        <div class="${FILTER_FIELD_CLASS} max-w-xs">
+          <label for="empleados-estado" class="${FILTER_LABEL_CLASS}">
+            <span aria-hidden="true">Información</span>
+            <span class="sr-only">Estado de datos</span>
+          </label>
+          <select id="empleados-estado" class="${CONTROL_CLASS}" aria-label="Estado de datos">
+            <option value="todos">Todos</option>
+            <option value="completo">Datos completos</option>
+            <option value="pendientes">Con pendientes</option>
+          </select>
+        </div>
+      </div>
     </section>
-    <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-end sm:gap-4">
-      <label for="empleados-page-size" class="flex items-center gap-2 text-sm text-slate-600">
-        <span>Mostrar</span>
-        <select id="empleados-page-size" class="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-sm text-slate-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20">
-          ${PAGE_SIZE_OPTIONS.map((size) => `<option value="${size}" ${size === DEFAULT_PAGE_SIZE ? 'selected' : ''}>${size}</option>`).join('')}
-        </select>
-      </label>
-      <p id="empleados-count" class="text-sm text-slate-500"></p>
-    </div>
-    <div id="empleados-results"></div>
-    <div id="empleados-pagination"></div>
+    <section id="empleados-list" class="min-w-0 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-900">
+      <div id="empleados-table-bar" class="hidden flex-col gap-2 border-b border-slate-100 px-3 py-2 dark:border-slate-800 sm:flex-row sm:items-center sm:justify-between">
+        <p id="empleados-count" class="text-sm font-medium text-slate-700 dark:text-slate-200"></p>
+        <label for="empleados-page-size" class="ml-auto flex items-center justify-end gap-2 text-sm text-slate-600 dark:text-slate-300">
+          <span>Mostrar</span>
+          <select id="empleados-page-size" class="h-9 rounded-lg border border-slate-200 bg-white px-2.5 text-sm text-slate-900 outline-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100">
+            ${EMPLEADOS_PAGE_SIZES.map((size) => `<option value="${size}" ${size === sessionPageSize ? 'selected' : ''}>${size}</option>`).join('')}
+          </select>
+        </label>
+      </div>
+      <div id="empleados-results"></div>
+      <div id="empleados-pagination" class="border-t border-slate-100 empty:hidden dark:border-slate-800"></div>
+    </section>
   `
 
   const banner = view.querySelector('#empleados-banner')
@@ -178,6 +199,10 @@ export async function renderEmpleados(container, { initialQuery, empleadoId, ope
   const results = view.querySelector('#empleados-results')
   const paginationContainer = view.querySelector('#empleados-pagination')
   const countLabel = view.querySelector('#empleados-count')
+  const tableBar = view.querySelector('#empleados-table-bar')
+  const listCard = view.querySelector('#empleados-list')
+  const moreFiltersButton = view.querySelector('#empleados-more-filters')
+  const moreFiltersPanel = view.querySelector('#empleados-more-panel')
   const searchInput = view.querySelector('#empleados-search')
   const departamentoSelect = view.querySelector('#empleados-departamento')
   const departamentoHint = view.querySelector('#empleados-departamento-hint')
@@ -201,7 +226,7 @@ export async function renderEmpleados(container, { initialQuery, empleadoId, ope
   let loaded = false
   let loadError = false
   let currentPage = 1
-  let pageSize = DEFAULT_PAGE_SIZE
+  let pageSize = sessionPageSize
   let sortKey = 'nombre'
   let sortDir = 'asc'
   let highlightId = null
@@ -259,18 +284,28 @@ export async function renderEmpleados(container, { initialQuery, empleadoId, ope
     }
 
     const stats = summarizeEmpleadoDatos(empleados)
+    const pendienteNeutral = stats.conPendientes === 0
+    const pendienteCard = pendienteNeutral
+      ? 'border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900'
+      : 'border-amber-300 bg-amber-50/70 dark:border-amber-500/40 dark:bg-amber-950/20'
+    const pendienteNumber = pendienteNeutral
+      ? 'text-slate-900 dark:text-slate-100'
+      : 'text-amber-800 dark:text-amber-200'
+    const card = 'flex h-full min-h-[4.5rem] items-center justify-between gap-3 rounded-xl border px-4 py-3'
+    const label = 'text-sm font-medium text-slate-500 dark:text-slate-400'
+    const number = 'text-2xl font-semibold tabular-nums tracking-tight'
     summary.innerHTML = `
-      <article class="rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
-        <p class="text-sm font-medium text-slate-500">Empleados activos</p>
-        <p class="mt-1 text-2xl font-semibold tracking-tight text-slate-900">${stats.activos}</p>
+      <article class="${card} border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900">
+        <p class="${label}">Empleados activos</p>
+        <p class="${number} text-slate-900 dark:text-slate-100">${stats.activos}</p>
       </article>
-      <article class="rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
-        <p class="text-sm font-medium text-slate-500">Completos</p>
-        <p class="mt-1 text-2xl font-semibold tracking-tight text-slate-900">${stats.completos}</p>
+      <article class="${card} border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900">
+        <p class="${label}">Datos completos</p>
+        <p class="${number} text-slate-900 dark:text-slate-100">${stats.completos}</p>
       </article>
-      <article class="rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
-        <p class="text-sm font-medium text-slate-500">Con pendientes</p>
-        <p class="mt-1 text-2xl font-semibold tracking-tight text-slate-900">${stats.conPendientes}</p>
+      <article class="${card} ${pendienteCard}">
+        <p class="${label}">Con pendientes</p>
+        <p class="${number} ${pendienteNumber}">${stats.conPendientes}</p>
       </article>
     `
   }
@@ -397,17 +432,51 @@ export async function renderEmpleados(container, { initialQuery, empleadoId, ope
     return sortEmpleados(filtered, sortKey, sortDir)
   }
 
+  function setTableBarVisible(visible) {
+    tableBar.className = visible
+      ? 'flex flex-col gap-2 border-b border-slate-100 px-3 py-2 dark:border-slate-800 sm:flex-row sm:items-center sm:justify-between'
+      : 'hidden'
+  }
+
+  function setListChrome(active) {
+    listCard.className = active
+      ? 'min-w-0 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-900'
+      : 'min-w-0'
+  }
+
+  function renderFilteredEmpty() {
+    const box = document.createElement('div')
+    box.className = 'px-6 py-12 text-center'
+    const title = document.createElement('p')
+    title.className = 'text-sm text-slate-600 dark:text-slate-300'
+    title.textContent = 'No encontramos empleados con los filtros aplicados.'
+    const action = document.createElement('button')
+    action.type = 'button'
+    action.className = `${BTN_SECONDARY_CLASS} mt-4`
+    action.textContent = 'Limpiar filtros'
+    action.addEventListener('click', () => {
+      void clearAllFilters()
+    })
+    box.append(title, action)
+    return box
+  }
+
   function renderResults() {
     paginationContainer.replaceChildren()
     countLabel.textContent = ''
 
-    if (!loaded) return
+    if (!loaded) {
+      setTableBarVisible(false)
+      return
+    }
 
     const sorted = visibleEmpleados()
     const paged = paginateItems(sorted, currentPage, pageSize)
     currentPage = paged.page
 
     if (empleados.length === 0) {
+      setTableBarVisible(false)
+      setListChrome(false)
       results.replaceChildren(
         createFeedbackState({
           title: 'No hay empleados',
@@ -417,17 +486,16 @@ export async function renderEmpleados(container, { initialQuery, empleadoId, ope
       return
     }
 
-    if (sorted.length === 0) {
-      results.replaceChildren(
-        createFeedbackState({
-          title: 'Sin resultados',
-          message: 'No hay empleados que coincidan con la búsqueda o los filtros seleccionados.',
-        }),
-      )
+    setListChrome(true)
+    setTableBarVisible(true)
+    const total = sorted.length
+    countLabel.textContent = total === 1 ? '1 empleado' : `${total} empleados`
+
+    if (total === 0) {
+      results.replaceChildren(renderFilteredEmpty())
       return
     }
 
-    countLabel.textContent = `Mostrando ${paged.from}–${paged.to} de ${paged.total} empleados`
     results.replaceChildren(
       createEmpleadosTable(paged.items, {
         catalog: empleados,
@@ -453,6 +521,7 @@ export async function renderEmpleados(container, { initialQuery, empleadoId, ope
         createPagination({
           page: paged.page,
           pageCount: paged.pageCount,
+          summary: textoRangoEmpleados(paged.from, paged.to, paged.total),
           onPageChange: (nextPage) => {
             currentPage = nextPage
             renderResults()
@@ -468,6 +537,7 @@ export async function renderEmpleados(container, { initialQuery, empleadoId, ope
     summary.replaceChildren()
     paginationContainer.replaceChildren()
     countLabel.textContent = ''
+    setTableBarVisible(false)
     if (!keepBanner) clearBanner()
     results.replaceChildren(
       createTableSkeleton({ rows: 8, columns: 6, label: 'Cargando empleados' }),
@@ -487,15 +557,17 @@ export async function renderEmpleados(container, { initialQuery, empleadoId, ope
       summary.replaceChildren()
       paginationContainer.replaceChildren()
       countLabel.textContent = ''
+      setTableBarVisible(false)
 
       if (error.message === 'Sesión expirada o no autorizada.') {
+        results.replaceChildren()
         return
       }
 
       results.replaceChildren(
         createFeedbackState({
           title: 'No se pudo cargar la lista',
-          message: error.message || 'Ocurrió un error al consultar la API.',
+          message: 'No pudimos consultar los empleados. Reintentá en unos segundos.',
           tone: 'error',
           actionLabel: 'Reintentar',
           onAction: () => loadEmpleados(),
@@ -704,6 +776,7 @@ export async function renderEmpleados(container, { initialQuery, empleadoId, ope
 
   if (estadoDatos === 'pendientes') {
     estadoSelect.value = 'pendientes'
+    setMoreFiltersOpen(true)
   }
 
   if (focusEmpleadoId) {
@@ -733,6 +806,13 @@ export async function renderEmpleados(container, { initialQuery, empleadoId, ope
     onFilterChange()
   }
 
+  let moreFiltersOpen = false
+  function setMoreFiltersOpen(open) {
+    moreFiltersOpen = open
+    moreFiltersPanel.classList.toggle('hidden', !open)
+    moreFiltersButton.setAttribute('aria-expanded', String(open))
+  }
+
   newButton.addEventListener('click', openCreateForm)
   searchInput.addEventListener('input', onFilterChange)
   actividadSelect.addEventListener('change', onFilterChange)
@@ -741,8 +821,15 @@ export async function renderEmpleados(container, { initialQuery, empleadoId, ope
   clearFiltersButton.addEventListener('click', () => {
     void clearAllFilters()
   })
+  moreFiltersButton.addEventListener('click', () => {
+    setMoreFiltersOpen(!moreFiltersOpen)
+  })
   pageSizeSelect.addEventListener('change', () => {
-    pageSize = Number(pageSizeSelect.value) || DEFAULT_PAGE_SIZE
+    const nextSize = EMPLEADOS_PAGE_SIZES.includes(Number(pageSizeSelect.value))
+      ? Number(pageSizeSelect.value)
+      : EMPLEADOS_DEFAULT_PAGE_SIZE
+    pageSize = nextSize
+    sessionPageSize = nextSize
     resetPage()
     renderResults()
   })

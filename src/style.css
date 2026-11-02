@@ -310,6 +310,18 @@
     outline-offset: 2px;
   }
 
+  .btn-secondary.export-menu-open {
+    border-color: var(--color-slate-400);
+    background-color: var(--color-slate-100);
+    color: var(--color-slate-900);
+  }
+
+  html.dark .btn-secondary.export-menu-open {
+    border-color: var(--color-slate-300);
+    background-color: var(--color-slate-700);
+    color: var(--color-white, #fff);
+  }
+
   html.dark .btn-secondary:focus-visible {
     outline-color: var(--color-blue-400);
   }
@@ -469,12 +481,14 @@
     }
   }
 
-  .dept-admin-scroll {
+  .dept-admin-scroll,
+  .fichadas-scroll {
     scrollbar-color: var(--color-slate-400) transparent;
     scrollbar-width: thin;
   }
 
-  html.dark .dept-admin-scroll {
+  html.dark .dept-admin-scroll,
+  html.dark .fichadas-scroll {
     scrollbar-color: var(--color-slate-500) transparent;
   }
 
@@ -482,12 +496,23 @@
     width: 0.5rem;
   }
 
-  .dept-admin-scroll::-webkit-scrollbar-thumb {
+  .fichadas-scroll::-webkit-scrollbar {
+    width: 0.5rem;
+    height: 0.5rem;
+  }
+
+  .dept-admin-scroll::-webkit-scrollbar-thumb,
+  .fichadas-scroll::-webkit-scrollbar-thumb {
     background: var(--color-slate-400);
     border-radius: 999px;
   }
 
-  html.dark .dept-admin-scroll::-webkit-scrollbar-thumb {
+  .fichadas-scroll::-webkit-scrollbar-thumb:hover {
+    background: var(--color-slate-500);
+  }
+
+  html.dark .dept-admin-scroll::-webkit-scrollbar-thumb,
+  html.dark .fichadas-scroll::-webkit-scrollbar-thumb {
     background: var(--color-slate-500);
   }
 

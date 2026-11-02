@@ -1,38 +1,40 @@
 import { getEmpleados } from '../api/empleados.js'
-import { getDepartamentos } from '../api/departamentos.js'
-import { getSucursales } from '../api/sucursales.js'
 import { createJornadasCalendarPanel } from '../components/jornadas-calendar-panel.js'
-import { createAlertasPanel } from '../components/jornadas-alertas-panel.js'
+import { createAlertasPanel, presentarConteoJornadasIncompletas } from '../components/jornadas-alertas-panel.js'
+import { getAlertasIncompletas } from '../api/jornadas.js'
 import { openFichadaManual } from '../components/fichada-manual-panel.js'
 import { openDiaLibre } from '../components/dia-libre-panel.js'
 import { createRegistrarMenu } from '../components/registrar-menu.js'
 import { closeFichadasOverlays } from '../components/modal.js'
-import { puedeRegistrarFichadaManual, registrarMenuActions } from '../config/labor-access.js'
+import { puedeRegistrarFichadaManual, puedeVerAlertasJornada, puedeVerInformeAsistencia, registrarMenuActions } from '../config/labor-access.js'
 import { getCurrentUser } from '../api/auth.js'
-import { canLoadTenantData } from '../api/empresa-context.js'
+import { canLoadTenantData, getOperativeEmpresaId } from '../api/empresa-context.js'
 import { empresaDisplayName, getEmpresaActual } from '../api/empresas.js'
 import { FICHADAS_LIMITE, getFichadas } from '../api/fichadas.js'
 import { pageHeadingMarkup } from '../components/page-heading.js'
-import { createEmpleadoCombobox } from '../components/empleado-combobox.js'
+import { createEmpleadoCombobox, empleadoDisplayLabel } from '../components/empleado-combobox.js'
 import { createColumnPicker } from '../components/column-picker.js'
 import { BTN_SECONDARY_CLASS } from '../components/button-styles.js'
 import { FORM_LABEL_CLASS } from '../components/form-field.js'
 import { createFichadasTable } from '../components/fichadas-table.js'
-import { createFichadasTimeline, TIMELINE_LEGEND, TIMELINE_TOOLTIP } from '../components/fichadas-timeline.js'
+import { createFichadasTimeline, cruzaMedianoche } from '../components/fichadas-timeline.js'
 import { closeObservacionesJornada } from '../components/jornada-observaciones.js'
 import { FICHADAS_FRAME_CLASS } from '../components/fichadas-frame.js'
 import { openFichadaObservacionModal } from '../components/fichada-observacion-form.js'
 import { createFeedbackState, createSelectEmpresaState } from '../components/feedback-state.js'
 import { printReport } from '../components/fichadas-print.js'
-import { openFichadasCsvExportModal } from '../components/fichadas-csv-export.js'
 import { showToast } from '../components/toast.js'
 import { bindTooltipRoot, hideTooltip, unbindTooltipRoot } from '../components/tooltip.js'
 import { openJornadaDetalle } from '../components/jornada-detalle.js'
 import { createJornadasTable } from '../components/jornadas-table.js'
 import { createPagination } from '../components/pagination.js'
 import { createTableSkeleton } from '../components/skeleton.js'
-import { createStatCard } from '../components/stat-card.js'
+import { createFichadasEmptyState } from '../components/fichadas-empty-state.js'
+import { createInformeAsistenciaPanel } from '../components/informe-asistencia-panel.js'
+import { obtenerContextoInforme } from '../api/informe-asistencia.js'
 import { iconAlertTriangle, iconCalendar, iconClock, iconInfo, iconLogin, iconLogout } from '../components/icons.js'
+import { createExportMenu } from '../components/export-menu.js'
+import { readHashParam } from '../utils/hash-route.js'
 import { downloadCsv } from '../utils/csv.js'
 import {
   escapeHtml,
@@ -61,9 +63,6 @@ import {
 import { CAPABILITY, CAPABILITY_STATUS, noteExtendedMetadata, resolveCapability } from '../api/capabilities.js'
 import { CLASIFICACION_JORNADA_AYUDA } from '../utils/movimientos.js'
 import {
-  FICHADAS_JORNADAS_TAB_TOOLTIP,
-  FICHADAS_MOVIMIENTOS_TAB_TOOLTIP,
-  FICHADAS_TIMELINE_TAB_TOOLTIP,
   FICHADAS_TIPO_METODO_TOOLTIP,
   isMobileColumnViewport,
   loadColumnIds,
@@ -73,11 +72,9 @@ import {
 import {
   FICHADAS_EXPORT_EMPTY_MESSAGE,
   FICHADAS_EXPORT_NO_COLUMNS_MESSAGE,
-  buildFichadasCompleteSelection,
+  buildFichadasCsvPayload,
   buildFichadasExportSnapshot,
   buildFichadasViewSelection,
-  fichadasCompleteQuery,
-  hasFichadasServerFilters,
   JORNADA_PRINT_COLUMNS,
   JORNADA_PRINT_NOTE,
 } from '../utils/fichadas-export.js'
@@ -133,69 +130,162 @@ function empresaLabel(empresa) {
   return empresaDisplayName(empresa, empresa?.id)
 }
 
-function createSummaryCards(activeView, dataset) {
-  const cards = document.createElement('div')
-  cards.className = 'grid gap-4 sm:grid-cols-2 xl:grid-cols-4'
+const EMPLEADO_SESION_PREFIX = 'ca.fichadas.empleado.'
+const PENDIENTES_TOOLTIP = 'Fichadas incompletas que requieren revisión.'
 
-  if (activeView === 'jornadas') {
-    const summary = summarizeJornadasVista(dataset.jornadas)
-    cards.append(
-      createStatCard({
-        label: 'Jornadas',
-        value: summary.total,
-        icon: iconCalendar(),
-        accent: 'blue',
-      }),
-      createStatCard({
-        label: 'Completas',
-        value: summary.completas,
-        icon: iconClock(),
-        accent: 'emerald',
-      }),
-      createStatCard({
-        label: 'En curso',
-        value: summary.enCurso,
-        icon: iconLogin(),
-        accent: 'indigo',
-      }),
-      createStatCard({
-        label: 'Incompletas',
-        value: summary.incompletas,
-        icon: iconLogout(),
-        accent: 'amber',
-      }),
-    )
-    return cards
+export function claveEmpleadoFichadas(empresaId) {
+  const id = Number(empresaId)
+  return Number.isInteger(id) && id > 0 ? `${EMPLEADO_SESION_PREFIX}${id}` : ''
+}
+
+export function empleadoInicialFichadas(empleados, { stored = null } = {}) {
+  const activos = (Array.isArray(empleados) ? empleados : [])
+    .filter((empleado) => empleado?.activo !== false && Number(empleado?.id) > 0)
+    .slice()
+    .sort((a, b) => empleadoDisplayLabel(a).localeCompare(empleadoDisplayLabel(b), 'es', { sensitivity: 'base' }))
+  if (stored != null) {
+    if (stored === '') return ''
+    if (activos.some((empleado) => String(empleado.id) === String(stored))) return String(stored)
   }
+  return activos[0] ? String(activos[0].id) : ''
+}
 
+function summaryGridClass(count) {
+  const columns = count >= 4 ? 'xl:grid-cols-4' : 'xl:grid-cols-3'
+  return `grid min-w-0 items-stretch grid-cols-1 gap-4 overflow-x-hidden sm:grid-cols-2 ${columns}`
+}
+
+const SUMMARY_CARD_CLASS = 'flex h-full min-w-0 w-full cursor-pointer flex-col rounded-xl border p-5 text-left shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500'
+const SUMMARY_ICON_CLASS = 'flex h-10 w-10 shrink-0 items-center justify-center rounded-lg'
+
+function summaryIconTone(accent) {
+  if (accent === 'emerald') return 'bg-emerald-500/10 text-emerald-700 dark:bg-emerald-400/10 dark:text-emerald-200'
+  if (accent === 'orange') return 'bg-orange-500/10 text-orange-700 dark:bg-orange-400/10 dark:text-orange-200'
+  if (accent === 'amber') return 'bg-amber-500/10 text-amber-700 dark:bg-amber-400/10 dark:text-amber-200'
+  return 'bg-indigo-500/10 text-indigo-700 dark:bg-indigo-400/10 dark:text-indigo-200'
+}
+
+function summaryCardChrome({ active = false, attention = false } = {}) {
+  if (active) {
+    return 'border-amber-400 bg-amber-50/70 shadow-[inset_3px_0_0_0_var(--color-amber-500)] hover:border-amber-500 dark:border-amber-400 dark:bg-amber-950/30 dark:shadow-[inset_3px_0_0_0_var(--color-amber-400)]'
+  }
+  if (attention) {
+    return 'border-amber-300 bg-white hover:border-amber-400 dark:border-amber-500/60 dark:bg-slate-900'
+  }
+  return 'border-slate-200 bg-white hover:border-blue-300 dark:border-slate-700 dark:bg-slate-900'
+}
+
+function summaryCardMarkup({ label, valueHtml, icon, accent, helper = '' }) {
+  return `
+    <div class="flex items-start justify-between gap-4">
+      <div class="min-w-0">
+        <p class="line-clamp-2 min-h-10 text-sm font-medium leading-5 text-slate-500 dark:text-slate-400">${escapeHtml(label)}</p>
+        <div class="mt-2 text-3xl font-semibold leading-none tracking-tight text-slate-900 dark:text-slate-100">${valueHtml}</div>
+        ${helper}
+      </div>
+      <span class="${SUMMARY_ICON_CLASS} ${summaryIconTone(accent)}" aria-hidden="true">${icon}</span>
+    </div>
+  `
+}
+
+function bindSummaryCard(button, onOpen) {
+  const open = () => onOpen?.()
+  button.addEventListener('click', open)
+  button.addEventListener('keydown', (event) => {
+    if (event.key !== 'Enter' && event.key !== ' ') return
+    event.preventDefault()
+    open()
+  })
+}
+
+function createMovimientoCard({ id, label, value, icon, accent, onOpen }) {
+  const button = document.createElement('button')
+  button.type = 'button'
+  button.id = id
+  button.className = `${SUMMARY_CARD_CLASS} ${summaryCardChrome()}`
+  button.setAttribute('aria-label', `${label}, ${value}. Abrir movimientos registrados.`)
+  button.innerHTML = summaryCardMarkup({
+    label,
+    valueHtml: escapeHtml(String(value)),
+    icon,
+    accent,
+  })
+  bindSummaryCard(button, onOpen)
+  return button
+}
+
+function createPendientesCard({ state, active, onOpen }) {
+  const phase = state?.phase === 'ok' ? 'ok' : state?.phase === 'error' ? 'error' : 'cargando'
+  const count = phase === 'ok' && Array.isArray(state?.list) ? state.list.length : null
+  const conteo = presentarConteoJornadasIncompletas(
+    phase === 'ok'
+      ? { phase: 'ok', count: count ?? 0 }
+      : { phase, message: state?.message },
+  )
+  const mostrarLeyenda = phase === 'ok' && count > 0
+  const atencion = mostrarLeyenda
+  const helperText = mostrarLeyenda
+    ? 'Requieren revisión'
+    : phase === 'error'
+      ? (state?.message || 'No se pudieron cargar')
+      : ''
+  const valueHtml = phase === 'cargando'
+    ? '<span class="inline-block h-9 w-16 animate-pulse rounded-md bg-slate-200 dark:bg-slate-700" aria-hidden="true"></span><span class="sr-only">Cargando…</span>'
+    : escapeHtml(conteo.value)
+  const button = document.createElement('button')
+  button.type = 'button'
+  button.id = 'fichadas-pendientes-revision'
+  button.className = `${SUMMARY_CARD_CLASS} ${summaryCardChrome({ active, attention: atencion && !active })}`
+  button.setAttribute('aria-pressed', active ? 'true' : 'false')
+  button.setAttribute('aria-busy', phase === 'cargando' ? 'true' : 'false')
+  const estado = phase === 'cargando' ? 'cargando' : conteo.value
+  button.setAttribute('aria-label', `Fichadas pendientes de revisión, ${estado}${helperText ? `. ${helperText}` : ''}`)
+  button.dataset.tooltip = PENDIENTES_TOOLTIP
+  button.innerHTML = summaryCardMarkup({
+    label: 'Pendientes de revisión',
+    valueHtml,
+    icon: iconAlertTriangle(),
+    accent: 'amber',
+    helper: helperText
+      ? `<p class="mt-1 text-xs ${mostrarLeyenda ? 'text-amber-800 dark:text-amber-200' : 'text-slate-500 dark:text-slate-400'}">${escapeHtml(helperText)}</p>`
+      : '',
+  })
+  bindSummaryCard(button, onOpen)
+  return button
+}
+
+function createSummaryCards(dataset, alertas = null) {
+  const includeAlertas = Boolean(alertas?.visible)
+  const cards = document.createElement('div')
+  cards.className = summaryGridClass(includeAlertas ? 4 : 3)
   const summary = dataset.movimientoTotals
   cards.append(
-    createStatCard({
+    createMovimientoCard({
+      id: 'fichadas-card-totales',
       label: 'Movimientos totales',
       value: summary.total,
       icon: iconClock(),
       accent: 'indigo',
+      onOpen: () => alertas?.onMovimientos?.('todos'),
     }),
-    createStatCard({
+    createMovimientoCard({
+      id: 'fichadas-card-entradas',
       label: 'Entradas',
       value: summary.entradas,
       icon: iconLogin(),
       accent: 'emerald',
+      onOpen: () => alertas?.onMovimientos?.('Entrada'),
     }),
-    createStatCard({
+    createMovimientoCard({
+      id: 'fichadas-card-salidas',
       label: 'Salidas',
       value: summary.salidas,
       icon: iconLogout(),
-      accent: 'amber',
-    }),
-    createStatCard({
-      label: 'Posibles duplicados',
-      value: summary.posiblesDuplicados,
-      icon: iconAlertTriangle(),
-      accent: 'amber',
+      accent: 'orange',
+      onOpen: () => alertas?.onMovimientos?.('Salida'),
     }),
   )
-
+  if (includeAlertas) cards.append(createPendientesCard(alertas))
   return cards
 }
 
@@ -215,15 +305,21 @@ export async function renderFichadas(container, extras = {}) {
   }
 
   const registrarActions = registrarMenuActions(getCurrentUser())
+  const verInforme = puedeVerInformeAsistencia(getCurrentUser())
   const view = document.createElement('div')
   view.className = 'space-y-6'
 
   view.innerHTML = `
-    ${pageHeadingMarkup({
-      title: 'Consultá las fichadas',
-      description: 'Filtrá y revisá los registros de ingreso y egreso.',
-      actionsId: registrarActions.length ? 'fichadas-registrar' : '',
-    })}
+    <div id="fichadas-secciones" class="inline-flex w-fit max-w-full gap-1 overflow-x-auto rounded-xl border border-slate-200 bg-slate-50 p-1 dark:border-slate-700 dark:bg-slate-800/60" role="tablist" aria-label="Secciones de fichadas">
+      <button type="button" id="fichadas-seccion-consulta" role="tab" aria-selected="true" aria-controls="fichadas-panel-consulta" class="inline-flex h-9 shrink-0 items-center whitespace-nowrap rounded-lg bg-blue-600 px-3 text-sm font-medium text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500">
+        Consulta de fichadas
+      </button>
+      ${verInforme ? `<button type="button" id="fichadas-seccion-informe" role="tab" aria-selected="false" aria-controls="fichadas-panel-informe" class="inline-flex h-9 shrink-0 items-center whitespace-nowrap rounded-lg px-3 text-sm font-medium text-slate-600 hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 dark:text-slate-300 dark:hover:bg-slate-800">
+        Informes de asistencia
+      </button>` : ''}
+    </div>
+    <div id="fichadas-heading"></div>
+    <div id="fichadas-panel-consulta" role="tabpanel" aria-labelledby="fichadas-seccion-consulta" class="space-y-6">
     <div id="fichadas-summary"></div>
     <section class="rounded-xl border border-slate-200 bg-white px-3 py-3 shadow-sm dark:border-slate-700 dark:bg-slate-900">
       <div class="flex flex-col gap-3 lg:flex-row lg:items-end">
@@ -277,45 +373,28 @@ export async function renderFichadas(container, extras = {}) {
         </div>
       </div>
       <p id="fichadas-date-error" class="mt-2 hidden text-sm text-red-600"></p>
-      <div class="mt-2 flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:justify-end">
+      <div id="fichadas-filter-actions" class="mt-2 flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:justify-end">
         <button type="button" id="fichadas-clear" class="${BTN_SECONDARY_CLASS}">
           Limpiar filtros
         </button>
-        <button type="button" id="fichadas-csv" class="${BTN_SECONDARY_CLASS}" aria-label="Exportar CSV">
-          Exportar CSV
-        </button>
-        <button type="button" id="fichadas-print" class="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-50">
-          Imprimir / Guardar PDF
-        </button>
+        <div id="fichadas-exportar-host"></div>
       </div>
     </section>
     <section class="${FICHADAS_FRAME_CLASS}">
     <div class="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-b border-slate-200 px-3 py-3 dark:border-slate-700">
       <div class="inline-flex flex-wrap items-center gap-0.5 rounded-lg border border-slate-200 bg-white p-1 shadow-sm dark:border-slate-700 dark:bg-slate-900" role="tablist" aria-label="Vista de fichadas">
-        <button type="button" id="fichadas-tab-timeline" role="tab" aria-selected="true" class="rounded-md px-3 py-2 text-sm font-medium bg-blue-600 text-white">
+        <button type="button" id="fichadas-tab-timeline" role="tab" aria-selected="true" class="inline-flex h-8 items-center rounded-md bg-blue-600 px-2.5 text-xs font-medium text-white">
           Línea de tiempo
         </button>
-        ${infoButtonMarkup({
-          id: 'fichadas-tab-timeline-info',
-          tooltip: FICHADAS_TIMELINE_TAB_TOOLTIP,
-          ariaLabel: 'Información sobre Línea de tiempo',
-        })}
-        <button type="button" id="fichadas-tab-jornadas" role="tab" aria-selected="false" class="rounded-md px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800">
+        <button type="button" id="fichadas-tab-jornadas" role="tab" aria-selected="false" class="inline-flex h-8 items-center rounded-md px-2.5 text-xs font-medium text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800">
           Resumen de jornadas
         </button>
-        ${infoButtonMarkup({
-          id: 'fichadas-tab-jornadas-info',
-          tooltip: FICHADAS_JORNADAS_TAB_TOOLTIP,
-          ariaLabel: 'Información sobre Resumen de jornadas',
-        })}
-        <button type="button" id="fichadas-tab-movimientos" role="tab" aria-selected="false" class="rounded-md px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800">
+        <button type="button" id="fichadas-tab-movimientos" role="tab" aria-selected="false" class="inline-flex h-8 items-center rounded-md px-2.5 text-xs font-medium text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800">
           Movimientos registrados
         </button>
-        ${infoButtonMarkup({
-          id: 'fichadas-tab-movimientos-info',
-          tooltip: FICHADAS_MOVIMIENTOS_TAB_TOOLTIP,
-          ariaLabel: 'Información sobre Movimientos registrados',
-        })}
+        <button type="button" id="fichadas-tab-calendario" role="tab" aria-selected="false" class="inline-flex h-8 items-center rounded-md px-2.5 text-xs font-medium text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800">
+          Calendario de jornadas
+        </button>
       </div>
       <div class="flex flex-wrap items-center gap-x-4 gap-y-2">
         <label for="fichadas-page-size" class="inline-flex items-center gap-2 whitespace-nowrap text-sm text-slate-600 dark:text-slate-300">
@@ -341,16 +420,16 @@ export async function renderFichadas(container, extras = {}) {
         <p id="fichadas-count" class="text-sm text-slate-500 dark:text-slate-400"></p>
       </div>
     </div>
-    <div id="fichadas-modules" class="flex flex-wrap items-center gap-2 border-b border-slate-200 px-3 py-2 dark:border-slate-700"></div>
-    <p id="fichadas-legend" class="flex items-center gap-2 border-b border-slate-100 px-3 py-2 text-xs text-slate-500 dark:border-slate-800 dark:text-slate-400">
-      <span id="fichadas-legend-text">${TIMELINE_LEGEND}</span>
-      <button type="button" class="inline-flex h-6 w-6 items-center justify-center rounded-full text-slate-400 hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 dark:hover:bg-slate-800" data-tooltip="${TIMELINE_TOOLTIP}" aria-label="Cómo se interpreta la jornada">${iconInfo()}</button>
+    <p id="fichadas-calculo" class="hidden px-3 pb-2 text-right">
+      <button type="button" class="rounded text-xs text-slate-500 underline decoration-slate-300 underline-offset-2 hover:text-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 dark:text-slate-400 dark:hover:text-slate-200" data-tooltip="${escapeHtml(CLASIFICACION_JORNADA_AYUDA)}">¿Cómo se calcula?</button>
     </p>
     <p id="fichadas-limit-note" class="hidden border-b border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-200"></p>
     <div id="fichadas-labor" class="hidden px-3 py-3"></div>
     <div id="fichadas-results" class="min-h-0"></div>
     <div id="fichadas-pagination" class="border-t border-slate-100 px-3 empty:hidden dark:border-slate-800"></div>
     </section>
+    </div>
+    <div id="fichadas-panel-informe" role="tabpanel" aria-labelledby="fichadas-seccion-informe" class="hidden space-y-6"></div>
   `
   bindTooltipRoot(view)
 
@@ -367,11 +446,16 @@ export async function renderFichadas(container, extras = {}) {
   const hastaInput = view.querySelector('#fichadas-hasta')
   const dateError = view.querySelector('#fichadas-date-error')
   const clearButton = view.querySelector('#fichadas-clear')
-  const csvButton = view.querySelector('#fichadas-csv')
-  const printButton = view.querySelector('#fichadas-print')
+  const consultaExport = createExportMenu({
+    id: 'fichadas-exportar',
+    onCsv: () => exportConsulta('csv'),
+    onPdf: () => exportConsulta('pdf'),
+  })
+  view.querySelector('#fichadas-exportar-host')?.append(consultaExport.root)
   const tabMovimientos = view.querySelector('#fichadas-tab-movimientos')
   const tabJornadas = view.querySelector('#fichadas-tab-jornadas')
   const tabTimeline = view.querySelector('#fichadas-tab-timeline')
+  const tabCalendario = view.querySelector('#fichadas-tab-calendario')
   const pageSizeSelect = view.querySelector('#fichadas-page-size')
   const columnasWrap = view.querySelector('#fichadas-columnas-wrap')
   const countLabel = view.querySelector('#fichadas-count')
@@ -396,12 +480,15 @@ export async function renderFichadas(container, extras = {}) {
   let observacionModal = null
   let observacionModalFichadaId = null
   let observacionSession = 0
-  let csvExportModal = null
   let returnToJornada = null
   let registrarMenu = null
   let calendarRoot = null
   let alertasApi = null
   let laborKind = ''
+  let alertasState = { phase: 'cargando', list: null, message: '' }
+  let alertasSeq = 0
+  let alertasFlight = null
+  let lastDataset = null
   let calendarCursor = null
   let manualDisponible = false
   const columnStorage = window.localStorage
@@ -422,9 +509,32 @@ export async function renderFichadas(container, extras = {}) {
     },
   })
   columnasWrap.replaceChildren(columnPicker.element)
+  let seleccionAplicada = false
+  function recordarEmpleado(id = empleadoCombobox.getEmpleadoId()) {
+    const key = claveEmpleadoFichadas(getOperativeEmpresaId(getCurrentUser()))
+    if (!key) return
+    sessionStorage.setItem(key, id ? String(id) : '')
+  }
+  function aplicarSeleccionInicial(empleados) {
+    if (seleccionAplicada) return
+    const key = claveEmpleadoFichadas(getOperativeEmpresaId(getCurrentUser()))
+    const stored = key ? sessionStorage.getItem(key) : null
+    const inicial = empleadoInicialFichadas(empleados, { stored })
+    empleadoCombobox.setEmpleadoId(inicial, { silent: true })
+    if (key && stored === null) sessionStorage.setItem(key, inicial || '')
+    seleccionAplicada = true
+  }
   const empleadoCombobox = createEmpleadoCombobox({
     id: 'fichadas-empleado',
-    onChange: () => onServerFilterChange(),
+    onChange: () => {
+      recordarEmpleado()
+      if (laborKind === 'calendario' && calendarRoot?.setEmpleadoId) {
+        void calendarRoot.setEmpleadoId(empleadoCombobox.getEmpleadoId())
+      }
+      onServerFilterChange()
+      applyLaborChrome()
+    },
+    placeholder: 'Buscar empleado por nombre o legajo',
   })
   empleadoWrap.replaceChildren(empleadoCombobox.root)
 
@@ -463,44 +573,60 @@ export async function renderFichadas(container, extras = {}) {
   }
 
   function setTabStyles() {
-    const active = 'rounded-md px-3 py-2 text-sm font-medium bg-blue-600 text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500'
+    const active = 'inline-flex h-8 items-center rounded-md bg-blue-600 px-2.5 text-xs font-medium text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500'
     const idle =
-      'rounded-md px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 dark:text-slate-300 dark:hover:bg-slate-800'
-    tabMovimientos.className = activeView === 'movimientos' ? active : idle
-    tabJornadas.className = activeView === 'jornadas' ? active : idle
-    tabTimeline.className = activeView === 'timeline' ? active : idle
-    tabMovimientos.setAttribute('aria-selected', String(activeView === 'movimientos'))
-    tabJornadas.setAttribute('aria-selected', String(activeView === 'jornadas'))
-    tabTimeline.setAttribute('aria-selected', String(activeView === 'timeline'))
-    columnasWrap.classList.toggle('hidden', activeView === 'timeline')
+      'inline-flex h-8 items-center rounded-md px-2.5 text-xs font-medium text-slate-600 hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 dark:text-slate-300 dark:hover:bg-slate-800'
+    const tabActiva = laborKind === 'calendario' || laborKind === 'alertas' ? '' : activeView
+    tabMovimientos.className = tabActiva === 'movimientos' ? active : idle
+    tabJornadas.className = tabActiva === 'jornadas' ? active : idle
+    tabTimeline.className = tabActiva === 'timeline' ? active : idle
+    tabMovimientos.setAttribute('aria-selected', String(tabActiva === 'movimientos'))
+    tabJornadas.setAttribute('aria-selected', String(tabActiva === 'jornadas'))
+    tabTimeline.setAttribute('aria-selected', String(tabActiva === 'timeline'))
+    tabCalendario.className = laborKind === 'calendario' ? active : idle
+    tabCalendario.setAttribute('aria-selected', String(laborKind === 'calendario'))
+    columnasWrap.classList.toggle('hidden', activeView === 'timeline' || laborKind === 'calendario' || laborKind === 'alertas')
     view.querySelector('#fichadas-franja-wrap')?.classList.toggle('hidden', activeView !== 'timeline')
     view.querySelector('#fichadas-franja-wrap')?.classList.toggle('flex', activeView === 'timeline')
     view.querySelector('#fichadas-franja-custom')?.classList.toggle('hidden', activeView !== 'timeline' || franjaMode !== 'custom')
     view.querySelector('#fichadas-franja-custom')?.classList.toggle('flex', activeView === 'timeline' && franjaMode === 'custom')
-    view.querySelector('#fichadas-legend')?.classList.toggle('hidden', activeView === 'movimientos')
     applyLaborChrome()
+    renderSummary()
+  }
+
+  function filtrosPorLimpiar() {
+    return Boolean(empleadoCombobox.getEmpleadoId())
+      || periodoSelect.value !== FICHADAS_PERIODO_INICIAL
+      || tipoSelect.value !== 'todos'
+      || metodoSelect.value !== 'todos'
+      || Boolean(desdeInput.value || hastaInput.value)
   }
 
   function applyLaborChrome() {
-    const labor = laborKind === 'calendario' || laborKind === 'alertas'
+    const calendario = laborKind === 'calendario'
+    const labor = calendario || laborKind === 'alertas'
     const pageSizeLabel = pageSizeSelect.closest('label')
+    const actions = view.querySelector('#fichadas-filter-actions')
+    const mostrarAcciones = laborKind === 'alertas' ? false : calendario ? filtrosPorLimpiar() : true
     pageSizeLabel?.classList.toggle('inline-flex', !labor)
     ;[
       pageSizeLabel,
       periodoSelect.closest('div'),
-      tipoSelect.closest('div'),
-      metodoSelect.closest('div'),
-      view.querySelector('#fichadas-tipo-metodo-info'),
-      clearButton,
-      csvButton,
-      printButton,
+      tipoSelect.closest('div')?.parentElement,
+      consultaExport.root,
     ].forEach((node) => node?.classList.toggle('hidden', labor))
-    empleadoWrap.classList.toggle('hidden', laborKind === 'calendario')
-    empleadoWrap.closest('section')?.classList.toggle('hidden', laborKind === 'calendario')
+    actions?.classList.toggle('hidden', !mostrarAcciones)
+    actions?.classList.toggle('mt-2', mostrarAcciones)
+    clearButton?.classList.toggle('hidden', !mostrarAcciones || laborKind === 'alertas')
+    empleadoWrap.classList.toggle('hidden', false)
+    empleadoWrap.classList.toggle('lg:max-w-md', calendario)
+    empleadoWrap.classList.toggle('lg:flex-none', calendario)
+    empleadoWrap.classList.toggle('lg:flex-[2]', !calendario)
+    syncCalculoHelp()
     if (labor) {
       countLabel.classList.add('hidden')
-      view.querySelector('#fichadas-legend')?.classList.add('hidden')
       customDates.classList.add('hidden')
+      dateError.classList.add('hidden')
       view.querySelector('#fichadas-franja-wrap')?.classList.add('hidden')
       view.querySelector('#fichadas-franja-wrap')?.classList.remove('flex')
       view.querySelector('#fichadas-franja-custom')?.classList.add('hidden')
@@ -511,12 +637,19 @@ export async function renderFichadas(container, extras = {}) {
     syncCustomDates()
   }
 
+  function syncCalculoHelp() {
+    const labor = laborKind === 'calendario' || laborKind === 'alertas'
+    const show = !labor && (activeView === 'timeline' || activeView === 'jornadas')
+    view.querySelector('#fichadas-calculo')?.classList.toggle('hidden', !show)
+  }
+
   function setExportEnabled({ canPrint = false, canOpenCsv = false, disableReason = '' } = {}) {
-    printButton.disabled = !canPrint
-    csvButton.disabled = !canOpenCsv
-    const reason = disableReason || ''
-    printButton.title = canPrint ? '' : reason
-    csvButton.title = canOpenCsv ? '' : reason
+    const enabled = Boolean(canPrint || canOpenCsv)
+    consultaExport.setEnabled({
+      csv: enabled,
+      pdf: enabled,
+      reason: enabled ? '' : (disableReason || 'No hay datos para exportar'),
+    })
   }
 
   function currentSelection(now = new Date()) {
@@ -577,13 +710,58 @@ export async function renderFichadas(container, extras = {}) {
   function updateLimitNote() {
     const capped = fichadas.length >= FICHADAS_LIMITE
     limitNote.textContent = capped
-      ? `La consulta alcanzó el límite máximo de ${FICHADAS_LIMITE} registros de la API. El listado y el resumen pueden estar incompletos.`
+      ? `La consulta alcanzó el límite máximo de ${FICHADAS_LIMITE} registros. El listado puede estar incompleto.`
       : ''
     limitNote.classList.toggle('hidden', !capped)
   }
 
-  function renderSummary(dataset) {
-    summaryContainer.replaceChildren(createSummaryCards(activeView, dataset))
+  function renderSummary(dataset = lastDataset) {
+    if (!dataset) return
+    lastDataset = dataset
+    summaryContainer.replaceChildren(createSummaryCards(dataset, {
+      visible: puedeVerAlertasJornada(getCurrentUser()),
+      state: alertasState,
+      active: laborKind === 'alertas',
+      onOpen: () => {
+        void openLabor('alertas')
+      },
+      onMovimientos: (tipo) => {
+        tipoSelect.value = tipo
+        setView('movimientos')
+      },
+    }))
+  }
+
+  async function cargarAlertasPendientes() {
+    if (!puedeVerAlertasJornada(getCurrentUser())) {
+      alertasState = { phase: 'prohibido', list: null, message: '' }
+      return null
+    }
+    if (alertasFlight) return alertasFlight
+    const seq = ++alertasSeq
+    if (alertasState.phase !== 'ok') alertasState = { phase: 'cargando', list: null, message: '' }
+    alertasFlight = (async () => {
+      try {
+        const capability = await resolveCapability(CAPABILITY.fichadasIncompleteAlerts)
+        if (seq !== alertasSeq) return null
+        if (capability.status !== CAPABILITY_STATUS.available) {
+          alertasState = { phase: 'error', list: null, message: 'No se pudieron cargar' }
+          return null
+        }
+        const list = await getAlertasIncompletas()
+        if (seq !== alertasSeq) return null
+        alertasState = { phase: 'ok', list: Array.isArray(list) ? list : [], message: '' }
+        return alertasState.list
+      } catch (error) {
+        if (seq !== alertasSeq || error?.status === 401) return null
+        alertasState = { phase: 'error', list: null, message: 'No se pudieron cargar' }
+        return null
+      } finally {
+        alertasFlight = null
+        renderSummary()
+      }
+    })()
+    return alertasFlight
   }
 
   function renderTablePlaceholder(placeholder, { onPlaceholderAction } = {}) {
@@ -729,20 +907,18 @@ export async function renderFichadas(container, extras = {}) {
     const viewSnapshot = buildFichadasExportSnapshot(selection, { mode: 'view' })
     setExportEnabled({
       canPrint: viewSnapshot.canExport,
-      canOpenCsv: true,
-      disableReason: viewSnapshot.disableReason,
+      canOpenCsv: viewSnapshot.canExport,
+      disableReason: viewSnapshot.canExport ? '' : 'No hay datos para exportar',
     })
 
     if (rows.length === 0) {
-      countLabel.textContent = `Mostrando 0 ${noun}`
-      results.replaceChildren(
-        renderTablePlaceholder({
-          title: 'Sin resultados',
-          message: isMovimientos
-            ? 'No hay fichadas que coincidan con los filtros seleccionados.'
-            : 'No hay jornadas para los filtros seleccionados.',
-        }),
-      )
+      countLabel.textContent = ''
+      const vacio = isMovimientos
+        ? { title: 'No hay movimientos para mostrar', description: 'No encontramos fichadas con los filtros seleccionados.', icon: iconLogout() }
+        : isTimeline
+          ? null
+          : { title: 'No hay jornadas para mostrar', description: 'No encontramos jornadas para el empleado y período seleccionados.', icon: iconCalendar() }
+      results.replaceChildren(isTimeline ? createFichadasTimeline([], { includesToday: false }) : createFichadasEmptyState(vacio))
       return
     }
 
@@ -790,7 +966,7 @@ export async function renderFichadas(container, extras = {}) {
   }
 
   async function loadFichadas() {
-    const filters = getFilters()
+    let filters = getFilters()
     const error = dateRangeError(filters)
     dateError.textContent = error
     dateError.classList.toggle('hidden', !error)
@@ -816,11 +992,26 @@ export async function renderFichadas(container, extras = {}) {
       }),
     )
 
+    const alertasPromise = cargarAlertasPendientes()
     try {
+      if (!empleadosLoaded) {
+        try {
+          const empleados = await getEmpleados()
+          if (seq !== loadSeq) return
+          empleadoById = new Map(empleados.map((empleado) => [Number(empleado.id), empleado]))
+          empleadoCombobox.setEmpleados(empleados)
+          aplicarSeleccionInicial(empleados)
+          empleadosLoaded = true
+        } catch (empleadosError) {
+          if (empleadosError?.status === 401 || empleadosError?.message === 'Sesión expirada o no autorizada.') return
+        }
+      }
+      filters = getFilters()
       const [fichadasResult, empleadosResult, empresaResult] = await Promise.allSettled([
         getFichadas(apiFilters(filters)),
         empleadosLoaded ? Promise.resolve([...empleadoById.values()]) : getEmpleados(),
         empresaLoaded ? Promise.resolve(empresa) : getEmpresaActual(),
+        alertasPromise,
       ])
 
       if (seq !== loadSeq) return
@@ -850,6 +1041,7 @@ export async function renderFichadas(container, extras = {}) {
         const empleados = empleadosResult.value
         empleadoById = new Map(empleados.map((empleado) => [Number(empleado.id), empleado]))
         empleadoCombobox.setEmpleados(empleados)
+        if (!seleccionAplicada) aplicarSeleccionInicial(empleados)
         empleadosLoaded = true
       }
       if (empresaResult.status === 'fulfilled') {
@@ -866,6 +1058,8 @@ export async function renderFichadas(container, extras = {}) {
         applyClassificationDeclaration(null, fichadas)
       }
       updateLimitNote()
+      await alertasPromise
+      if (seq !== loadSeq) return
       renderResults()
     } catch (error) {
       if (seq !== loadSeq) return
@@ -905,10 +1099,12 @@ export async function renderFichadas(container, extras = {}) {
     tipoSelect.value = 'todos'
     metodoSelect.value = 'todos'
     empleadoCombobox.reset()
+    recordarEmpleado('')
     desdeInput.value = ''
     hastaInput.value = ''
     syncCustomDates()
     resetPages()
+    applyLaborChrome()
     loadFichadas()
   }
 
@@ -929,62 +1125,27 @@ export async function renderFichadas(container, extras = {}) {
     renderResults()
   }
 
-  function exportNotes(capped, filters) {
-      const notes = [
-          CLASIFICACION_JORNADA_AYUDA,
-          'Horario asignado al empleado.',
-          'Los turnos nocturnos pueden requerir reglas adicionales.',
-          'Tipo y Método filtran fichadas. El resumen usa empleado y período.',
-      ]
-
+  function exportNotes(capped, filters, records = []) {
+    const notes = []
+    if (records.some((item) => cruzaMedianoche(item))) {
+      notes.push('Hay un turno que cruza la medianoche. Conviene revisarlo.')
+    }
     if (filters.tipo !== 'todos' || filters.metodo !== 'todos') {
-      notes.push(
-        'Los filtros de Tipo y Método se aplican a la auditoría de movimientos y no recortan el cálculo de ingreso y egreso del resumen.',
-      )
+      notes.push('Se aplicaron los filtros de tipo o método.')
     }
-
     if (capped) {
-      notes.push(
-        `La consulta alcanzó el límite máximo de ${FICHADAS_LIMITE} registros.`,
-      )
+      notes.push(`La consulta alcanzó el límite máximo de ${FICHADAS_LIMITE} registros.`)
     }
-
     return notes
   }
 
-  function openCsvExport() {
-    const { filters, selection } = currentSelection()
-    if (dateRangeError(filters)) return
-    csvExportModal?.close({ force: true })
-    csvExportModal = openFichadasCsvExportModal({
-      viewSelection: selection,
-      loadCompleteSelection: async () => {
-        const raw = hasFichadasServerFilters(filters)
-          ? await getFichadas(fichadasCompleteQuery())
-          : fichadas
-        const records =
-          activeView === 'jornadas'
-            ? classificationSource() === CLASSIFICATION_SOURCE.api
-              ? construirJornadasSegunFuente(raw, empleadoById)
-              : buildJornadas(raw, empleadoById)
-            : classificationSource() === CLASSIFICATION_SOURCE.api
-              ? clasificarSegunFuente(raw)
-              : annotateMovimientos(raw)
-        return buildFichadasCompleteSelection({
-          view: activeView,
-          records,
-          empresa: empresaLabel(empresa),
-          generatedAt: formatDateTime(new Date().toISOString()),
-        })
-      },
-      stamp: todayDateKey(),
-      download: downloadCsv,
-    })
-  }
-
-  function exportPrint() {
+  function exportConsulta(kind) {
     const { filters, dataset, selection } = currentSelection()
-    if (dateRangeError(filters)) return
+    const rangeError = dateRangeError(filters)
+    if (rangeError) {
+      showToast({ message: rangeError, tone: 'warning' })
+      return
+    }
     const snapshot = buildFichadasExportSnapshot(selection, { mode: 'view' })
     if (snapshot.columnIds.length === 0) {
       showToast({ message: FICHADAS_EXPORT_NO_COLUMNS_MESSAGE, tone: 'warning' })
@@ -994,21 +1155,37 @@ export async function renderFichadas(container, extras = {}) {
       showToast({ message: FICHADAS_EXPORT_EMPTY_MESSAGE, tone: 'warning' })
       return
     }
-
-    const notes = exportNotes(fichadas.length >= FICHADAS_LIMITE, filters)
-    const totals = selection.view === 'movimientos' ? dataset.movimientoTotals : dataset.jornadaTotals
-    const summaryLines =
-      selection.view === 'movimientos'
-        ? [
-            `<p><strong>Movimientos totales:</strong> ${totals.total}</p>`,
-            `<p><strong>Entradas:</strong> ${totals.entradas} · <strong>Salidas:</strong> ${totals.salidas} · <strong>Posibles duplicados:</strong> ${totals.posiblesDuplicados}</p>`,
-          ]
-        : [
-            `<p><strong>Jornadas:</strong> ${totals.total}</p>`,
-            `<p><strong>Completas:</strong> ${totals.completas} · <strong>En curso:</strong> ${totals.enCurso} · <strong>Incompletas:</strong> ${totals.incompletas} · <strong>Revisar:</strong> ${totals.revisar}</p>`,
-          ]
+    const stamp = todayDateKey()
+    if (kind === 'csv') {
+      const payload = buildFichadasCsvPayload(snapshot, stamp)
+      if (!payload.ok) {
+        showToast({ message: payload.message || FICHADAS_EXPORT_EMPTY_MESSAGE, tone: 'warning' })
+        return
+      }
+      downloadCsv(`fichadas-${stamp}.csv`, payload.content)
+      return
+    }
 
     const jornadaPrint = selection.view !== 'movimientos'
+    const notes = exportNotes(
+      fichadas.length >= FICHADAS_LIMITE,
+      filters,
+      jornadaPrint ? selection.records : [],
+    )
+    const totals = selection.view === 'movimientos' ? dataset.movimientoTotals : dataset.jornadaTotals
+    const summaryItems = selection.view === 'movimientos'
+      ? [
+          { label: 'Movimientos', value: totals.total },
+          { label: 'Entradas', value: totals.entradas },
+          { label: 'Salidas', value: totals.salidas },
+          { label: 'Posibles duplicados', value: totals.posiblesDuplicados },
+        ]
+      : [
+          { label: 'Completas', value: totals.completas },
+          { label: 'En curso', value: totals.enCurso },
+          { label: 'Incompletas', value: totals.incompletas },
+          { label: 'En revisión', value: totals.revisar },
+        ]
     const printColumns = jornadaPrint ? JORNADA_PRINT_COLUMNS : snapshot.columns
     const printRows = jornadaPrint
       ? selection.records.map((item) =>
@@ -1021,14 +1198,15 @@ export async function renderFichadas(container, extras = {}) {
           }),
         )
       : snapshot.printRows
-    printReport({
-      title: snapshot.title,
+    return printReport({
+      filename: `fichadas-${stamp}.pdf`,
+      title: 'Consulta de fichadas',
       empresa: snapshot.empresa,
       periodo: snapshot.periodo,
-      generatedAt: snapshot.generatedAt,
+      generatedAt: new Date().toISOString(),
       filters: snapshot.filtersSummary,
       totals,
-      summaryLines,
+      summaryItems,
       columns: printColumns.map((column) => column.label ?? column),
       rows: printRows,
       notes: jornadaPrint ? [...notes, JORNADA_PRINT_NOTE] : notes,
@@ -1065,22 +1243,7 @@ export async function renderFichadas(container, extras = {}) {
     renderResults()
   })
   clearButton.addEventListener('click', clearFilters)
-  csvButton.addEventListener('click', openCsvExport)
-  printButton.addEventListener('click', () => {
-    try {
-      exportPrint()
-    } catch (error) {
-      results.prepend(
-        createFeedbackState({
-          title: 'No se pudo abrir la impresión',
-          message: error.message,
-          tone: 'error',
-        }),
-      )
-    }
-  })
   const laborHost = view.querySelector('#fichadas-labor')
-  const modules = view.querySelector('#fichadas-modules')
 
   function discardLabor() {
     alertasApi?.close?.()
@@ -1105,7 +1268,8 @@ export async function renderFichadas(container, extras = {}) {
     if (saved?.origenAlerta) window.dispatchEvent(new CustomEvent('ca:jornadas-incompletas'))
     if (!saved?.origenAlerta || !alertasApi) return null
     try {
-      const list = await alertasApi.reload()
+      const list = alertasState.phase === 'ok' ? alertasState.list : null
+      if (Array.isArray(list)) alertasApi.replace(list)
       if (!Array.isArray(list)) {
         showToast({ message: 'La salida manual se registró, pero no se pudieron actualizar las alertas.', tone: 'warning' })
         return { suppressToast: true }
@@ -1132,6 +1296,7 @@ export async function renderFichadas(container, extras = {}) {
     metodoSelect.value = filtros.metodo
     syncCustomDates()
     empleadoCombobox.setEmpleadoId(filtros.empleadoId, { silent: true })
+    recordarEmpleado(filtros.empleadoId)
     resetPages()
     setView(filtros.view)
     return loadFichadas()
@@ -1141,6 +1306,7 @@ export async function renderFichadas(container, extras = {}) {
   function verFichadasDelPeriodo({ empleadoId, desde, hasta, year, monthIndex }) {
     calendarCursor = { year, monthIndex }
     empleadoCombobox.setEmpleadoId(empleadoId, { silent: true })
+    recordarEmpleado(empleadoId)
     periodoSelect.value = 'personalizado'
     desdeInput.value = desde
     hastaInput.value = hasta
@@ -1153,19 +1319,33 @@ export async function renderFichadas(container, extras = {}) {
   }
 
   async function openLabor(kind) {
+    if (kind === 'alertas' && laborKind === 'alertas' && alertasApi) return
+    if (kind === 'calendario' && laborKind === 'calendario' && calendarRoot) return
+    if (kind === 'alertas' && !puedeVerAlertasJornada(getCurrentUser())) return
     const seq = ++laborSeq
     closeObservacionesJornada()
     discardLabor()
     laborKind = kind
-    applyLaborChrome()
+    setTabStyles()
     laborHost.classList.remove('hidden')
     results.classList.add('hidden')
     paginationContainer.classList.add('hidden')
     const empleados = [...empleadoById.values()]
     if (kind === 'alertas') {
       if (seq !== laborSeq) return
+      if (alertasState.phase !== 'ok') {
+        await cargarAlertasPendientes()
+        if (seq !== laborSeq) return
+      }
+      const vigentes = alertasState.phase === 'ok' && Array.isArray(alertasState.list) ? alertasState.list : null
       alertasApi = createAlertasPanel({
         empleados,
+        alertasIniciales: vigentes,
+        onLoaded: (list) => {
+          if (!Array.isArray(list) || vigentes) return
+          alertasState = { phase: 'ok', list, message: '' }
+          renderSummary()
+        },
         onVerMovimientos: (alerta) => {
           void verMovimientosDelDia(alerta)
         },
@@ -1181,26 +1361,15 @@ export async function renderFichadas(container, extras = {}) {
       laborHost.append(alertasApi.element)
       return
     }
-    let sucursales = []
-    let departamentos = []
-    try {
-      ;[sucursales, departamentos] = await Promise.all([getSucursales(), getDepartamentos()])
-    } catch {
-      sucursales = []
-      departamentos = []
-    }
     if (seq !== laborSeq || !laborHost.isConnected) return
     calendarRoot = createJornadasCalendarPanel({
       empleados,
-      sucursales,
-      departamentos,
       empleadoId: empleadoCombobox.getEmpleadoId(),
       year: calendarCursor?.year,
       monthIndex: calendarCursor?.monthIndex,
       onEmpleadoChange: (id) => {
         empleadoCombobox.setEmpleadoId(id, { silent: true })
-        resetPages()
-        return loadFichadas()
+        recordarEmpleado(id)
       },
       onCursor: (cursor) => {
         calendarCursor = cursor
@@ -1216,18 +1385,100 @@ export async function renderFichadas(container, extras = {}) {
     laborHost.append(calendarRoot)
   }
 
-  const calendarButton = document.createElement('button')
-  calendarButton.type = 'button'
-  calendarButton.className = BTN_SECONDARY_CLASS
-  calendarButton.textContent = 'Calendario de jornadas'
-  calendarButton.addEventListener('click', () => openLabor('calendario'))
-  const alertsButton = document.createElement('button')
-  alertsButton.type = 'button'
-  alertsButton.className = BTN_SECONDARY_CLASS
-  alertsButton.textContent = 'Alertas de jornadas'
-  alertsButton.addEventListener('click', () => openLabor('alertas'))
-  modules.append(calendarButton, alertsButton)
-  const registrarSlot = view.querySelector('#fichadas-registrar')
+  const headingHost = view.querySelector('#fichadas-heading')
+  const consultaPanel = view.querySelector('#fichadas-panel-consulta')
+  const informeHost = view.querySelector('#fichadas-panel-informe')
+  const seccionConsulta = view.querySelector('#fichadas-seccion-consulta')
+  const seccionInforme = view.querySelector('#fichadas-seccion-informe')
+  let informePanel = null
+  let informeCargando = null
+  let seccionActual = 'consulta'
+  const registrarSlot = registrarActions.length ? document.createElement('div') : null
+  if (registrarSlot) registrarSlot.id = 'fichadas-registrar'
+
+  function paintHeading(section) {
+    const consulta = section !== 'informe'
+    headingHost.innerHTML = pageHeadingMarkup({
+      title: consulta ? 'Consultá las fichadas' : 'Informe de asistencia',
+      description: consulta
+        ? 'Filtrá y revisá los registros de ingreso y egreso.'
+        : 'Consultá el cumplimiento horario de la nómina.',
+      actionsId: 'fichadas-heading-actions',
+    })
+    const actions = headingHost.querySelector('#fichadas-heading-actions')
+    if (!consulta || !registrarSlot) {
+      actions?.remove()
+      return
+    }
+    actions.classList.add('flex', 'flex-wrap', 'items-center', 'justify-end', 'gap-2')
+    actions.append(registrarSlot)
+  }
+
+  function writeSectionHash(section, historyMode) {
+    const next = section === 'informe' ? '#/fichadas?seccion=informe' : '#/fichadas'
+    if ((globalThis.location?.hash || '') === next || historyMode === 'none') return
+    const state = { view: 'fichadas', seccion: section }
+    if (historyMode === 'replace') globalThis.history?.replaceState?.(state, '', next)
+    else globalThis.history?.pushState?.(state, '', next)
+  }
+
+  async function ensureInforme() {
+    if (informePanel || informeCargando) return informeCargando
+    informeHost.replaceChildren(createFeedbackState({ title: 'Cargando informe', message: 'Estamos preparando los filtros.' }))
+    informeCargando = (async () => {
+      try {
+        const contexto = await obtenerContextoInforme()
+        if (!informeHost.isConnected) return
+        informePanel = createInformeAsistenciaPanel({
+          contexto,
+          empresaNombre: () => empresaLabel(empresa),
+        })
+        informeHost.replaceChildren(informePanel.root)
+      } catch {
+        if (!informeHost.isConnected) return
+        informeHost.replaceChildren(createFeedbackState({
+          title: 'No se pudo cargar el informe',
+          message: 'Reintentá en unos segundos.',
+          tone: 'error',
+          actionLabel: 'Reintentar',
+          onAction: () => {
+            informeCargando = null
+            void ensureInforme()
+          },
+        }))
+      } finally {
+        informeCargando = null
+      }
+    })()
+    return informeCargando
+  }
+
+  function showSection(section, { historyMode = 'none' } = {}) {
+    const next = section === 'informe' && verInforme ? 'informe' : 'consulta'
+    seccionActual = next
+    consultaPanel.classList.toggle('hidden', next !== 'consulta')
+    informeHost.classList.toggle('hidden', next !== 'informe')
+    const mainActive = 'inline-flex h-9 shrink-0 items-center whitespace-nowrap rounded-lg bg-blue-600 px-3 text-sm font-medium text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500'
+    const mainIdle = 'inline-flex h-9 shrink-0 items-center whitespace-nowrap rounded-lg px-3 text-sm font-medium text-slate-600 hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 dark:text-slate-300 dark:hover:bg-slate-800'
+    seccionConsulta.className = next === 'consulta' ? mainActive : mainIdle
+    seccionConsulta.setAttribute('aria-selected', String(next === 'consulta'))
+    seccionInforme?.classList.toggle('hidden', false)
+    if (seccionInforme) {
+      seccionInforme.className = next === 'informe' ? mainActive : mainIdle
+      seccionInforme.setAttribute('aria-selected', String(next === 'informe'))
+    }
+    paintHeading(next)
+    writeSectionHash(next, historyMode)
+    if (next === 'informe') void ensureInforme()
+  }
+
+  function onSectionEvent() {
+    const requested = readHashParam(globalThis.location?.hash, 'seccion')
+    if ((requested === 'informe' ? 'informe' : 'consulta') === seccionActual) return
+    showSection(requested, { historyMode: 'none' })
+  }
+  globalThis.addEventListener?.('ca:fichadas-seccion', onSectionEvent)
+
   if (registrarSlot && registrarActions.length) {
     registrarMenu = createRegistrarMenu({
       actions: registrarActions,
@@ -1254,17 +1505,48 @@ export async function renderFichadas(container, extras = {}) {
     })
     registrarMenu?.root && registrarSlot.append(registrarMenu.root)
   }
-  const tabs = [tabTimeline, tabJornadas, tabMovimientos]
+  const secciones = [seccionConsulta, seccionInforme].filter(Boolean)
+  secciones.forEach((tab, index) => {
+    tab.addEventListener('click', () => {
+      const next = tab === seccionInforme ? 'informe' : 'consulta'
+      if (next === seccionActual) return
+      showSection(next, { historyMode: 'push' })
+    })
+    tab.addEventListener('keydown', (event) => {
+      if (event.key !== 'ArrowRight' && event.key !== 'ArrowLeft') return
+      event.preventDefault()
+      const delta = event.key === 'ArrowRight' ? 1 : -1
+      const target = secciones[(index + delta + secciones.length) % secciones.length]
+      target.focus()
+      target.click()
+    })
+  })
+  const hashInforme = readHashParam(globalThis.location?.hash, 'seccion') === 'informe'
+  const inicial = verInforme && hashInforme ? 'informe' : 'consulta'
+  const historyMode = !verInforme && hashInforme
+    ? 'replace'
+    : inicial === 'informe' && (globalThis.location?.hash || '') !== '#/fichadas?seccion=informe'
+      ? 'replace'
+      : 'none'
+  showSection(inicial, { historyMode })
+  const tabs = [tabTimeline, tabJornadas, tabMovimientos, tabCalendario]
   const tabViews = ['timeline', 'jornadas', 'movimientos']
+  function activateTab(index) {
+    if (index === 3) {
+      void openLabor('calendario')
+      return
+    }
+    setView(tabViews[index])
+  }
   tabs.forEach((tab, index) => {
-    tab.addEventListener('click', () => setView(tabViews[index]))
+    tab.addEventListener('click', () => activateTab(index))
     tab.addEventListener('keydown', (event) => {
       if (event.key !== 'ArrowRight' && event.key !== 'ArrowLeft') return
       event.preventDefault()
       const delta = event.key === 'ArrowRight' ? 1 : -1
       const next = (index + delta + tabs.length) % tabs.length
       tabs[next].focus()
-      setView(tabViews[next])
+      activateTab(next)
     })
   })
 
@@ -1283,9 +1565,11 @@ export async function renderFichadas(container, extras = {}) {
     columnPicker.destroy()
     empleadoCombobox.destroy()
     registrarMenu?.destroy()
+    consultaExport.destroy()
+    informePanel?.destroy()
+    globalThis.removeEventListener?.('ca:fichadas-seccion', onSectionEvent)
     alertasApi?.close?.()
     closeFichadasOverlays()
-    csvExportModal?.close({ force: true })
     returnToJornada = null
     observacionSession += 1
     jornadaDetalleModal?.close({ force: true })

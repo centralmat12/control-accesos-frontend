@@ -30,6 +30,13 @@ El frontend y la API tienen remotos distintos. El directorio que los contiene no
 - La corrida habitual excluye las categorías `LocalTunnelAcceptance` y `ProductionAcceptance`.
 - Los secretos de desarrollo no se versionan: `appsettings.*.local.json` en la API y `.env.local` en el frontend.
 
+## Informe y PDF del frontend
+
+- El informe de asistencia se compone en el navegador con los endpoints ya existentes. No se inventa un contrato nuevo ni se considera cerrado hasta que la API publique un informe histórico.
+- El PDF usa Helvetica con WinAnsi, sin fuente Unicode embebida. Los separadores decorativos son líneas, bloques o los caracteres `|` y `-`. El punto medio `·` no se escribe en el PDF: la fuente no lo tiene y antes aparecía como `?`.
+- Acentos y `ñ` se codifican en WinAnsi. Un signo `?` escrito por el usuario se conserva.
+- Las pestañas de Administración ocupan el ancho de sus etiquetas (`w-fit`), no el ancho del módulo.
+
 ## Lo que no se decidió aquí
 
-No se eligió un repositorio único para la documentación, no se creó la skill de traspaso y no se cambió el descanso fijo de 60 minutos de una excepción de jornada con horario propio.
+No se eligió un repositorio único para la documentación y no se cambió el descanso fijo de 60 minutos de una excepción de jornada con horario propio. La skill de traspaso sí existe; el procedimiento está en `.cursor/skills/traspaso-computadora/SKILL.md`.

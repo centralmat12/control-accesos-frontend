@@ -36,17 +36,19 @@ import {
   createUsuario,
 } from '../api/usuarios.js'
 import {
-  ADMIN_CARD_CLASS,
   ADMIN_FIELD_CONTROL_CLASS,
-  ADMIN_TABLE_HEADER_CELL_CLASS,
-  ADMIN_TABLE_ROW_CLASS,
-  ADMIN_TABLE_SHELL_CLASS,
-  ADMIN_TOOLBAR_BUTTON_CLASS,
+  ADMIN_FILTER_GRID_CLASS,
+  ADMIN_PAGE_CLASS,
+  ADMIN_PRIMARY_BUTTON_CLASS,
+  ADMIN_TABLE_FRAME_CLASS,
+  ADMIN_TH_CLASS,
+  adminSectionHeaderMarkup,
+  createAdminEmptyState,
 } from '../components/admin-panel-layout.js'
 import { createDepartamentosAdmin } from '../components/departamentos-admin.js'
 import { createTurnosPanel } from '../components/turnos-panel.js'
 import { puedeAdministrarTurnos } from '../config/labor-access.js'
-import { iconBuilding } from '../components/icons.js'
+import { iconBuilding, iconPlus } from '../components/icons.js'
 import { actionButtonMarkup, BTN_SECONDARY_CLASS } from '../components/button-styles.js'
 import { pageHeadingMarkup } from '../components/page-heading.js'
 import {
@@ -114,7 +116,7 @@ export function usuariosTableHeadMarkup(columns = USUARIOS_TABLE_COLUMNS) {
     .map((label) => {
       const align = usuariosColumnAlignClass(label)
       const width = USUARIOS_COL_WIDTH[label] ?? ''
-      return `<th scope="col" class="px-4 py-3 ${align} ${width} text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">${escapeHtml(label)}</th>`
+      return `<th scope="col" class="${ADMIN_TH_CLASS} ${align} ${width}">${escapeHtml(label)}</th>`
     })
     .join('')
 }
@@ -137,9 +139,10 @@ export function usuarioFilaAccionesMarkup(operador, usuario) {
 const CONTROL_CLASS =
   'w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none placeholder:text-slate-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20'
 
-const TAB_ACTIVE =
-  'border-blue-600 bg-white text-blue-700 shadow-sm dark:border-blue-400 dark:text-blue-300'
-const TAB_IDLE = 'border-transparent text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800'
+const TAB_BASE =
+  'inline-flex h-8 shrink-0 items-center whitespace-nowrap rounded-lg px-2.5 text-xs font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500'
+const TAB_ACTIVE = 'bg-blue-600 text-white'
+const TAB_IDLE = 'text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800'
 
 const SECTIONS = {
   usuarios: 'usuarios',
@@ -174,9 +177,9 @@ function createActionControl({ id, label, enabled, disabledMessage = '' }) {
       <button
         type="button"
         id="${id}"
-        class="inline-flex items-center justify-center rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-500"
+        class="inline-flex h-10 w-full items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 text-sm font-semibold text-white hover:bg-blue-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 sm:w-auto"
       >
-        ${escapeHtml(label)}
+        ${iconPlus('h-4 w-4')}<span>${escapeHtml(label)}</span>
       </button>
     `
   }
@@ -189,9 +192,9 @@ function createActionControl({ id, label, enabled, disabledMessage = '' }) {
         disabled
         aria-disabled="true"
         title="${escapeHtml(disabledMessage || API_ENABLEMENT_HINT)}"
-        class="inline-flex items-center justify-center rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60"
+        class="inline-flex h-10 w-full items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
       >
-        ${escapeHtml(label)}
+        ${iconPlus('h-4 w-4')}<span>${escapeHtml(label)}</span>
       </button>
       ${
         disabledMessage
@@ -215,36 +218,34 @@ export async function renderAdministracion(container) {
       ? 'La sesión ADMIN no incluye una empresa válida.'
       : API_ENABLEMENT_HINT
   const view = document.createElement('div')
-  view.className = 'space-y-6'
+  view.className = ADMIN_PAGE_CLASS
 
   view.innerHTML = `
     ${pageHeadingMarkup({
-      title: canViewEmpresasSection ? 'Gestioná usuarios y empresas' : 'Gestioná usuarios',
-      description: canViewEmpresasSection
-        ? 'Administrá sus accesos, roles, estados y estructura organizativa.'
-        : 'Administrá sus accesos, roles y estados.',
+      title: 'Administración de la organización',
+      description: 'Gestioná los accesos y la estructura de la empresa.',
     })}
     <div class="inline-flex w-fit max-w-full flex-wrap gap-1 rounded-xl border border-slate-200 bg-slate-50 p-1 dark:border-slate-700 dark:bg-slate-800/60" role="tablist" aria-label="Secciones de administración">
-      <button type="button" data-section="${SECTIONS.usuarios}" role="tab" class="inline-flex rounded-lg border px-3 py-1.5 text-sm font-medium">
+      <button type="button" data-section="${SECTIONS.usuarios}" role="tab" class="${TAB_BASE}">
         Usuarios
       </button>
       ${
         canViewEmpresasSection
-          ? `<button type="button" data-section="${SECTIONS.empresas}" role="tab" class="inline-flex rounded-lg border px-3 py-1.5 text-sm font-medium">
+          ? `<button type="button" data-section="${SECTIONS.empresas}" role="tab" class="${TAB_BASE}">
         Empresas
       </button>`
           : ''
       }
       ${
         canViewDepartamentosSection
-          ? `<button type="button" data-section="${SECTIONS.departamentos}" role="tab" class="inline-flex rounded-lg border px-3 py-1.5 text-sm font-medium">
+          ? `<button type="button" data-section="${SECTIONS.departamentos}" role="tab" class="${TAB_BASE}">
         Departamentos
       </button>`
           : ''
       }
       ${
         puedeAdministrarTurnos(user)
-          ? `<button type="button" data-section="${SECTIONS.turnos}" role="tab" class="inline-flex rounded-lg border px-3 py-1.5 text-sm font-medium">
+          ? `<button type="button" data-section="${SECTIONS.turnos}" role="tab" class="${TAB_BASE}">
         Turnos de trabajo
       </button>`
           : ''
@@ -275,6 +276,9 @@ export async function renderAdministracion(container) {
   let agentesError = false
   let agentesErrorMessage = 'Ocurrió un error al consultar la API.'
   let empresaQuery = ''
+  let usuarioQuery = ''
+  let usuarioRol = ''
+  let usuarioEstado = ''
   let activeModalClose = null
   let secretHolder = null
   let passwordTemporalOpen = false
@@ -327,7 +331,7 @@ export async function renderAdministracion(container) {
     }
     tabButtons.forEach((button) => {
       const active = button.dataset.section === section
-      button.className = `inline-flex rounded-lg border px-3 py-1.5 text-sm font-medium ${active ? TAB_ACTIVE : TAB_IDLE}`
+      button.className = `${TAB_BASE} ${active ? TAB_ACTIVE : TAB_IDLE}`
       button.setAttribute('aria-selected', String(active))
     })
     renderPanel()
@@ -408,34 +412,98 @@ export async function renderAdministracion(container) {
     return `ID ${id}`
   }
 
-  function usuariosScopeHint() {
-    if (!canListUsuarios) return ''
-    if (isSuperadmin(user)) {
-      return empresaSeleccionadaId()
-        ? 'Usuarios de la empresa seleccionada en el encabezado.'
-        : 'Sin empresa seleccionada se listan los usuarios de todas las empresas.'
-    }
-    return ''
+  function usuariosFiltrados(visibles) {
+    const query = usuarioQuery.trim().toLowerCase()
+    return visibles.filter((usuario) => {
+      if (usuarioRol && String(usuario.rol) !== usuarioRol) return false
+      if (usuarioEstado && estadoCuentaUsuario(usuario) !== usuarioEstado) return false
+      if (!query) return true
+      const texto = `${usuario.nombreUsuario ?? ''} ${usuario.correo ?? ''}`.toLowerCase()
+      return texto.includes(query)
+    })
+  }
+
+  function usuariosFiltroActivo() {
+    return Boolean(usuarioQuery.trim() || usuarioRol || usuarioEstado)
   }
 
   function renderUsuarios() {
-    const scopeHint = usuariosScopeHint()
+    const roles = [...new Set(filterUsuariosByOperador(usuarios, user).map((usuario) => usuario.rol).filter(Boolean))]
     panel.innerHTML = `
       <div class="space-y-4">
-        <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div class="min-w-0">
-            ${scopeHint ? `<p class="mt-1 text-xs text-slate-500">${escapeHtml(scopeHint)}</p>` : ''}
-          </div>
-          ${createActionControl({
+        ${adminSectionHeaderMarkup({
+          titleId: 'admin-usuarios-title',
+          title: 'Usuarios',
+          description: 'Administrá los accesos, roles y estados.',
+          actionHtml: createActionControl({
             id: 'admin-usuario-new',
             label: 'Nuevo usuario',
             enabled: canCreateUsuarios,
             disabledMessage: usuarioDisabledMessage,
-          })}
+          }),
+        })}
+        <div class="${ADMIN_FILTER_GRID_CLASS}">
+          <div class="min-w-0">
+            <label for="admin-usuarios-search" class="mb-1.5 block text-sm font-medium text-slate-700 dark:text-slate-300">Buscar</label>
+            <input id="admin-usuarios-search" type="search" placeholder="Usuario o correo" class="${CONTROL_CLASS} ${ADMIN_FIELD_CONTROL_CLASS}" />
+          </div>
+          <div class="min-w-0" data-usuarios-rol>
+            <label for="admin-usuarios-rol" class="mb-1.5 block text-sm font-medium text-slate-700 dark:text-slate-300">Rol</label>
+            <select id="admin-usuarios-rol" class="${CONTROL_CLASS} ${ADMIN_FIELD_CONTROL_CLASS}">
+              <option value="">Todos</option>
+              ${roles.map((rol) => `<option value="${escapeHtml(rol)}">${escapeHtml(usuarioRolLabel(rol))}</option>`).join('')}
+            </select>
+          </div>
+          <div class="min-w-0">
+            <label for="admin-usuarios-estado" class="mb-1.5 block text-sm font-medium text-slate-700 dark:text-slate-300">Estado</label>
+            <select id="admin-usuarios-estado" class="${CONTROL_CLASS} ${ADMIN_FIELD_CONTROL_CLASS}">
+              <option value="">Todos</option>
+              <option value="Activo">Activo</option>
+              <option value="Inactivo">Inactivo</option>
+              <option value="Bloqueado">Bloqueado</option>
+            </select>
+          </div>
+          <button type="button" id="admin-usuarios-clear" class="${BTN_SECONDARY_CLASS} h-10">Limpiar</button>
         </div>
         <div id="admin-usuarios-state"></div>
       </div>
     `
+    const search = panel.querySelector('#admin-usuarios-search')
+    const rol = panel.querySelector('#admin-usuarios-rol')
+    const estado = panel.querySelector('#admin-usuarios-estado')
+    const clear = panel.querySelector('#admin-usuarios-clear')
+    search.value = usuarioQuery
+    rol.value = usuarioRol
+    estado.value = usuarioEstado
+    const syncClear = () => {
+      clear.disabled = !usuariosFiltroActivo()
+    }
+    search.addEventListener('input', () => {
+      usuarioQuery = search.value
+      syncClear()
+      paintUsuariosResults()
+    }, { signal: listenerAbort.signal })
+    rol.addEventListener('change', () => {
+      usuarioRol = rol.value
+      syncClear()
+      paintUsuariosResults()
+    }, { signal: listenerAbort.signal })
+    estado.addEventListener('change', () => {
+      usuarioEstado = estado.value
+      syncClear()
+      paintUsuariosResults()
+    }, { signal: listenerAbort.signal })
+    clear.addEventListener('click', () => {
+      usuarioQuery = ''
+      usuarioRol = ''
+      usuarioEstado = ''
+      search.value = ''
+      rol.value = ''
+      estado.value = ''
+      syncClear()
+      paintUsuariosResults()
+    }, { signal: listenerAbort.signal })
+    syncClear()
     if (canCreateUsuarios) {
       panel.querySelector('#admin-usuario-new')?.addEventListener('click', openUsuarioCreate, {
         signal: listenerAbort.signal,
@@ -526,42 +594,67 @@ export async function renderAdministracion(container) {
     }
 
     const visibles = filterUsuariosByOperador(usuarios, user)
+    const filtrados = usuariosFiltrados(visibles)
+    const rolField = panel.querySelector('[data-usuarios-rol]')
+    const rolSelect = panel.querySelector('#admin-usuarios-rol')
+    const roles = [...new Set(visibles.map((usuario) => usuario.rol).filter(Boolean))]
+    if (rolField && rolSelect) {
+      rolField.hidden = roles.length === 0
+      const selected = usuarioRol
+      rolSelect.innerHTML = `<option value="">Todos</option>${roles
+        .map((rol) => `<option value="${escapeHtml(rol)}">${escapeHtml(usuarioRolLabel(rol))}</option>`)
+        .join('')}`
+      rolSelect.value = roles.includes(selected) ? selected : ''
+      if (rolSelect.value !== selected) usuarioRol = rolSelect.value
+    }
 
     if (visibles.length === 0) {
       results.replaceChildren(
-        createFeedbackState({
+        createAdminEmptyState({
           title: 'No hay usuarios',
-          message: canCreateUsuarios
-            ? 'Todavía no hay usuarios en este contexto. Creá el primero con “Nuevo usuario”.'
-            : 'Todavía no hay usuarios en este contexto.',
+          detail: 'Todavía no hay registros disponibles.',
+          actionLabel: canCreateUsuarios ? '+ Nuevo usuario' : '',
+          onAction: canCreateUsuarios ? openUsuarioCreate : undefined,
+        }),
+      )
+      return
+    }
+
+    if (filtrados.length === 0) {
+      results.replaceChildren(
+        createAdminEmptyState({
+          title: 'No encontramos resultados',
+          detail: 'Probá cambiar o limpiar los filtros aplicados.',
+          actionLabel: 'Limpiar filtros',
+          onAction: () => panel.querySelector('#admin-usuarios-clear')?.click(),
         }),
       )
       return
     }
 
     const sectionEl = document.createElement('section')
-    sectionEl.className = 'overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-900'
+    sectionEl.className = ADMIN_TABLE_FRAME_CLASS
     sectionEl.innerHTML = `
-      <div class="max-h-[65vh] overflow-auto">
+      <div class="overflow-x-auto">
         <table class="min-w-full divide-y divide-slate-200 dark:divide-slate-700">
-          <thead class="sticky top-0 z-10 bg-slate-50 dark:bg-slate-800">
+          <thead class="bg-slate-50 dark:bg-slate-800">
             <tr>
               ${usuariosTableHeadMarkup()}
             </tr>
           </thead>
-          <tbody class="divide-y divide-slate-100">
-            ${visibles
+          <tbody class="divide-y divide-slate-100 dark:divide-slate-800">
+            ${filtrados
               .map(
                 (usuario) => `
-                  <tr class="hover:bg-slate-50 dark:hover:bg-slate-800/60">
-                    <td class="whitespace-nowrap px-4 py-3 text-left text-sm font-medium text-slate-900 dark:text-slate-100">${displayValue(usuario.nombreUsuario)}</td>
-                    <td class="whitespace-nowrap px-4 py-3 text-left text-sm text-slate-600 dark:text-slate-300">${displayValue(usuario.correo)}</td>
-                    <td class="whitespace-nowrap px-4 py-3 text-left text-sm text-slate-600 dark:text-slate-300">${escapeHtml(usuarioRolLabel(usuario.rol))}</td>
-                    <td class="whitespace-nowrap px-4 py-3 text-left text-sm text-slate-600 dark:text-slate-300">${displayValue(empresaLabel(usuario.empresaId))}</td>
-                    <td class="w-28 min-w-28 whitespace-nowrap px-4 py-3 text-center text-sm">${cuentaEstadoMarkup(usuario)}</td>
-                    <td class="w-36 min-w-36 whitespace-nowrap px-4 py-3 text-center text-sm"><div class="flex justify-center">${passwordEstadoMarkup(usuario)}</div></td>
-                    <td class="w-36 min-w-36 whitespace-nowrap px-4 py-3 text-center text-sm">${bloqueoEstadoMarkup(usuario)}</td>
-                    <td class="w-32 min-w-32 px-4 py-3 text-center text-sm">${usuarioAccionesMarkup(usuario)}</td>
+                  <tr class="h-12 hover:bg-slate-50 dark:hover:bg-slate-800/60">
+                    <td class="whitespace-nowrap px-3 py-2 text-left text-sm font-medium text-slate-900 dark:text-slate-100">${displayValue(usuario.nombreUsuario)}</td>
+                    <td class="whitespace-nowrap px-3 py-2 text-left text-sm text-slate-600 dark:text-slate-300">${displayValue(usuario.correo)}</td>
+                    <td class="whitespace-nowrap px-3 py-2 text-left text-sm text-slate-600 dark:text-slate-300">${escapeHtml(usuarioRolLabel(usuario.rol))}</td>
+                    <td class="whitespace-nowrap px-3 py-2 text-left text-sm text-slate-600 dark:text-slate-300">${displayValue(empresaLabel(usuario.empresaId))}</td>
+                    <td class="w-28 min-w-28 whitespace-nowrap px-3 py-2 text-center text-sm">${cuentaEstadoMarkup(usuario)}</td>
+                    <td class="w-36 min-w-36 whitespace-nowrap px-3 py-2 text-center text-sm"><div class="flex justify-center">${passwordEstadoMarkup(usuario)}</div></td>
+                    <td class="w-36 min-w-36 whitespace-nowrap px-3 py-2 text-center text-sm">${bloqueoEstadoMarkup(usuario)}</td>
+                    <td class="w-32 min-w-32 px-3 py-2 text-center text-sm">${usuarioAccionesMarkup(usuario)}</td>
                   </tr>
                 `,
               )
@@ -932,27 +1025,43 @@ export async function renderAdministracion(container) {
       return
     }
     panel.innerHTML = `
-      <div class="${ADMIN_CARD_CLASS} max-w-[1080px]">
-        <div class="grid grid-cols-1 items-end gap-3 sm:grid-cols-[minmax(320px,1fr)_auto]">
+      <div class="space-y-4">
+        ${adminSectionHeaderMarkup({
+          titleId: 'admin-empresas-title',
+          title: 'Empresas',
+          description: 'Administrá las empresas disponibles en el sistema.',
+          actionHtml: canCreateEmpresas
+            ? `<button type="button" id="admin-empresa-new" class="${ADMIN_PRIMARY_BUTTON_CLASS}">${iconPlus('h-4 w-4')}<span>Nueva empresa</span></button>`
+            : '',
+        })}
+        <div class="${ADMIN_FILTER_GRID_CLASS}">
           <div class="min-w-0">
             <label for="admin-empresas-search" class="mb-1.5 block text-sm font-medium text-slate-700 dark:text-slate-300">Buscar</label>
             <input id="admin-empresas-search" type="search" placeholder="Nombre, razón social, CUIT o ID" class="${CONTROL_CLASS} ${ADMIN_FIELD_CONTROL_CLASS}" />
           </div>
-          ${
-            canCreateEmpresas
-              ? `<button type="button" id="admin-empresa-new" class="${ADMIN_TOOLBAR_BUTTON_CLASS}">Nueva empresa</button>`
-              : ''
-          }
+          <button type="button" id="admin-empresas-clear" class="${BTN_SECONDARY_CLASS} h-10">Limpiar</button>
         </div>
         <div id="admin-empresas-results"></div>
       </div>
     `
     const search = panel.querySelector('#admin-empresas-search')
+    const clear = panel.querySelector('#admin-empresas-clear')
     search.value = empresaQuery
+    const syncClear = () => {
+      clear.disabled = !empresaQuery.trim()
+    }
     search.addEventListener('input', () => {
-      empresaQuery = search.value.trim().toLowerCase()
+      empresaQuery = search.value
+      syncClear()
       paintEmpresasResults()
     })
+    clear.addEventListener('click', () => {
+      empresaQuery = ''
+      search.value = ''
+      syncClear()
+      paintEmpresasResults()
+    })
+    syncClear()
     if (canCreateEmpresas) {
       panel.querySelector('#admin-empresa-new')?.addEventListener('click', openEmpresaCreate)
     }
@@ -981,15 +1090,15 @@ export async function renderAdministracion(container) {
       return
     }
 
-    const filtered = empresas.filter((empresa) => matchesQuery(empresa, empresaQuery))
+    const filtered = empresas.filter((empresa) => matchesQuery(empresa, empresaQuery.trim().toLowerCase()))
 
     if (empresas.length === 0) {
       results.replaceChildren(
-        createFeedbackState({
+        createAdminEmptyState({
           title: 'No hay empresas',
-          message: canCreateEmpresas
-            ? 'Todavía no hay empresas. Creá la primera con “Nueva empresa”.'
-            : 'Todavía no hay empresas.',
+          detail: 'Todavía no hay registros disponibles.',
+          actionLabel: canCreateEmpresas ? '+ Nueva empresa' : '',
+          onAction: canCreateEmpresas ? openEmpresaCreate : undefined,
         }),
       )
       return
@@ -997,41 +1106,50 @@ export async function renderAdministracion(container) {
 
     if (filtered.length === 0) {
       results.replaceChildren(
-        createFeedbackState({
-          title: 'Sin resultados',
-          message: 'No hay empresas que coincidan con la búsqueda.',
+        createAdminEmptyState({
+          title: 'No encontramos resultados',
+          detail: 'Probá cambiar o limpiar los filtros aplicados.',
+          actionLabel: 'Limpiar filtros',
+          onAction: () => panel.querySelector('#admin-empresas-clear')?.click(),
         }),
       )
       return
     }
 
     const sectionEl = document.createElement('section')
-    sectionEl.className = `${ADMIN_TABLE_SHELL_CLASS} max-h-[65vh] overflow-y-auto`
-    const header = ADMIN_TABLE_HEADER_CELL_CLASS.replace('sm:flex', 'min-[880px]:flex')
+    sectionEl.className = ADMIN_TABLE_FRAME_CLASS
     sectionEl.innerHTML = `
-      <div class="grid grid-cols-1 text-left min-[880px]:grid-cols-[minmax(140px,0.8fr)_minmax(220px,1.5fr)_170px_60px_140px]">
-        <div class="${header}">Nombre</div>
-        <div class="${header}">Razón social</div>
-        <div class="${header}">CUIT</div>
-        <div class="${header}">ID</div>
-        <div class="${header} justify-end">Acciones</div>
-        ${filtered
-          .map(
-            (empresa) => `
-              <div class="${ADMIN_TABLE_ROW_CLASS} min-[880px]:col-span-5 min-[880px]:grid-cols-subgrid min-[880px]:h-[50px] min-[880px]:gap-0 min-[880px]:py-0" data-empresa-id="${Number(empresa.id)}">
-                <div class="min-w-0 truncate text-sm font-semibold text-slate-900 dark:text-slate-100">${displayValue(empresaDisplayName(empresa))}</div>
-                <div class="min-w-0 truncate text-sm text-slate-600 dark:text-slate-300">${displayValue(empresa.razonSocial)}</div>
-                <div class="min-w-0 truncate text-sm text-slate-600 dark:text-slate-300">${displayValue(empresa.cuit)}</div>
-                <div class="min-w-0 text-sm text-slate-600 dark:text-slate-300">${displayValue(empresa.id)}</div>
-                <div class="flex justify-end">
-                  <button type="button" data-action="view" data-id="${Number(empresa.id)}" class="${BTN_SECONDARY_CLASS} inline-flex h-8 items-center gap-1.5 whitespace-nowrap px-2.5! py-1! text-sm">
-                    ${iconBuilding('h-4 w-4')}<span>Ver sucursales</span>
-                  </button>
-                </div>
-              </div>
-            `,
-          )
-          .join('')}
+      <div class="overflow-x-auto">
+        <table class="min-w-full divide-y divide-slate-200 text-left dark:divide-slate-700">
+          <thead class="bg-slate-50 dark:bg-slate-800">
+            <tr>
+              <th scope="col" class="${ADMIN_TH_CLASS} text-left">Nombre</th>
+              <th scope="col" class="${ADMIN_TH_CLASS} text-left">Razón social</th>
+              <th scope="col" class="${ADMIN_TH_CLASS} text-left">CUIT</th>
+              <th scope="col" class="${ADMIN_TH_CLASS} text-left">ID</th>
+              <th scope="col" class="${ADMIN_TH_CLASS} text-right">Acciones</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-slate-100 dark:divide-slate-800">
+            ${filtered
+              .map(
+                (empresa) => `
+                  <tr class="h-12 hover:bg-slate-50 dark:hover:bg-slate-800/60" data-empresa-id="${Number(empresa.id)}">
+                    <td class="max-w-48 truncate px-3 py-2 text-sm font-medium text-slate-900 dark:text-slate-100">${displayValue(empresaDisplayName(empresa))}</td>
+                    <td class="max-w-64 truncate px-3 py-2 text-sm text-slate-600 dark:text-slate-300">${displayValue(empresa.razonSocial)}</td>
+                    <td class="whitespace-nowrap px-3 py-2 text-sm text-slate-600 dark:text-slate-300">${displayValue(empresa.cuit)}</td>
+                    <td class="whitespace-nowrap px-3 py-2 text-sm text-slate-600 dark:text-slate-300">${displayValue(empresa.id)}</td>
+                    <td class="px-3 py-2 text-right">
+                      <button type="button" data-action="view" data-id="${Number(empresa.id)}" class="${BTN_SECONDARY_CLASS} inline-flex h-8 items-center gap-1.5 whitespace-nowrap px-2.5 text-sm">
+                        ${iconBuilding('h-4 w-4')}<span>Ver sucursales</span>
+                      </button>
+                    </td>
+                  </tr>
+                `,
+              )
+              .join('')}
+          </tbody>
+        </table>
       </div>
     `
     sectionEl.querySelectorAll('[data-action="view"]').forEach((button) => {
@@ -1677,18 +1795,40 @@ export async function renderAdministracion(container) {
     paintSucursalesResults()
   }
 
-  tabButtons.forEach((button) => {
+  tabButtons.forEach((button, index) => {
     button.addEventListener('click', () => setSection(button.dataset.section), {
       signal: listenerAbort.signal,
     })
+    button.addEventListener('keydown', (event) => {
+      if (event.key !== 'ArrowRight' && event.key !== 'ArrowLeft') return
+      event.preventDefault()
+      const next = event.key === 'ArrowRight' ? index + 1 : index - 1
+      const target = tabButtons[(next + tabButtons.length) % tabButtons.length]
+      target?.focus()
+      if (target) setSection(target.dataset.section)
+    }, { signal: listenerAbort.signal })
   })
 
   async function renderDepartamentos() {
     const empresaId = empresaSeleccionadaId()
-    panel.innerHTML = `<div data-admin-departamentos class="w-full max-w-[880px]"></div>`
+    panel.innerHTML = `
+      <div class="space-y-4">
+        ${adminSectionHeaderMarkup({
+          titleId: 'admin-departamentos-title',
+          title: 'Departamentos',
+          description: 'Organizá los departamentos disponibles en cada sucursal.',
+        })}
+        <div data-admin-departamentos></div>
+      </div>
+    `
     const host = panel.querySelector('[data-admin-departamentos]')
     if (!empresaId) {
-      host.innerHTML = `<p class="text-sm text-slate-500" role="status">Seleccioná una empresa para administrar sus departamentos.</p>`
+      host.replaceChildren(
+        createAdminEmptyState({
+          title: 'Seleccioná una empresa',
+          detail: 'Elegí una empresa en el encabezado para ver sus departamentos.',
+        }),
+      )
       return
     }
     host.innerHTML = `<p class="text-sm text-slate-500" role="status">Cargando departamentos…</p>`
@@ -1697,7 +1837,15 @@ export async function renderAdministracion(container) {
       sucursalesDepartamento = await getSucursales({ empresaId })
     } catch (error) {
       if (!isViewAlive() || ignoreClosedSession(error)) return
-      host.innerHTML = `<p class="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800" role="alert">${escapeHtml(error.message || 'No se pudieron cargar las sucursales.')}</p>`
+      host.replaceChildren(
+        createFeedbackState({
+          title: 'No se pudieron cargar los departamentos',
+          message: 'Intentá nuevamente.',
+          tone: 'error',
+          actionLabel: 'Reintentar',
+          onAction: () => renderDepartamentos(),
+        }),
+      )
       return
     }
     if (!isViewAlive() || section !== SECTIONS.departamentos) return
@@ -1706,11 +1854,9 @@ export async function renderAdministracion(container) {
       sucursales: sucursalesDepartamento,
       empresaId,
       addLabel: 'Nuevo departamento',
-      heading: {
-        title: 'Gestioná los departamentos',
-        description: 'Administrá los departamentos disponibles en cada sucursal.',
-      },
+      embed: true,
     })
+    panel.querySelector('[data-admin-action]')?.append(departamentosAdmin.addButton)
     host.append(departamentosAdmin.element)
   }
 

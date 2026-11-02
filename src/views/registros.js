@@ -30,12 +30,10 @@ export function renderRegistros(container) {
   view.className = 'space-y-6'
 
   view.innerHTML = `
-    <section class="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-      <div>
-        <p class="mt-1 text-sm text-slate-500">
-          Actividad local del panel. Se guarda en esta pestaña, el usuario puede borrarla y no reemplaza los logs del servidor.
-        </p>
-      </div>
+    <section class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+      <p class="text-sm text-slate-500">
+        Actividad local del panel. Se guarda en esta pestaña, el usuario puede borrarla y no reemplaza los logs del servidor.
+      </p>
       <button
         type="button"
         id="registros-clear"

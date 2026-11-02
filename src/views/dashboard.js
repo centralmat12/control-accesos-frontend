@@ -54,15 +54,26 @@ import { logInfo } from '../utils/activity-log.js'
 
 const REFRESH_INTERVAL_MS = 5 * 60_000
 const LABEL_INTERVAL_MS = 30_000
+const WIDGET_PREFS_PREFIX = 'ca.dashboard.widgets'
+
+export function descartarPreferenciasWidgets(storage) {
+  if (!storage?.length) return
+  const keys = []
+  for (let index = 0; index < storage.length; index += 1) {
+    const key = storage.key(index)
+    if (key?.startsWith(WIDGET_PREFS_PREFIX)) keys.push(key)
+  }
+  keys.forEach((key) => storage.removeItem(key))
+}
 
 export function renderDashboard(container, { onNavigate } = {}) {
+  descartarPreferenciasWidgets(globalThis.localStorage)
   const view = document.createElement('div')
   view.className = 'space-y-6'
 
   view.innerHTML = `
-    <section class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+    <section class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
       ${pageHeadingMarkup({
-        title: 'Dashboard',
         description: 'Resumen general del sistema y la actividad de hoy.',
       })}
       <div class="flex flex-col items-stretch gap-1.5 sm:items-end">
@@ -279,7 +290,7 @@ export function renderDashboard(container, { onNavigate } = {}) {
     }
 
     content.replaceChildren(createSelectEmpresaState())
-    setRefreshHint('Elegí una empresa en el encabezado.')
+    setRefreshHint('Para visualizar estados debe seleccionar una empresa.')
   }
 
   function showRefreshError(message) {

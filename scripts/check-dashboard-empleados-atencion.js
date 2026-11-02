@@ -260,12 +260,13 @@ check('El agrupamiento es por empleado.id y no por nombre', () => {
   assert.equal(buildEmployeeAttentionItems(sameName).length, 2)
 })
 
-check('El Dashboard muestra el subtítulo exacto debajo del título', () => {
+check('El Dashboard muestra la descripción sin repetir el título de la barra', () => {
   const dashboard = read('src/views/dashboard.js')
   const heading = read('src/components/page-heading.js')
   const header = read('src/components/header.js')
-  assert.match(dashboard, /title: 'Dashboard'/)
+  assert.equal(dashboard.includes("title: 'Dashboard'"), false)
   assert.match(dashboard, /Resumen general del sistema y la actividad de hoy\./)
+  assert.match(dashboard, /id="dashboard-refresh"/)
   assert.match(dashboard, /pageHeadingMarkup/)
   assert.match(heading, /text-sm text-slate-500 dark:text-slate-400/)
   assert.match(header, />Panel</)
