@@ -23,7 +23,6 @@ import { formatDashboardLastUpdate } from '../utils/format.js'
 import { BTN_SECONDARY_CLASS } from '../components/button-styles.js'
 import { createFeedbackState, createSelectEmpresaState } from '../components/feedback-state.js'
 import { createRecentPunchesTable } from '../components/recent-punches-table.js'
-import { pageHeadingMarkup } from '../components/page-heading.js'
 import { createDashboardSkeleton } from '../components/skeleton.js'
 import { createStatCard } from '../components/stat-card.js'
 import { CAPABILITY, CAPABILITY_STATUS, resolveCapability } from '../api/capabilities.js'
@@ -72,26 +71,24 @@ export function renderDashboard(container, { onNavigate } = {}) {
   view.className = 'space-y-6'
 
   view.innerHTML = `
-    <section class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-      ${pageHeadingMarkup({
-        description: 'Resumen general del sistema y la actividad de hoy.',
-      })}
-      <div class="flex flex-col items-stretch gap-1.5 sm:items-end">
-        <button
-          type="button"
-          id="dashboard-refresh"
-          class="${BTN_SECONDARY_CLASS}"
-        >
-          Actualizar
-        </button>
-        <p id="dashboard-refresh-hint" class="hidden max-w-xs text-xs text-slate-500 sm:text-right"></p>
-      </div>
-    </section>
+    <div id="dashboard-refresh-row" class="flex flex-col items-stretch gap-1.5 sm:items-end" hidden>
+      <button
+        type="button"
+        id="dashboard-refresh"
+        class="${BTN_SECONDARY_CLASS}"
+        hidden
+        style="display: none"
+      >
+        Actualizar
+      </button>
+      <p id="dashboard-refresh-hint" class="hidden max-w-xs text-xs text-slate-500 sm:text-right"></p>
+    </div>
     <div id="dashboard-banner"></div>
     <div id="dashboard-content"></div>
   `
 
   let jornadasIncompletas = null
+  const refreshRow = view.querySelector('#dashboard-refresh-row')
   const refreshButton = view.querySelector('#dashboard-refresh')
   const refreshHint = view.querySelector('#dashboard-refresh-hint')
   const banner = view.querySelector('#dashboard-banner')
@@ -139,12 +136,14 @@ export function renderDashboard(container, { onNavigate } = {}) {
     if (!message) {
       refreshHint.textContent = ''
       refreshHint.classList.add('hidden')
+      refreshRow.hidden = true
       refreshButton.removeAttribute('aria-describedby')
       return
     }
 
     refreshHint.textContent = message
     refreshHint.classList.remove('hidden')
+    refreshRow.hidden = false
     refreshButton.setAttribute('aria-describedby', 'dashboard-refresh-hint')
   }
 
