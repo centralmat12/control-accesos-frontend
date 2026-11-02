@@ -4,28 +4,32 @@ Cierre del 2 de noviembre de 2026 en `control-accesos-frontend`, rama `feat/turn
 
 ## Verificación del 2 de noviembre de 2026
 
-Comandos ejecutados en el frontend, con `TZ=UTC`:
+Comandos ejecutados en el frontend. `package.json` define `dev`, `build`, `preview` y `check`. No hay un script separado de lint ni de tests.
 
-- `npm run check` (`node scripts/run-checks.js`): 57 scripts pasaron, incluido `check-deploy-archive.js`.
-- `npm run build`: terminó bien. El artefacto de esa corrida fue `dist/assets/index-_g0BTJe9.js`. `dist/` no se versiona.
+- `npm run check` (`node scripts/run-checks.js`): 57 scripts pasaron, incluido `check-deploy-archive.js`. Se repitió después de ocultar el encabezado del Dashboard y volvió a pasar.
+- `npm run build`: terminó bien. El artefacto de la corrida posterior al cambio del Dashboard fue `dist/assets/index-CYGYwBdu.js`. `dist/` no se versiona.
 - `git diff --check`: sin errores de espacio en blanco.
 
 En el navegador, con sesión ya iniciada en `http://127.0.0.1:5173/`:
 
-- Dashboard mostró Estado del sistema, empleados activos, fichadas de hoy, entradas, salidas y actividad.
-- Fichadas abrió las pestañas Consulta de fichadas e Informes de asistencia. Consulta mostró filtros, Registrar, Exportar y las vistas Línea de tiempo, Resumen de jornadas, Movimientos registrados y Calendario. Informes dejó el hash `#/fichadas?seccion=informe`.
-- Empleados mostró Nuevo empleado, búsqueda, sucursal, departamento, estado y el selector de página.
-- Administración mostró las cuatro pestañas en una barra ajustada al texto, no al ancho completo.
+- Dashboard mostró Estado del sistema, empleados activos, fichadas de hoy, entradas, salidas y actividad. No mostró «Resumen general del sistema y la actividad de hoy.» ni el botón Actualizar. El cómputo del botón quedó en `display: none`.
+- Fichadas abrió Consulta de fichadas e Informes de asistencia (`#/fichadas?seccion=informe`). Consulta mostró filtros, Registrar, Exportar deshabilitado sin datos y las vistas Línea de tiempo, Resumen de jornadas, Movimientos registrados y Calendario. Informes mostró el estado de carga y el vacío de jornadas.
+- Empleados cargó 11 registros, búsqueda, sucursal, departamento, estado, «Mostrando 1–10 de 11 empleados» y el panel de edición de un empleado, que se cerró sin guardar.
+- Administración abrió Usuarios, Empresas, Departamentos y Turnos. Departamentos y Turnos seguían cargando al cambiar de pestaña. Las pestañas ocupan el ancho del texto.
 
-No se recorrió cada filtro, cada página ni cada formulario hasta el guardado. Exportar quedó deshabilitado en la consulta vacía que se vio; la generación de archivos se comprobó con `scripts/check-exportacion-fichadas.js` y con un PDF armado por `buildPdfBytes`.
+No se recorrió cada filtro ni cada guardado. No se repitió una pasada en viewport estrecho en este cierre. La exportación CSV y PDF está cubierta por `scripts/check-exportacion-fichadas.js` y por el PDF de abajo. El menú Exportar no se abrió porque el botón estaba deshabilitado en la consulta vacía.
 
 ## Informe y PDF
 
-El informe de asistencia se arma en el frontend con empleados, fichadas, calendario, asignaciones y alertas ya existentes. No hay un endpoint nuevo de informe. El PDF lo escribe `src/utils/pdf-document.js` con Helvetica y WinAnsi. El texto extraído del ejemplo de dos páginas contenía `Peña Ñandú`, `Período: Últimos 60 días`, `31/10/2026`, `0003`, `Página 1 de 2`, `Página 2 de 2` y el pie `Informe operativo | …`. No contenía el texto `Control de Accesos`. Una captura posterior del visor quedó en blanco; la revisión visual anterior de la misma plantilla sí mostró logo, bloques de resumen y columnas completas.
+El informe de asistencia se arma en el frontend con empleados, fichadas, calendario, asignaciones y alertas ya existentes. No hay un endpoint nuevo de informe. El PDF lo escribe `src/utils/pdf-document.js` con Helvetica y WinAnsi. En este cierre se abrió un PDF de dos páginas generado con el logo real. La página mostró el logo sin el texto «Control de Accesos» debajo, `Peña Ñandú`, `Período: Últimos 60 días`, bloques Completas, En curso, Incompletas y En revisión, `31/10/2026`, legajos `0003` y `0012`, `¿Llegó?`, `áéíóú ñ`, el pie `Informe operativo | … | Página 1 de 2` y, en la página 2, el mismo encabezado y las columnas. No apareció `?` de reemplazo ni la columna Observaciones vacía. El archivo de prueba no se versiona.
 
 ## Lo que sigue visible y no se dio por eliminado
 
-Siguen en pantalla títulos o descripciones internas: «Resumen general del sistema y la actividad de hoy.», «Administración de la organización», «Consultá las fichadas», «Informe de asistencia» y «Administrá la nómina, sus asignaciones y su estado.». La limpieza estricta pedida después no se aplicó en este cierre.
+El Dashboard ya no muestra «Resumen general del sistema y la actividad de hoy.» ni el botón Actualizar. La actualización periódica sigue activa y el aviso de seleccionar una empresa solo aparece cuando hace falta. Siguen en pantalla «Administración de la organización», «Consultá las fichadas», «Informe de asistencia» y «Administrá la nómina, sus asignaciones y su estado.».
+
+## Cómo levantarlo
+
+En este repositorio: `npm install` si faltan dependencias, `npm run dev` para el panel, `npm run check` para la verificación y `npm run build` para el artefacto de producción. El siguiente paso recomendado es no rehacer estas pantallas: publicar el endpoint autoritativo de informes en la API y, si se retoma la limpieza visual, quitar solo los títulos internos que todavía se listan arriba.
 
 ## Relevamiento anterior
 

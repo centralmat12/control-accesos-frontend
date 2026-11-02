@@ -82,8 +82,8 @@ check('Los contenidos usan títulos funcionales y no repiten la sección', () =>
   assert.equal(empleados.includes('>Empleados</h2>'), false)
 
   assert.equal(dashboard.includes("title: 'Dashboard'"), false)
-  assert.match(dashboard, /Resumen general del sistema y la actividad de hoy\./)
-  assert.match(dashboard, /pageHeadingMarkup/)
+  assert.equal(dashboard.includes('Resumen general del sistema y la actividad de hoy.'), false)
+  assert.equal(dashboard.includes('pageHeadingMarkup'), false)
   assert.match(read('src/components/page-heading.js'), /<\/h2>/)
   assert.equal(dashboard.includes('No indica conexión del agente ni del lector'), false)
   assert.match(read('src/components/page-heading.js'), /font-semibold/)

@@ -13,7 +13,7 @@ Hechos abiertos al 2 de noviembre de 2026.
 
 ## Interfaz pedida y no cerrada
 
-- Siguen títulos y descripciones internas en Dashboard, Fichadas, Empleados y Administración. La limpieza que los quitaba no se implementó en este cierre.
+- El Dashboard ya no muestra la descripción repetida ni el botón Actualizar. Siguen títulos y descripciones internas en Fichadas, Empleados y Administración.
 - La columna ID de Empresas sigue visible. No se confirmó en esta sesión si el usuario la usa para una acción.
 
 ## Entorno

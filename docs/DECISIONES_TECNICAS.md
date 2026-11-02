@@ -36,6 +36,7 @@ El frontend y la API tienen remotos distintos. El directorio que los contiene no
 - El PDF usa Helvetica con WinAnsi, sin fuente Unicode embebida. Los separadores decorativos son líneas, bloques o los caracteres `|` y `-`. El punto medio `·` no se escribe en el PDF: la fuente no lo tiene y antes aparecía como `?`.
 - Acentos y `ñ` se codifican en WinAnsi. Un signo `?` escrito por el usuario se conserva.
 - Las pestañas de Administración ocupan el ancho de sus etiquetas (`w-fit`), no el ancho del módulo.
+- El Dashboard no repite una descripción bajo la barra ni muestra el botón manual Actualizar. El intervalo de actualización sigue. El aviso de empresa solo se muestra cuando no hay una empresa seleccionada.
 
 ## Lo que no se decidió aquí
 
