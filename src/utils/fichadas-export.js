@@ -10,7 +10,7 @@ import {
   columnCatalog,
 } from './fichadas-columns.js'
 import { describePeriodo } from './period.js'
-import { describeDetalleLinea } from './movimientos.js'
+import { CLASIFICACION_JORNADA_AYUDA, describeDetalleLinea } from './movimientos.js'
 import {
   formatObservacionesPdf,
   observacionExportColumns,
@@ -21,7 +21,7 @@ import { buildCsv } from './csv.js'
 
 export const FICHADAS_EXPORT_TITLE = 'Reporte de fichadas'
 export const FICHADAS_EXPORT_EMPTY_MESSAGE =
-  'No hay fichadas para exportar con los filtros seleccionados.'
+  'No hay datos para exportar con los filtros seleccionados.'
 export const FICHADAS_EXPORT_NO_COLUMNS_MESSAGE =
   'Seleccioná al menos una columna para exportar.'
 
@@ -40,8 +40,7 @@ export const FICHADAS_CSV_GENERATING_LABEL = 'Generando CSV…'
 export const FICHADAS_CSV_LARGE_THRESHOLD = 200
 export const FICHADAS_CSV_LARGE_TITLE = 'Exportación grande'
 
-export const JORNADA_PRINT_NOTE =
-  'La actividad registrada corresponde al intervalo entre la primera y la última fichada. No representa necesariamente horas netas trabajadas. Las jornadas incompletas no incluyen una duración calculada porque no existe una fichada de salida válida.'
+export const JORNADA_PRINT_NOTE = CLASIFICACION_JORNADA_AYUDA
 
 export const JORNADA_PRINT_COLUMNS = Object.freeze([
   { id: 'empleado', label: 'Empleado' },

@@ -134,7 +134,7 @@ check('Las vistas de fichadas se ordenan por identificador y el PDF resume la jo
   assert.equal(JORNADA_PRINT_COLUMNS.some((column) => column.label === 'Primera fichada'), true)
   assert.equal(JORNADA_PRINT_COLUMNS.some((column) => column.label === 'Última fichada'), true)
   assert.equal(JORNADA_PRINT_COLUMNS.some((column) => column.label === 'Actividad registrada'), true)
-  assert.match(JORNADA_PRINT_NOTE, /no representa necesariamente horas netas/i)
+  assert.match(JORNADA_PRINT_NOTE, /La jornada se calcula desde la primera entrada hasta la última salida registrada/)
   assert.match(view, /JORNADA_PRINT_COLUMNS/)
   assert.match(read('src/components/fichadas-print.js'), /table-header-group/)
   assert.match(read('src/components/fichadas-print.js'), /counter\(page\)/)

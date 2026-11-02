@@ -1,15 +1,10 @@
 import { displayMetodoLabel, escapeHtml, fichadaDateKey, fichadaSortKey, formatFichadaFecha, formatFichadaHora } from '../utils/format.js'
 import { JORNADA_ESTADO } from '../utils/jornadas.js'
 import { interpretarFichadaUnica } from '../utils/movimientos.js'
+import { createFichadasEmptyState } from './fichadas-empty-state.js'
 import { FICHADAS_BODY_CLASS } from './fichadas-frame.js'
 import { indicadorObservacionesHtml, bindObservacionesJornada } from './jornada-observaciones.js'
 import { iconClock } from './icons.js'
-
-export const TIMELINE_LEGEND =
-  'Primera fichada: entrada · Última: salida · Restantes: intermedias'
-
-export const TIMELINE_TOOLTIP =
-  'La clasificación se reinicia cada día según la zona horaria de Argentina. La barra representa la permanencia estimada entre la primera y la última fichada y no equivale necesariamente a horas netas trabajadas. Los turnos que cruzan la medianoche requieren una regla específica.'
 
 const OFFICE_START = 6 * 60
 const OFFICE_END = 20 * 60
@@ -188,7 +183,7 @@ function barTip(jornada, punches, text) {
   if (middles.length > 1) lines.push(`Fichadas intermedias: ${middles.join(', ')}`)
   if (text.last) lines.push(`Última fichada: ${clock(text.end)}`)
   else if (text.open) lines.push('Última fichada: en curso')
-  if (text.duration) lines.push(`Permanencia estimada: ${text.duration}`)
+  if (text.duration) lines.push(`Tiempo entre entrada y salida: ${text.duration}`)
   const horario = jornada.horarioPrevisto && jornada.horarioPrevisto !== 'No asignado' ? jornada.horarioPrevisto : ''
   if (horario) lines.push(`Horario previsto: ${horario}`)
   const metodo = displayMetodoLabel(text.first?.metodo)
@@ -203,7 +198,7 @@ function accessibleLabel(jornada, text) {
     jornada.estado ? `jornada ${jornada.estado.toLowerCase()}` : '',
     text.start != null ? `primera fichada ${clock(text.start)}` : '',
     text.last ? `última fichada ${clock(text.end)}` : text.open ? 'jornada en curso' : '',
-    text.duration ? `permanencia estimada ${text.duration}` : '',
+    text.duration ? `tiempo entre entrada y salida ${text.duration}` : '',
   ]
     .filter(Boolean)
     .join(', ')
@@ -228,10 +223,15 @@ export function createFichadasTimeline(
   }
 
   if (!jornadas.length) {
-    section.innerHTML = `
-      <p class="px-4 py-10 text-center text-sm font-medium text-slate-700 dark:text-slate-200">${compact ? 'No hay jornadas registradas hoy.' : 'Sin fichadas'}</p>
-      ${compact ? '' : '<p class="px-4 pb-8 text-center text-sm text-slate-500">No hay fichadas registradas para el período seleccionado.</p>'}
-    `
+    if (compact) {
+      section.innerHTML = '<p class="px-4 py-10 text-center text-sm font-medium text-slate-700 dark:text-slate-200">No hay jornadas registradas hoy.</p>'
+      return section
+    }
+    section.append(createFichadasEmptyState({
+      title: 'No hay jornadas para mostrar',
+      description: 'No encontramos jornadas para el empleado y período seleccionados.',
+      icon: iconClock(),
+    }))
     return section
   }
 

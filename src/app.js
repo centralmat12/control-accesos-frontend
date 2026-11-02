@@ -62,10 +62,17 @@ export function bootstrap(root) {
 
   function canonicalizeHash(viewId, { valid = true } = {}) {
     const expected = viewHash(viewId)
+    if (hashKeepsSection(viewId)) return
     if (valid && expected === viewHash(parseHashView(globalThis.location?.hash).viewId) && !parseHashView(globalThis.location?.hash).empty) {
       if ((globalThis.location?.hash || '') === expected) return
     }
     writeViewHash(viewId, { replace: true })
+  }
+
+  function hashKeepsSection(viewId) {
+    const hash = globalThis.location?.hash || ''
+    const parsed = parseHashView(hash)
+    return parsed.valid && !parsed.empty && parsed.viewId === viewId && hash.startsWith(`${viewHash(viewId)}?`)
   }
 
   const mount = () => {
@@ -169,7 +176,7 @@ export function bootstrap(root) {
     const fromHash = resolvedHashView(user)
     if (!fromHash.parsed.valid || fromHash.parsed.empty || fromHash.viewId !== fromHash.parsed.viewId) {
       canonicalizeHash(fromHash.viewId, { valid: fromHash.parsed.valid && !fromHash.parsed.empty })
-    } else if ((globalThis.location?.hash || '') !== viewHash(fromHash.viewId)) {
+    } else if (!hashKeepsSection(fromHash.viewId)) {
       writeViewHash(fromHash.viewId, { replace: true })
     }
     currentView = fromHash.viewId
@@ -205,11 +212,12 @@ export function bootstrap(root) {
     }
 
     const { parsed, viewId } = resolvedHashView()
-    if (!parsed.valid || parsed.empty || viewId !== parsed.viewId || (globalThis.location?.hash || '') !== viewHash(viewId)) {
+    if (!hashKeepsSection(viewId) && (!parsed.valid || parsed.empty || viewId !== parsed.viewId || (globalThis.location?.hash || '') !== viewHash(viewId))) {
       writeViewHash(viewId, { replace: true })
     }
 
     if (viewId === currentView && Object.keys(pendingViewOptions).length === 0 && mainEl) {
+      if (viewId === 'fichadas') globalThis.dispatchEvent?.(new CustomEvent('ca:fichadas-seccion'))
       setSidebarOpen(false)
       return
     }
@@ -291,7 +299,24 @@ async function renderView(main, viewId, extras = {}) {
   main.replaceChildren(createViewSkeleton())
   destroyDisconnectedSelects()
   destroyDisconnectedAccountMenus()
-  const cleanup = await render(main, extras)
+  let cleanup
+  try {
+    cleanup = await render(main, extras)
+  } catch (error) {
+    console.error(error)
+    main.replaceChildren(
+      createFeedbackState({
+        title: 'No se pudo abrir la sección',
+        message: 'Reintentá en unos segundos.',
+        tone: 'error',
+        actionLabel: 'Reintentar',
+        onAction: () => {
+          void renderView(main, viewId, extras)
+        },
+      }),
+    )
+    return
+  }
   enhanceSelectsIn(main)
   if (typeof cleanup === 'function') activeViewCleanup = cleanup
 }

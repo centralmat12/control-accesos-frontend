@@ -47,11 +47,11 @@ function sortHeader(key, label, sortKey, sortDir) {
   const ariaSort = active ? (sortDir === 'desc' ? 'descending' : 'ascending') : 'none'
 
   return `
-    <th scope="col" aria-sort="${ariaSort}" class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+    <th scope="col" aria-sort="${ariaSort}" class="px-3 py-2 text-left text-sm font-medium text-slate-500 dark:text-slate-400">
       <button
         type="button"
         data-sort="${key}"
-        class="inline-flex items-center gap-1 rounded-md hover:text-slate-800"
+        class="inline-flex items-center gap-1 rounded-md hover:text-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
       >
         ${label}
         ${sortIndicator(active, sortDir)}
@@ -65,7 +65,7 @@ export function createEmpleadosTable(
   { onView, onSort, sortKey = 'nombre', sortDir = 'asc', highlightId, catalog } = {},
 ) {
   const section = document.createElement('section')
-  section.className = 'overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm'
+  section.className = 'min-w-0'
   const usageCatalog = Array.isArray(catalog) ? catalog : empleados
 
   const rows = empleados
@@ -78,20 +78,20 @@ export function createEmpleadosTable(
           ? 'bg-slate-50/80 text-slate-600 hover:bg-slate-100 dark:bg-slate-900/40 dark:text-slate-400 dark:hover:bg-slate-800/50'
           : 'hover:bg-slate-50 dark:hover:bg-slate-800/70'
       const primaryCell = inactive
-        ? 'whitespace-nowrap px-4 py-3 text-sm font-medium text-slate-600 dark:text-slate-300'
-        : 'whitespace-nowrap px-4 py-3 text-sm font-medium text-slate-900'
+        ? 'h-11 whitespace-nowrap px-3 py-1 align-middle text-sm font-medium text-slate-600 dark:text-slate-300'
+        : 'h-11 whitespace-nowrap px-3 py-1 align-middle text-sm font-medium text-slate-900 dark:text-slate-100'
       const nameCell = inactive
-        ? 'whitespace-nowrap px-4 py-3 text-sm text-slate-600 dark:text-slate-300'
-        : 'whitespace-nowrap px-4 py-3 text-sm text-slate-900'
+        ? 'h-11 whitespace-nowrap px-3 py-1 align-middle text-sm text-slate-600 dark:text-slate-300'
+        : 'h-11 whitespace-nowrap px-3 py-1 align-middle text-sm text-slate-900 dark:text-slate-100'
 
       return `
-        <tr class="transition-colors ${rowClass}">
+        <tr class="h-11 border-b border-slate-100 transition-colors last:border-b-0 dark:border-slate-800 ${rowClass}">
           <td class="${primaryCell}">${legajoCellHtml(empleado, usageCatalog)}</td>
           <td class="${nameCell}">${displayValue(fullName(empleado))}</td>
-          <td class="whitespace-nowrap px-4 py-3 text-sm text-slate-600">${displayValue(empleado.dni)}</td>
-          <td class="whitespace-nowrap px-4 py-3 text-sm text-slate-600">${displayValue(empleado.departamento)}</td>
-          <td class="whitespace-nowrap px-4 py-3">${employeeStatusBadge(empleado.activo)}</td>
-          <td class="whitespace-nowrap px-4 py-3 text-right">
+          <td class="h-11 whitespace-nowrap px-3 py-1 align-middle text-sm text-slate-600 dark:text-slate-300">${displayValue(empleado.dni)}</td>
+          <td class="h-11 whitespace-nowrap px-3 py-1 align-middle text-sm text-slate-600 dark:text-slate-300">${displayValue(empleado.departamento)}</td>
+          <td class="h-11 whitespace-nowrap px-3 py-1 align-middle">${employeeStatusBadge(empleado.activo)}</td>
+          <td class="h-11 whitespace-nowrap px-3 py-1 align-middle text-right">
         ${actionButtonMarkup({
           label: 'Editar',
           ariaLabel: 'Editar empleado',
@@ -105,19 +105,19 @@ export function createEmpleadosTable(
     .join('')
 
   section.innerHTML = `
-    <div class="max-h-[65vh] overflow-auto">
-      <table class="min-w-full divide-y divide-slate-200">
-        <thead class="sticky top-0 z-10 bg-slate-50 shadow-[0_1px_0_0_var(--color-slate-200)] dark:bg-slate-800 dark:shadow-[0_1px_0_0_var(--color-slate-700)]">
-          <tr>
+    <div class="overflow-x-auto">
+      <table class="w-full min-w-[720px] border-collapse">
+        <thead class="bg-slate-50 dark:bg-slate-800">
+          <tr class="border-b border-slate-200 dark:border-slate-700">
             ${sortHeader('legajo', 'Legajo', sortKey, sortDir)}
-            ${sortHeader('nombre', 'Nombre y apellido', sortKey, sortDir)}
+            ${sortHeader('nombre', 'Empleado', sortKey, sortDir)}
             ${sortHeader('dni', 'DNI', sortKey, sortDir)}
             ${sortHeader('departamento', 'Departamento', sortKey, sortDir)}
-            <th scope="col" class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Estado</th>
-            <th scope="col" class="w-28 px-4 py-3 text-right text-xs font-semibold uppercase tracking-wide text-slate-500">Acciones</th>
+            <th scope="col" class="px-3 py-2 text-left text-sm font-medium text-slate-500 dark:text-slate-400">Estado</th>
+            <th scope="col" class="w-28 px-3 py-2 text-right text-sm font-medium text-slate-500 dark:text-slate-400">Acciones</th>
           </tr>
         </thead>
-        <tbody class="divide-y divide-slate-100 bg-white">
+        <tbody class="bg-white dark:bg-slate-900">
           ${rows}
         </tbody>
       </table>

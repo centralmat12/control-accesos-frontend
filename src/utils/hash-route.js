@@ -30,6 +30,16 @@ export function parseHashView(hash) {
   return { viewId: id, valid: true, empty: false }
 }
 
+export function hashQuery(hash) {
+  const normalized = normalizeHash(hash)
+  const index = normalized.indexOf('?')
+  return index === -1 ? '' : normalized.slice(index + 1)
+}
+
+export function readHashParam(hash, name) {
+  return new URLSearchParams(hashQuery(hash)).get(name) || ''
+}
+
 export function hashesMatch(left, right) {
   return normalizeHash(left) === normalizeHash(right)
 }

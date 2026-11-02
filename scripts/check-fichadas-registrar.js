@@ -167,9 +167,15 @@ const superadmin = { rol: 'SUPERADMIN' }
 
 const checks = [
   check('Registrar está en la cabecera y no en la barra global ni como botón inferior', () => {
-    const slot = view.indexOf("actionsId: registrarActions.length ? 'fichadas-registrar'")
+    const headingAt = view.indexOf('id="fichadas-heading"')
     const tabs = view.indexOf('id="fichadas-tab-timeline"')
-    assert.ok(slot > 0 && slot < tabs)
+    assert.ok(headingAt > 0 && headingAt < tabs)
+    assert.match(view, /actionsId: 'fichadas-heading-actions'/)
+    assert.match(view, /id = 'fichadas-registrar'/)
+    assert.match(view, /id="fichadas-seccion-consulta"/)
+    assert.match(view, /id="fichadas-seccion-informe"/)
+    assert.match(view, /Consulta de fichadas/)
+    assert.equal(view.includes('fichadas-tab-informe'), false)
     assert.equal(view.includes('Registrar fichada manual'), false)
     assert.equal(view.includes('createFichadaManualControl'), false)
     assert.equal(header.includes('fichadas-registrar'), false)
@@ -187,7 +193,9 @@ const checks = [
     assert.match(view, /ArrowRight/)
     assert.match(view, /ArrowLeft/)
     assert.match(view, /Calendario de jornadas/)
-    assert.match(view, /Alertas de jornadas/)
+    assert.equal(view.includes('Alertas de jornadas'), false)
+    assert.match(view, /Fichadas pendientes de revisión/)
+    assert.ok(view.indexOf('id="fichadas-tab-movimientos"') < view.indexOf('id="fichadas-tab-calendario"'))
   }),
 
   check('El menú abre, cierra, responde a Escape y no duplica listeners', () => {

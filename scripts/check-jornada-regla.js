@@ -175,7 +175,7 @@ check('19 y 20. Resumen, clasificación y PDF comparten el estado y no inventan 
   assert.equal(clasificada.jornadaEstado, jornada.estado)
   assert.equal(jornada.egresoHora, 'Sin salida')
   assert.equal(jornada.actividadRegistrada, '—')
-  assert.match(JORNADA_PRINT_NOTE, /no incluyen una duración calculada/)
+  assert.match(JORNADA_PRINT_NOTE, /La jornada se calcula desde la primera entrada hasta la última salida registrada/)
   assert.equal(jornada.movimientos.some((item) => item.movimientoVisual === MOVIMIENTO_VISUAL.salida), false)
 })
 

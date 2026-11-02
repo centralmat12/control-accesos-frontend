@@ -17,7 +17,7 @@ import {
 } from '../utils/fichada-manual-time.js'
 import { BTN_SECONDARY_CLASS } from './button-styles.js'
 import { createEmpleadoCombobox } from './empleado-combobox.js'
-import { bindTooltipRoot, helpText, infoHelpButton } from './tooltip.js'
+import { bindTooltipRoot, helpText } from './tooltip.js'
 import { openFormModal, openReviewConfirm, trackFichadasOverlay } from './modal.js'
 import { panelForCapability } from './maintenance-panel.js'
 import { showToast } from './toast.js'
@@ -112,18 +112,18 @@ export async function openFichadaManual({ getEmpleados = () => [], onSaved, pres
       <input type="hidden" name="empleadoId" />
       <div class="grid gap-3 sm:grid-cols-2">
         <label class="block text-sm" for="fichada-manual-fecha">
-          <span class="mb-1 flex items-center gap-1">Fecha ${infoHelpButton('No puede ser posterior a hoy.')}</span>
+          <span class="mb-1 block">Fecha</span>
           ${helpText('fichada-manual-fecha-help', 'No puede ser posterior a hoy.')}
           <input id="fichada-manual-fecha" name="fecha" type="date" required aria-describedby="fichada-manual-fecha-help" data-help-id="fichada-manual-fecha-help" class="${FIELD_CLASS}" />
         </label>
         <label class="block text-sm" for="fichada-manual-hora">
-          <span class="mb-1 flex items-center gap-1">Hora ${infoHelpButton('No puede ser posterior a la hora actual.')}</span>
+          <span class="mb-1 block">Hora</span>
           ${helpText('fichada-manual-hora-help', 'No puede ser posterior a la hora actual.')}
           <input id="fichada-manual-hora" name="hora" type="time" required aria-describedby="fichada-manual-hora-help" data-help-id="fichada-manual-hora-help" class="${FIELD_CLASS}" />
         </label>
       </div>
       <label class="block text-sm" for="fichada-manual-tipo">
-        <span class="mb-1 flex items-center gap-1">Tipo ${infoHelpButton('Indicá si corresponde a una entrada o una salida.')}</span>
+        <span class="mb-1 block">Tipo</span>
         ${helpText('fichada-manual-tipo-help', 'Indicá si corresponde a una entrada o una salida.')}
         <select id="fichada-manual-tipo" name="tipo" required aria-describedby="fichada-manual-tipo-help" data-help-id="fichada-manual-tipo-help" class="${FIELD_CLASS}">
           ${preset?.agregarFichada ? '<option value="">Seleccioná</option>' : ''}
@@ -132,7 +132,7 @@ export async function openFichadaManual({ getEmpleados = () => [], onSaved, pres
         </select>
       </label>
       <label class="block text-sm" for="fichada-manual-motivo">
-        <span class="mb-1 flex items-center gap-1">Motivo ${infoHelpButton('Seleccioná el motivo del registro manual.')}</span>
+        <span class="mb-1 block">Motivo</span>
         ${helpText('fichada-manual-motivo-help', 'Seleccioná el motivo del registro manual.')}
         <select id="fichada-manual-motivo" name="motivo" required aria-describedby="fichada-manual-motivo-help" data-help-id="fichada-manual-motivo-help" class="${FIELD_CLASS}">
           ${motivoPendiente ? '<option value="">Seleccioná</option>' : ''}
@@ -140,7 +140,7 @@ export async function openFichadaManual({ getEmpleados = () => [], onSaved, pres
         </select>
       </label>
       <label class="block text-sm" for="fichada-manual-detalle">
-        <span class="mb-1 flex items-center gap-1">Observación ${infoHelpButton('Agregá el detalle que justifica la fichada.')}</span>
+        <span class="mb-1 block">Observación</span>
         ${helpText('fichada-manual-detalle-help', 'Agregá el detalle que justifica la fichada.')}
         <textarea id="fichada-manual-detalle" name="detalle" required maxlength="500" aria-describedby="fichada-manual-detalle-help" data-help-id="fichada-manual-detalle-help" class="${FIELD_CLASS}"></textarea>
       </label>
@@ -220,10 +220,10 @@ export async function openFichadaManual({ getEmpleados = () => [], onSaved, pres
     const aviso = form.querySelector('#fichada-manual-aviso')
     const nombre = preset.empleadoNombre || empleadoNombre(empleados, preset.empleadoId)
     aviso.textContent = preset.agregarFichada
-      ? `Se detectó una jornada incompleta. ${nombre} tiene una sola fichada a las ${preset.marcaHora} y no se puede distinguir si fue ingreso o egreso. Elegí Entrada o Salida únicamente si corresponde registrarla.`
+      ? `${nombre} tiene una sola fichada a las ${preset.marcaHora}. Elegí Entrada o Salida si corresponde registrarla.`
       : preset.completarEntrada
-        ? `Se detectó una jornada incompleta. ${nombre} registra egreso a las ${preset.salidaHora} y no posee una entrada válida. Completá los datos únicamente si corresponde registrar la entrada manualmente.`
-        : `Se detectó una jornada incompleta. ${nombre} registra ingreso a las ${preset.entradaHora} y no posee una salida válida. Completá los datos únicamente si corresponde registrar la salida manualmente.`
+        ? `${nombre} tiene un egreso a las ${preset.salidaHora} y falta la entrada. Completá la entrada si corresponde.`
+        : `${nombre} tiene un ingreso a las ${preset.entradaHora} y falta la salida. Completá la salida si corresponde.`
     aviso.classList.remove('hidden')
   }
   applyLimits(new Date())

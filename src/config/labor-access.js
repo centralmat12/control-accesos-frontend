@@ -8,6 +8,10 @@ export function puedeConsultarTurnos(user) {
   return puedeAdministrarTurnos(user) || isRrhh(user)
 }
 
+export function puedeVerInformeAsistencia(user) {
+  return puedeConsultarTurnos(user)
+}
+
 export function puedeRegistrarFichadaManual(user) {
   return isSuperadmin(user) || isAdmin(user)
 }

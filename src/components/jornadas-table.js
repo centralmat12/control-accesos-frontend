@@ -112,7 +112,7 @@ export function createJornadasTable(
   const headers = columns
     .map((column) => {
       const label = headerLabel(column)
-      return `<th scope="col" class="${TH_CLASS}" data-column="${column.id}" title="${escapeHtml(label)}">${escapeHtml(label)}</th>`
+      return `<th scope="col" class="${TH_CLASS}" data-column="${column.id}">${escapeHtml(label)}</th>`
     })
     .join('')
 

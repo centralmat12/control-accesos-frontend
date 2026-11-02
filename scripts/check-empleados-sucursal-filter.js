@@ -193,7 +193,7 @@ check('La vista usa IDs, checkbox accesible, limpiar y destroy', () => {
 
 check('Filtros de empleados no desbordan el contenedor', () => {
   const view = read('src/views/empleados.js')
-  assert.match(view, /sm:flex-row sm:items-end sm:justify-between/)
+  assert.match(view, /sm:flex-row sm:items-center sm:justify-between/)
   assert.match(view, /id="empleados-new"/)
   assert.equal(view.includes('mb-4 flex justify-end'), false)
   assert.match(view, /id="empleados-filters"/)
@@ -213,10 +213,10 @@ check('Filtros de empleados no desbordan el contenedor', () => {
   assert.match(view, /empleados-summary/)
   assert.match(view, /aria-label="Limpiar filtros"/)
   assert.match(view, /h-11/)
-  assert.match(view, /placeholder="Nombre, DNI o legajo"/)
+  assert.match(view, /placeholder="Buscar por nombre, DNI o legajo"/)
   assert.match(view, /aria-label="Buscar por nombre, DNI o legajo"/)
   assert.match(view, /aria-label="Estado de datos"/)
-  assert.match(view, />Datos</)
+  assert.match(view, />Información</)
   assert.equal(view.includes('Estado de datos</label>'), false)
   assert.match(view, /sr-only">Estado de datos/)
   assert.match(read('src/components/sucursal-multi-select.js'), /SUCURSAL_FILTER_ALL_ARIA/)

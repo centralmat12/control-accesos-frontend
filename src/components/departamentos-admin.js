@@ -13,10 +13,14 @@ import {
   ADMIN_CARD_META_CLASS,
   ADMIN_CARD_TITLE_CLASS,
   ADMIN_FIELD_CONTROL_CLASS,
+  ADMIN_FILTER_GRID_CLASS,
   ADMIN_SECTION_GAP_CLASS,
+  ADMIN_TABLE_FRAME_CLASS,
   ADMIN_TABLE_HEADER_CELL_CLASS,
   ADMIN_TABLE_ROW_CLASS,
   ADMIN_TABLE_SHELL_CLASS,
+  ADMIN_TH_CLASS,
+  createAdminEmptyState,
 } from './admin-panel-layout.js'
 import { actionButtonMarkup, BTN_DANGER_CLASS, BTN_SECONDARY_CLASS } from './button-styles.js'
 import { createDepartamentoForm } from './departamento-form.js'
@@ -71,32 +75,68 @@ export function createDepartamentosAdmin({
   onChanged,
   addLabel = 'Agregar departamento',
   heading = null,
+  embed = false,
+  onCount,
 } = {}) {
   const disponibles = (sucursales ?? []).filter((item) => Number(item?.id) > 0)
   let currentSucursalId = Number(sucursalId) || Number(disponibles[0]?.id) || null
   const root = document.createElement('div')
-  root.className = heading
-    ? `${ADMIN_CARD_CLASS} max-w-[880px]`
-    : 'flex min-h-0 flex-1 flex-col gap-4'
+  root.className = embed ? 'space-y-4' : heading ? `${ADMIN_CARD_CLASS} max-w-[880px]` : 'flex min-h-0 flex-1 flex-col gap-4'
   const listHost = document.createElement('div')
   const addButton = document.createElement('button')
   addButton.type = 'button'
   addButton.className =
     'inline-flex h-10 w-auto grow-0 shrink-0 items-center justify-center self-end gap-2 whitespace-nowrap rounded-lg bg-blue-600 px-4 text-sm font-semibold text-white hover:bg-blue-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 disabled:cursor-not-allowed disabled:opacity-60'
   addButton.innerHTML = `${iconPlus('h-4 w-4')}<span>${escapeHtml(addLabel)}</span>`
+  if (embed) addButton.className = 'inline-flex h-10 w-full shrink-0 items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 text-sm font-semibold text-white hover:bg-blue-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto'
   addButton.addEventListener('click', () => openAlta())
 
   let items = []
+  let query = ''
   let disposed = false
   let busy = false
+
+  function visibleItems() {
+    const text = query.trim().toLowerCase()
+    if (!text) return items
+    return items.filter((item) => String(item.nombre ?? '').toLowerCase().includes(text))
+  }
+
+  function filtroActivo() {
+    const primera = Number(disponibles[0]?.id) || null
+    return Boolean(query.trim()) || Number(currentSucursalId) !== Number(primera)
+  }
 
   function syncAddButton() {
     addButton.disabled = busy || !currentSucursalId
   }
 
+  function syncClear() {
+    const clear = root.querySelector('#departamentos-admin-clear')
+    if (clear) clear.disabled = !filtroActivo()
+  }
+
   function renderContext() {
     const toolbar = document.createElement('div')
-    toolbar.className = `${heading ? ADMIN_SECTION_GAP_CLASS : ''} grid w-full grid-cols-[minmax(0,320px)_max-content] items-end gap-2`
+    toolbar.className = embed
+      ? ADMIN_FILTER_GRID_CLASS
+      : `${heading ? ADMIN_SECTION_GAP_CLASS : ''} grid w-full grid-cols-[minmax(0,320px)_max-content] items-end gap-2`
+    if (embed) {
+      const searchField = document.createElement('div')
+      searchField.className = 'min-w-0'
+      searchField.innerHTML = `
+        <label for="departamentos-admin-search" class="${FORM_LABEL_CLASS}">Buscar</label>
+        <input id="departamentos-admin-search" type="search" placeholder="Departamento" class="${FORM_INPUT_CLASS} ${ADMIN_FIELD_CONTROL_CLASS}" />
+      `
+      const search = searchField.querySelector('input')
+      search.value = query
+      search.addEventListener('input', () => {
+        query = search.value
+        syncClear()
+        renderList()
+      })
+      toolbar.append(searchField)
+    }
     const field = document.createElement('div')
     field.className = 'w-full min-w-0'
     field.innerHTML = `
@@ -123,11 +163,40 @@ export function createDepartamentosAdmin({
       select.addEventListener('change', () => {
         currentSucursalId = Number(select.value) || null
         syncAddButton()
+        syncClear()
         load()
       })
     }
-    toolbar.append(field, addButton)
-    if (heading) {
+    toolbar.append(field)
+    if (embed) {
+      const clear = document.createElement('button')
+      clear.type = 'button'
+      clear.id = 'departamentos-admin-clear'
+      clear.className = `${BTN_SECONDARY_CLASS} h-10`
+      clear.textContent = 'Limpiar'
+      clear.addEventListener('click', () => {
+        query = ''
+        const search = root.querySelector('#departamentos-admin-search')
+        if (search) search.value = ''
+        const primera = Number(disponibles[0]?.id) || null
+        if (Number(currentSucursalId) !== Number(primera)) {
+          currentSucursalId = primera
+          const select = root.querySelector('#departamentos-admin-sucursal')
+          if (select) select.value = primera ? String(primera) : ''
+          syncAddButton()
+          syncClear()
+          load()
+          return
+        }
+        syncClear()
+        renderList()
+      })
+      toolbar.append(clear)
+      syncClear()
+    } else {
+      toolbar.append(addButton)
+    }
+    if (heading && !embed) {
       const intro = document.createElement('div')
       intro.className = ADMIN_CARD_HEADER_CLASS
       intro.innerHTML = `
@@ -174,9 +243,22 @@ export function createDepartamentosAdmin({
   }
 
   function renderList() {
+    const visibles = visibleItems()
+    onCount?.(items.length)
     if (!items.length) {
       const count = root.querySelector('[data-dept-count]')
       if (count) count.textContent = '0 departamentos'
+      if (embed) {
+        listHost.replaceChildren(
+          createAdminEmptyState({
+            title: 'No hay departamentos',
+            detail: 'Todavía no hay registros disponibles.',
+            actionLabel: currentSucursalId ? `+ ${addLabel}` : '',
+            onAction: currentSucursalId ? () => openAlta() : undefined,
+          }),
+        )
+        return
+      }
       listHost.innerHTML = `
         <div class="rounded-lg border border-slate-200 bg-slate-50 px-4 py-6 text-center dark:border-slate-700 dark:bg-slate-800/60" role="status">
           <p class="text-sm text-slate-700 dark:text-slate-200">No hay departamentos registrados para esta sucursal.</p>
@@ -188,8 +270,53 @@ export function createDepartamentosAdmin({
       return
     }
 
+    if (embed && !visibles.length) {
+      listHost.replaceChildren(
+        createAdminEmptyState({
+          title: 'No encontramos resultados',
+          detail: 'Probá cambiar o limpiar los filtros aplicados.',
+          actionLabel: 'Limpiar filtros',
+          onAction: () => root.querySelector('#departamentos-admin-clear')?.click(),
+        }),
+      )
+      return
+    }
+
     const count = root.querySelector('[data-dept-count]')
     if (count) count.textContent = `${items.length} departamento${items.length === 1 ? '' : 's'}`
+    if (embed) {
+      const section = document.createElement('section')
+      section.className = ADMIN_TABLE_FRAME_CLASS
+      section.innerHTML = `
+        <div class="overflow-x-auto">
+          <table class="min-w-full divide-y divide-slate-200 text-left dark:divide-slate-700">
+            <thead class="bg-slate-50 dark:bg-slate-800">
+              <tr>
+                <th scope="col" class="${ADMIN_TH_CLASS} text-left">Departamento</th>
+                <th scope="col" class="${ADMIN_TH_CLASS} text-left">Sucursal</th>
+                <th scope="col" class="${ADMIN_TH_CLASS} text-right">Acciones</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-slate-100 dark:divide-slate-800">
+              ${visibles
+                .map(
+                  (item) => `
+                    <tr class="h-12 hover:bg-slate-50 dark:hover:bg-slate-800/60" data-departamento-id="${item.id}">
+                      <td class="px-3 py-2 text-sm font-medium text-slate-900 dark:text-slate-100">${escapeHtml(item.nombre)}</td>
+                      <td class="px-3 py-2 text-sm text-slate-600 dark:text-slate-300">${escapeHtml(sucursalNombre(item, disponibles))}</td>
+                      <td class="px-3 py-2 text-right">${actionsMarkup(item, 'nowrap')}</td>
+                    </tr>
+                  `,
+                )
+                .join('')}
+            </tbody>
+          </table>
+        </div>
+      `
+      listHost.replaceChildren(section)
+      bindRowActions(listHost)
+      return
+    }
     const rows = items.map((item) => rowMarkup(item)).join('')
     listHost.innerHTML = `
       <div class="${heading ? ADMIN_TABLE_SHELL_CLASS : ''} dept-admin-scroll max-h-[min(22rem,calc(100dvh-16rem))] overflow-x-hidden overflow-y-auto">
@@ -478,6 +605,7 @@ export function createDepartamentosAdmin({
   load()
   return {
     element: root,
+    addButton,
     reload: load,
     dispose() {
       disposed = true

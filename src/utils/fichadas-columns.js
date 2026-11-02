@@ -68,16 +68,8 @@ export const FICHADAS_COLUMNS_INFO_TOOLTIP = {
     'Empleado, Fecha, Ingreso y Estado permanecen siempre visibles. PDF y Vista actual del CSV utilizan las columnas seleccionadas.',
 }
 
-export const FICHADAS_MOVIMIENTOS_TAB_TOOLTIP = 'Muestra las fichadas informadas por el lector biometrico.'
-
-export const FICHADAS_JORNADAS_TAB_TOOLTIP =
-  'La primera fichada del día se interpreta como entrada, la última como salida y las restantes como movimientos intermedios. Un turno que cruza la medianoche necesita otra regla.'
-
-export const FICHADAS_TIMELINE_TAB_TOOLTIP =
-  'La barra representa la permanencia estimada entre la primera y la última fichada.'
-
 export const FICHADAS_TIPO_METODO_TOOLTIP =
-  'El tipo filtra la clasificación del día, después de reunir todas las fichadas del período. El método filtra el registro original.'
+  'El tipo distingue entrada, salida o movimiento intermedio. El método indica si fue biométrica o manual.'
 
 export function allColumnIds(view) {
   return columnCatalog(view).map((column) => column.id)

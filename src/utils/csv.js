@@ -17,14 +17,19 @@ export function buildCsv(headers, rows) {
   return `\uFEFF${lines.join('\r\n')}`
 }
 
-export function downloadCsv(filename, content) {
-  const blob = new Blob([content], { type: 'text/csv;charset=utf-8' })
+export function downloadBlob(filename, data, type = 'application/octet-stream') {
+  const blob = data instanceof Blob ? data : new Blob([data], { type })
   const url = URL.createObjectURL(blob)
   const link = document.createElement('a')
   link.href = url
   link.download = filename
+  link.rel = 'noopener'
   document.body.append(link)
   link.click()
   link.remove()
-  URL.revokeObjectURL(url)
+  setTimeout(() => URL.revokeObjectURL(url), 1500)
+}
+
+export function downloadCsv(filename, content) {
+  downloadBlob(filename, content, 'text/csv;charset=utf-8')
 }

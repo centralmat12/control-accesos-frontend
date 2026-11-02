@@ -9,11 +9,13 @@ import { panelForCapability } from './maintenance-panel.js'
 import { openModal, trackFichadasOverlay } from './modal.js'
 import { escapeHtml, formatFichadaFecha, formatFichadaHora } from '../utils/format.js'
 import { formatMinutosInformados } from '../utils/labor-format.js'
+import { createFichadasEmptyState } from './fichadas-empty-state.js'
+import { iconAlertTriangle } from './icons.js'
 import { bindTooltipRoot } from './tooltip.js'
 
 const PRIMARY_CLASS = 'rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 disabled:cursor-not-allowed disabled:opacity-60'
 
-export function createAlertasPanel({ empleados = [], onVerMovimientos, onRegistrarSalida } = {}) {
+export function createAlertasPanel({ empleados = [], onVerMovimientos, onRegistrarSalida, alertasIniciales = null, onLoaded } = {}) {
   const root = document.createElement('section')
   root.className = 'space-y-3'
   const host = document.createElement('div')
@@ -100,7 +102,11 @@ export function createAlertasPanel({ empleados = [], onVerMovimientos, onRegistr
 
   function paint(alertas) {
     if (!alertas.length) {
-      host.innerHTML = '<div class="rounded-xl border border-slate-200 bg-white px-4 py-10 text-center shadow-sm dark:border-slate-700 dark:bg-slate-900"><p class="text-sm font-semibold">No hay jornadas incompletas informadas</p><p class="mt-1 text-sm text-slate-500">La API respondió sin alertas para el período que consulta.</p></div>'
+      host.replaceChildren(createFichadasEmptyState({
+        title: 'Sin fichadas pendientes',
+        description: 'No hay fichadas que requieran revisión.',
+        icon: iconAlertTriangle(),
+      }))
       return
     }
     const table = document.createElement('div')
@@ -136,7 +142,7 @@ export function createAlertasPanel({ empleados = [], onVerMovimientos, onRegistr
           <td class="px-3 py-3">${escapeHtml(alerta.ultimaFechaHora ? formatFichadaHora(alerta.ultimaFechaHora) : 'Sin salida')}</td>
           <td class="max-w-xs truncate px-3 py-3" data-tooltip="${escapeHtml(alerta.mensaje || '—')}">${escapeHtml(alerta.mensaje || '—')}</td>
           <td class="px-3 py-3">${escapeHtml(formatMinutosInformados(alerta.minutosHastaCorte) ?? '—')}</td>
-          <td class="px-3 py-3" data-tooltip="La API no informa un estado de resolución.">—</td>
+          <td class="px-3 py-3">—</td>
           <td class="fichadas-alert-action"><button type="button" data-action="revisar" class="${BTN_SECONDARY_CLASS}">Revisar</button></td>
         `
       const button = row.querySelector('button')
@@ -168,6 +174,7 @@ export function createAlertasPanel({ empleados = [], onVerMovimientos, onRegistr
       paint(alertas)
       painted = true
       resolveReady(alertas)
+      onLoaded?.(alertas)
       return alertas
     } catch (error) {
       resolveReady(null)
@@ -188,10 +195,23 @@ export function createAlertasPanel({ empleados = [], onVerMovimientos, onRegistr
     }
   }
 
-  load(true)
+  if (Array.isArray(alertasIniciales)) {
+    paint(alertasIniciales)
+    painted = true
+    resolveReady(alertasIniciales)
+    onLoaded?.(alertasIniciales)
+  } else {
+    load(true)
+  }
+
   return {
     element: root,
     reload: () => load(true),
+    replace(alertas) {
+      paint(Array.isArray(alertas) ? alertas : [])
+      painted = true
+      resolveReady(alertas)
+    },
     close: closeReview,
     openFirst: async () => {
       const list = await ready

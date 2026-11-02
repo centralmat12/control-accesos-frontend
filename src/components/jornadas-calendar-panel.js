@@ -10,18 +10,24 @@ import {
   ariaCeldaCalendario,
   claseCeldaCalendario,
   estadoCeldaCalendario,
+  AYUDA_RESUMEN_MENSUAL,
+  detalleIncidencias,
+  filasDesgloseMensual,
   formatMinutosInformados,
   grillaMensual,
-  mesSinAtencion,
+  marcaVisibleCelda,
   shiftMonth,
-  tarjetasResumenLaboral,
+  textoHorasTrabajadas,
+  textoSaldoPeriodo,
+  totalIncidencias,
   turnoHabitual,
 } from '../utils/labor-format.js'
-import { createEmpleadoCombobox } from './empleado-combobox.js'
-import { FORM_LABEL_CLASS } from './form-field.js'
+import { createFichadasEmptyState } from './fichadas-empty-state.js'
+import { iconCalendar, iconList } from './icons.js'
 import { bindTooltipRoot, infoHelpButton } from './tooltip.js'
 
-const VACIO = 'Seleccioná un empleado para consultar su calendario.'
+const VACIO_TITULO = 'Seleccioná un empleado'
+const VACIO_DETALLE = 'Elegí un empleado en el buscador superior para consultar su calendario.'
 
 function empleadoNombre(empleado) {
   return [empleado?.nombre, empleado?.apellido].filter(Boolean).join(' ') || empleado?.empleado || 'Empleado'
@@ -76,7 +82,7 @@ export function createJornadasCalendarPanel({
   onAgregarFichada = null,
 } = {}) {
   const root = document.createElement('section')
-  root.className = 'space-y-3'
+  root.className = 'min-w-0 max-w-full space-y-2 overflow-x-hidden'
   const clock = businessNow()
   const inicial = clock?.dateKey?.split('-').map(Number) ?? [1970, 1]
   let year = Number.isInteger(yearInicial) ? yearInicial : inicial[0]
@@ -87,56 +93,44 @@ export function createJornadasCalendarPanel({
     monthIndex = actual?.monthIndex ?? monthIndex
   }
   let empleadoId = String(empleadoInicial ?? '')
+  let desgloseAbierto = false
 
   root.innerHTML = `
-    <div data-empleado class="w-full max-w-[32.5rem]"></div>
-    <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-      <p data-identidad class="hidden min-w-0 text-sm text-slate-700 dark:text-slate-200"></p>
-      <div class="flex flex-col items-start gap-1 sm:ml-auto sm:items-end">
+    <div class="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+      <div data-identidad class="hidden min-w-0 w-full max-w-[32.5rem]">
+        <p data-nombre class="truncate text-sm font-semibold text-slate-900 dark:text-slate-100"></p>
+        <p data-legajo class="truncate text-xs text-slate-500 dark:text-slate-400"></p>
+      </div>
+      <div class="flex min-w-0 flex-wrap items-center gap-2 sm:ml-auto sm:justify-end">
         <div class="flex items-center gap-1">
-          <button type="button" data-prev class="${BTN_SECONDARY_CLASS} btn-secondary-compact" aria-label="Ver mes anterior">←</button>
-          <p data-month class="w-44 shrink-0 text-center text-sm font-semibold capitalize"></p>
-          <button type="button" data-next class="${BTN_SECONDARY_CLASS} btn-secondary-compact" aria-label="Ver mes siguiente">→</button>
+          <button type="button" data-prev class="${BTN_SECONDARY_CLASS} h-9 w-9 px-0" aria-label="Ver mes anterior">‹</button>
+          <p data-month class="w-44 shrink-0 text-center text-sm font-semibold capitalize text-slate-800 dark:text-slate-100"></p>
+          <button type="button" data-next class="${BTN_SECONDARY_CLASS} h-9 w-9 px-0" aria-label="Ver mes siguiente">›</button>
         </div>
-        <p id="calendario-futuro-help" class="hidden text-xs text-slate-500 dark:text-slate-400">No hay períodos futuros disponibles.</p>
+        <button type="button" data-ver class="${BTN_SECONDARY_CLASS} h-9 gap-1.5 px-3">${iconList()}<span>Ver fichadas</span></button>
+        <p id="calendario-futuro-help" class="hidden basis-full text-xs text-slate-500 dark:text-slate-400 sm:text-right">No hay períodos futuros disponibles.</p>
       </div>
     </div>
-    <p data-habitual class="hidden text-sm text-slate-600 dark:text-slate-300"></p>
-    <div data-host></div>
+    <div data-host class="min-w-0 max-w-full overflow-x-hidden"></div>
   `
   bindTooltipRoot(root)
   const host = root.querySelector('[data-host]')
-  const habitualNode = root.querySelector('[data-habitual]')
   const identidadNode = root.querySelector('[data-identidad]')
-  const empleadoCombo = createEmpleadoCombobox({
-    id: 'calendario-empleado',
-    mode: 'select',
-    presentation: 'calendario',
-    rootClass: 'w-full max-w-[32.5rem]',
-    help: 'Seleccioná a quién querés consultar.',
-    helpMode: 'icon',
-    labelClass: FORM_LABEL_CLASS,
-    emptyMessage: 'No se encontraron empleados.',
-    onChange: (id) => {
-      const next = String(id || '')
-      if (next === empleadoId) return
-      empleadoId = next
-      onEmpleadoChange?.(empleadoId)
-      void load(false)
-    },
-  })
-  root.querySelector('[data-empleado]').replaceChildren(empleadoCombo.root)
+  const nombreNode = root.querySelector('[data-nombre]')
+  const legajoNode = root.querySelector('[data-legajo]')
+  const verButton = root.querySelector('[data-ver]')
 
   function syncFilters() {
     const compatibles = Array.isArray(empleados) ? empleados : []
-    const sigue = compatibles.some((item) => String(item.id) === empleadoId)
-    if (empleadoId && !sigue) empleadoId = ''
-    empleadoCombo.setEmpleados(compatibles)
-    empleadoCombo.setEmpleadoId(empleadoId, { silent: true })
-    empleadoId = empleadoCombo.getEmpleadoId()
     const elegido = compatibles.find((item) => String(item.id) === empleadoId)
-    identidadNode.textContent = elegido ? textoCalendarioEmpleado(elegido) : ''
+    if (empleadoId && !elegido) empleadoId = ''
+    const legajo = String(elegido?.legajo ?? '').trim()
+    nombreNode.textContent = elegido ? empleadoNombre(elegido) : ''
+    legajoNode.textContent = legajo ? `Legajo ${legajo}` : ''
+    legajoNode.classList.toggle('hidden', !legajo)
     identidadNode.classList.toggle('hidden', !elegido)
+    verButton.disabled = !empleadoId || typeof onVerPeriodo !== 'function'
+    verButton.classList.toggle('hidden', !empleadoId || typeof onVerPeriodo !== 'function')
   }
 
   function renderDetail({ fecha, dia, jornada, estado, resumenDia }) {
@@ -189,88 +183,136 @@ export function createJornadasCalendarPanel({
     return detail
   }
 
-  function renderSummary(resumen, reposiciones, nombre) {
+  function renderSummary(resumen, reposiciones) {
     const box = document.createElement('section')
     box.className = 'space-y-2'
+    const heading = document.createElement('div')
+    heading.className = 'flex items-center gap-1'
     const title = document.createElement('h3')
-    title.className = 'text-sm font-semibold capitalize'
-    title.textContent = `Resumen de ${nombre} · ${mesLabel(year, monthIndex)}`
-    box.append(title)
+    title.className = 'text-sm font-semibold text-slate-800 dark:text-slate-100'
+    title.textContent = 'Resumen mensual'
+    heading.innerHTML = `${title.outerHTML}${infoHelpButton(AYUDA_RESUMEN_MENSUAL)}`
+    box.append(heading)
+
+    const saldo = textoSaldoPeriodo(resumen)
+    const incidencias = totalIncidencias(resumen)
+    const detalle = detalleIncidencias(resumen)
+    const tonoSaldo = saldo.tono === 'deuda'
+      ? 'border-orange-300 text-orange-800 dark:border-orange-400/40 dark:text-orange-200'
+      : saldo.tono === 'favor'
+        ? 'border-emerald-300 text-emerald-800 dark:border-emerald-400/40 dark:text-emerald-200'
+        : 'border-slate-200 text-slate-900 dark:border-slate-700 dark:text-slate-100'
+    const tonoIncidencia = Number.isInteger(incidencias) && incidencias > 0
+      ? 'border-amber-300 dark:border-amber-400/40'
+      : 'border-slate-200 dark:border-slate-700'
+    const textoIncidencias = !Number.isInteger(incidencias)
+      ? '—'
+      : incidencias === 0
+        ? 'Sin incidencias'
+        : `${incidencias} requieren atención`
+    const cards = [
+      ['Horas programadas', formatMinutosInformados(resumen?.minutosProgramados) ?? '—', 'border-slate-200 dark:border-slate-700', ''],
+      ['Horas trabajadas', textoHorasTrabajadas(resumen), 'border-slate-200 dark:border-slate-700', ''],
+      ['Saldo del período', saldo.texto, tonoSaldo, ''],
+      ['Incidencias', textoIncidencias, tonoIncidencia, detalle],
+    ]
     const grid = document.createElement('div')
-    grid.className = 'grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-4'
-    tarjetasResumenLaboral(resumen).forEach((item) => {
+    grid.className = 'grid grid-cols-2 gap-2 lg:grid-cols-4'
+    cards.forEach(([etiqueta, texto, tono, sub]) => {
       const card = document.createElement('article')
-      card.className = 'rounded-lg border border-slate-200 bg-white px-2.5 py-2 dark:border-slate-700 dark:bg-slate-900'
-      card.innerHTML = `<div class="flex items-start justify-between gap-1"><p class="text-xs font-medium leading-4 text-slate-500">${escapeHtml(item.etiqueta)}</p>${infoHelpButton(item.ayuda)}</div><p class="mt-1 text-sm font-semibold tabular-nums">${escapeHtml(item.texto)}</p>`
+      card.className = `min-w-0 rounded-lg border bg-white px-2.5 py-2 dark:bg-slate-900 ${tono}`
+      card.innerHTML = `<p class="text-xs text-slate-500 dark:text-slate-400">${escapeHtml(etiqueta)}</p><p class="mt-0.5 text-sm font-semibold tabular-nums">${escapeHtml(texto)}</p>${sub ? `<p class="mt-0.5 line-clamp-2 text-[11px] leading-4 text-slate-500 dark:text-slate-400">${escapeHtml(sub)}</p>` : ''}`
       grid.append(card)
     })
     box.append(grid)
-    const note = document.createElement('p')
-    note.className = 'text-xs text-slate-500'
-    note.textContent = 'Horas que debe y horas a favor salen del saldo de la API por separado. Un valor no se muestra como negativo.'
-    box.append(note)
+
+    const toggle = document.createElement('button')
+    toggle.type = 'button'
+    toggle.className = 'text-xs font-medium text-slate-600 underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 dark:text-slate-300'
+    const desglose = document.createElement('div')
+    desglose.className = 'grid grid-cols-1 gap-x-6 sm:grid-cols-2'
+    filasDesgloseMensual(resumen).forEach((fila) => {
+      const row = document.createElement('div')
+      row.className = 'flex items-baseline justify-between gap-3 border-b border-slate-100 py-1 text-sm dark:border-slate-800'
+      row.innerHTML = `<span class="text-slate-500 dark:text-slate-400">${escapeHtml(fila.etiqueta)}</span><span class="tabular-nums font-medium">${escapeHtml(fila.texto)}</span>`
+      desglose.append(row)
+    })
     if (Array.isArray(reposiciones) && reposiciones.length) {
       const list = document.createElement('ul')
-      list.className = 'space-y-1 text-sm'
+      list.className = 'col-span-full space-y-1 pt-1 text-sm text-slate-600 dark:text-slate-300'
       reposiciones.forEach((item) => {
         const li = document.createElement('li')
         li.textContent = `${item.fecha}: ${formatMinutosInformados(item.minutos) ?? '—'} · ${item.detalle || 'Sin detalle'}`
         list.append(li)
       })
-      box.append(list)
+      desglose.append(list)
     }
+    function paintDesglose() {
+      toggle.textContent = desgloseAbierto ? 'Ocultar desglose' : 'Ver desglose mensual'
+      toggle.setAttribute('aria-expanded', String(desgloseAbierto))
+      desglose.classList.toggle('hidden', !desgloseAbierto)
+    }
+    toggle.addEventListener('click', () => {
+      desgloseAbierto = !desgloseAbierto
+      paintDesglose()
+    })
+    paintDesglose()
+    box.append(toggle, desglose)
     return box
   }
 
   function renderGrid(dias, jornadas, { fichadasConocidas = true, resumenDias = [] } = {}) {
     const habitual = turnoHabitual(dias)
-    habitualNode.textContent = habitual?.texto ?? ''
-    habitualNode.classList.toggle('hidden', !habitual)
     const grilla = grillaMensual(year, monthIndex)
     const hoy = businessNow()?.dateKey ?? ''
     const porFecha = new Map((Array.isArray(dias) ? dias : []).map((dia) => [dia.fecha, dia]))
     const porJornada = new Map((Array.isArray(jornadas) ? jornadas : []).filter((item) => String(item.empleadoId ?? empleadoId) === String(empleadoId)).map((item) => [item.fecha, item]))
     const porResumen = new Map((Array.isArray(resumenDias) ? resumenDias : []).map((dia) => [dia.fecha, dia]))
     const grid = document.createElement('div')
-    grid.className = 'rounded-xl border border-slate-200 bg-white p-3 shadow-sm dark:border-slate-700 dark:bg-slate-900'
+    grid.className = 'min-w-0 rounded-xl border border-slate-200 bg-white p-2 shadow-sm dark:border-slate-700 dark:bg-slate-900'
     const legend = document.createElement('ul')
-    legend.className = 'mb-2 flex flex-wrap gap-1 text-[11px] text-slate-600 dark:text-slate-300'
-    const info = document.createElement('button')
-    info.type = 'button'
-    info.className = 'mb-2 rounded-md px-1 text-xs text-slate-500 underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500'
-    info.textContent = 'Información de estados'
-    info.setAttribute('data-tooltip', 'Completa, en curso, incompleta, revisar, vacaciones o día libre, sin registros, sin jornada prevista y fecha futura. El color acompaña al texto.')
-    info.setAttribute('aria-label', 'Información de los estados del calendario')
+    legend.className = 'mb-2 flex flex-wrap gap-x-3 gap-y-1 text-xs text-slate-600 dark:text-slate-300'
+    legend.innerHTML = [
+      ['bg-emerald-500', 'Completa'],
+      ['bg-amber-500', 'Requiere atención'],
+      ['bg-slate-400', 'Sin registros'],
+    ].map(([dot, label]) => `<li class="inline-flex items-center gap-1.5"><span class="h-2 w-2 rounded-full ${dot}" aria-hidden="true"></span>${label}</li>`).join('')
     const week = document.createElement('div')
-    week.className = 'grid grid-cols-7 gap-1 text-center text-[11px] font-semibold uppercase text-slate-500'
+    week.className = 'grid grid-cols-7 gap-0.5 text-center text-[11px] font-medium text-slate-500'
     grilla.headers.forEach((header) => {
       const cell = document.createElement('div')
       cell.textContent = header
       week.append(cell)
     })
     const cells = document.createElement('div')
-    cells.className = 'mt-1 grid grid-cols-7 gap-1'
+    cells.className = 'mt-1 grid grid-cols-7 gap-0.5'
     const detailHost = document.createElement('div')
-    detailHost.className = 'mt-3'
-    const presentes = new Set()
-    const evaluadas = []
+    detailHost.className = 'mt-2'
     grilla.cells.forEach((fecha) => {
       if (!fecha) {
         const empty = document.createElement('div')
-        empty.className = 'min-h-9'
+        empty.className = 'min-h-8'
         empty.setAttribute('aria-hidden', 'true')
         cells.append(empty)
         return
       }
       const dia = porFecha.get(fecha) ?? null
       const jornada = porJornada.get(fecha) ?? null
+      const resumenDia = porResumen.get(fecha) ?? null
       const estado = estadoCeldaCalendario({ dia, jornada, fecha, hoy, habitual, fichadasConocidas })
-      if (estado.codigo) presentes.add(estado.codigo)
-      evaluadas.push(estado)
+      const numero = fecha.slice(-2)
+      const marca = marcaVisibleCelda(estado, resumenDia)
+      const marcaHtml = !marca
+        ? ''
+        : marca === '✓' || marca === '—'
+          ? `<span aria-hidden="true" class="text-[11px] leading-none">${marca}</span>`
+          : `<span class="min-w-0 truncate text-[10px] leading-tight">· ${escapeHtml(marca)}</span>`
+      const contenido = `<span class="flex min-w-0 items-baseline gap-0.5"><span class="font-semibold tabular-nums">${escapeHtml(numero)}</span>${marcaHtml}</span>`
+      const codigoClase = marca === 'Llegada tarde' ? 'revisar' : estado.codigo
       if (estado.codigo === 'futuro') {
         const futura = document.createElement('div')
-        futura.className = `flex min-h-9 min-w-0 items-start rounded-md border px-1 py-1 text-left text-xs ${claseCeldaCalendario('futuro')}`
-        futura.innerHTML = `<span class="block font-semibold">${escapeHtml(fecha.slice(-2))}</span>`
+        futura.className = `flex min-h-8 min-w-0 items-center rounded-md border px-1 py-0.5 text-left text-xs ${claseCeldaCalendario('futuro')}`
+        futura.innerHTML = contenido
         futura.setAttribute('aria-label', ariaCeldaCalendario(fecha, estado))
         cells.append(futura)
         return
@@ -278,49 +320,17 @@ export function createJornadasCalendarPanel({
       const button = document.createElement('button')
       button.type = 'button'
       const today = fecha === hoy
-      button.className = `min-h-9 min-w-0 rounded-md border px-1 py-1 text-left text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ${claseCeldaCalendario(estado.codigo)} ${today ? 'ring-1 ring-blue-400' : ''}`
-      const numero = fecha.slice(-2)
-      const lineas = [estado.etiqueta, estado.sub, estado.excepcion ? 'Excepción' : '', estado.fichadasEnLibre ? 'Hay fichadas' : ''].filter(Boolean)
-      button.innerHTML = `<span class="block font-semibold">${escapeHtml(numero)}</span>${lineas.map((linea) => `<span class="mt-0.5 block truncate text-[10px] leading-tight">${escapeHtml(linea)}</span>`).join('')}`
+      button.className = `flex min-h-8 min-w-0 items-center rounded-md border px-1 py-0.5 text-left text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ${claseCeldaCalendario(codigoClase)} ${today ? 'ring-1 ring-blue-400' : ''}`
+      button.innerHTML = contenido
       const completo = ariaCeldaCalendario(fecha, estado)
       button.setAttribute('aria-label', completo)
       button.setAttribute('data-tooltip', completo)
       button.addEventListener('click', () => {
-        detailHost.replaceChildren(renderDetail({
-          fecha,
-          dia,
-          jornada,
-          estado,
-          resumenDia: porResumen.get(fecha) ?? null,
-        }))
+        detailHost.replaceChildren(renderDetail({ fecha, dia, jornada, estado, resumenDia }))
       })
       cells.append(button)
     })
-    const nombres = {
-      completa: 'Completa',
-      enCurso: 'En curso',
-      incompleta: 'Incompleta',
-      revisar: 'Revisar',
-      vacaciones: 'Vacaciones / día libre',
-      sinRegistros: 'Sin registros',
-      sinPrevista: 'Sin jornada prevista',
-      futuro: 'Fecha futura',
-    }
-    ;['completa', 'enCurso', 'incompleta', 'revisar', 'vacaciones', 'sinRegistros', 'sinPrevista', 'futuro'].forEach((codigo) => {
-      if (!presentes.has(codigo)) return
-      const li = document.createElement('li')
-      li.className = `rounded px-1.5 py-0.5 ${claseCeldaCalendario(codigo)}`
-      li.textContent = nombres[codigo]
-      legend.append(li)
-    })
-    grid.append(legend, info, week, cells)
-    if (mesSinAtencion(evaluadas, hoy)) {
-      const quieto = document.createElement('p')
-      quieto.className = 'mt-2 text-xs text-slate-500'
-      quieto.setAttribute('role', 'status')
-      quieto.textContent = 'Sin jornadas que requieran atención en este período.'
-      grid.append(quieto)
-    }
+    grid.append(legend, week, cells)
     return { grid, detailHost }
   }
 
@@ -355,8 +365,11 @@ export function createJornadasCalendarPanel({
     syncMes()
     onCursor?.({ year, monthIndex })
     if (!empleadoId) {
-      habitualNode.classList.add('hidden')
-      host.innerHTML = `<p class="rounded-xl border border-slate-200 bg-white px-4 py-8 text-center text-sm text-slate-500 shadow-sm dark:border-slate-700 dark:bg-slate-900">${VACIO}</p>`
+      host.replaceChildren(createFichadasEmptyState({
+        title: VACIO_TITULO,
+        description: VACIO_DETALLE,
+        icon: iconCalendar(),
+      }))
       return
     }
     if (!mesPermitido(year, monthIndex)) return
@@ -387,8 +400,16 @@ export function createJornadasCalendarPanel({
       const jornadas = fichadasConocidas && fichadasResult.list.length
         ? construirJornadasSegunFuente(fichadasResult.list, empleadoById, { now: new Date() })
         : []
+      if (fichadasConocidas && !dias?.length && !jornadas.length && !resumenPack?.resumen) {
+        host.replaceChildren(createFichadasEmptyState({
+          title: 'Sin información de jornada',
+          description: 'No hay información disponible para el empleado y mes seleccionados.',
+          icon: iconCalendar(),
+        }))
+        return
+      }
       const wrap = document.createElement('div')
-      wrap.className = 'space-y-3'
+      wrap.className = 'space-y-2'
       const { grid, detailHost } = renderGrid(dias, jornadas, {
         fichadasConocidas,
         resumenDias: resumenPack?.resumen?.dias ?? [],
@@ -403,9 +424,8 @@ export function createJornadasCalendarPanel({
           : 'No se pudieron cargar las fichadas del período. Los estados de jornada no están disponibles.'
         wrap.append(aviso)
       }
-      const nombre = empleadoNombre(empleado)
       if (resumenPack?.resumen) {
-        wrap.append(renderSummary(resumenPack.resumen, resumenPack.reposiciones, nombre))
+        wrap.append(renderSummary(resumenPack.resumen, resumenPack.reposiciones))
       } else if (resumenCapability.status !== CAPABILITY_STATUS.available) {
         wrap.append(panelForCapability(resumenCapability, { onRetry: () => load(true) }))
       } else {
@@ -413,14 +433,6 @@ export function createJornadasCalendarPanel({
           { status: CAPABILITY_STATUS.temporarilyUnavailable, reason: resumenPack?.error?.status ? 'server' : 'network' },
           { onRetry: () => load(true) },
         ))
-      }
-      if (onVerPeriodo) {
-        const review = document.createElement('button')
-        review.type = 'button'
-        review.className = BTN_SECONDARY_CLASS
-        review.textContent = 'Ver fichadas del período'
-        review.addEventListener('click', () => onVerPeriodo({ empleadoId, desde, hasta, year, monthIndex }))
-        wrap.append(review)
       }
       host.replaceChildren(wrap)
     } catch (error) {
@@ -433,6 +445,11 @@ export function createJornadasCalendarPanel({
   }
 
   root.querySelector('[data-prev]').addEventListener('click', () => irMes(-1))
+  verButton.addEventListener('click', () => {
+    if (!empleadoId || typeof onVerPeriodo !== 'function') return
+    const { desde, hasta } = grillaMensual(year, monthIndex)
+    onVerPeriodo({ empleadoId, desde, hasta, year, monthIndex })
+  })
   const nextMonth = root.querySelector('[data-next]')
   const bloquearFuturo = (event) => {
     const destino = shiftMonth(year, monthIndex, 1)
@@ -449,9 +466,11 @@ export function createJornadasCalendarPanel({
   load(false)
   root.reload = () => load(true)
   root.setEmpleadoId = (id) => {
-    empleadoId = String(id ?? '')
+    const next = String(id ?? '')
+    if (next === empleadoId) return
+    empleadoId = next
     return load(false)
   }
-  root.destroy = () => empleadoCombo.destroy()
+  root.destroy = () => {}
   return root
 }

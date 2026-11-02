@@ -65,7 +65,7 @@ check('Inputs date y time permanecen nativos', () => {
 
 check('Textos de usuario sin endpoints', () => {
   const admin = read('src/views/administracion.js')
-  assert.match(admin, /Gestioná usuarios/)
+  assert.match(admin, /Administración de la organización/)
   assert.match(admin, /No se pudieron cargar los usuarios/)
   assert.equal(admin.includes('GET /api/usuarios'), false)
   // Ninguna ruta de la API como literal de texto en la vista.
@@ -75,7 +75,7 @@ check('Textos de usuario sin endpoints', () => {
 })
 
 check('Tooltip reutilizable y texto de movimiento intermedio', () => {
-  assert.match(INTERMEDIATE_MOVIMIENTO_TOOLTIP, /no modifica el ingreso ni el egreso calculados/)
+  assert.match(INTERMEDIATE_MOVIMIENTO_TOOLTIP, /no modifica el ingreso ni el egreso calculados/i)
   const tooltip = read('src/components/tooltip.js')
   assert.match(tooltip, /setAttribute\('role', 'tooltip'\)/)
   assert.match(tooltip, /bindTooltipRoot/)

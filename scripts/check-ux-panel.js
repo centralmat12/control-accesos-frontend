@@ -67,10 +67,8 @@ check('Los contenidos usan títulos funcionales y no repiten la sección', () =>
   const empleados = read('src/views/empleados.js')
   const dashboard = read('src/views/dashboard.js')
 
-  assert.match(admin, /Gestioná usuarios y empresas/)
-  assert.match(admin, /Gestioná usuarios/)
-  assert.match(admin, /Administrá sus accesos, roles, estados y estructura organizativa\./)
-  assert.match(admin, /Administrá sus accesos, roles y estados\./)
+  assert.match(admin, /Administración de la organización/)
+  assert.match(admin, /Gestioná los accesos y la estructura de la empresa\./)
   assert.match(admin, /canViewEmpresasSection/)
   assert.match(admin, /puedeVerSeccionEmpresas/)
   assert.equal(admin.includes('<h2 class="text-xl font-semibold tracking-tight text-slate-900">Administración</h2>'), false)
@@ -79,11 +77,11 @@ check('Los contenidos usan títulos funcionales y no repiten la sección', () =>
   assert.match(fichadas, /Filtrá y revisá los registros de ingreso y egreso\./)
   assert.equal(fichadas.includes('>Fichadas</h2>'), false)
 
-  assert.match(empleados, /Gestioná los empleados/)
-  assert.match(empleados, /Administrá sus datos laborales, asignaciones y estado\./)
+  assert.equal(empleados.includes("title: 'Empleados'"), false)
+  assert.match(empleados, /Administrá la nómina, sus asignaciones y su estado\./)
   assert.equal(empleados.includes('>Empleados</h2>'), false)
 
-  assert.match(dashboard, /title: 'Dashboard'/)
+  assert.equal(dashboard.includes("title: 'Dashboard'"), false)
   assert.match(dashboard, /Resumen general del sistema y la actividad de hoy\./)
   assert.match(dashboard, /pageHeadingMarkup/)
   assert.match(read('src/components/page-heading.js'), /<\/h2>/)
@@ -91,10 +89,12 @@ check('Los contenidos usan títulos funcionales y no repiten la sección', () =>
   assert.match(read('src/components/page-heading.js'), /font-semibold/)
 })
 
-check('Administración usa pestañas compactas de ancho automático', () => {
+check('Administración usa pestañas estables a todo el ancho', () => {
   const admin = read('src/views/administracion.js')
   assert.match(admin, /role="tablist"/)
-  assert.match(admin, /inline-flex w-fit max-w-full/)
+  assert.match(admin, /role="tab"/)
+  assert.match(admin, /aria-selected/)
+  assert.match(admin, /inline-flex w-fit max-w-full flex-wrap/)
   assert.match(admin, /data-section="\$\{SECTIONS\.usuarios\}"/)
   assert.match(admin, /data-section="\$\{SECTIONS\.empresas\}"/)
 })
