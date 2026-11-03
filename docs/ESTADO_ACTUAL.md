@@ -1,6 +1,19 @@
 # Estado actual
 
-Cierre del 2 de noviembre de 2026 en `control-accesos-frontend`, rama `feat/turnos-asignaciones-ux`. El remoto es `https://github.com/centralmat12/control-accesos-frontend.git`. No implica despliegue ni merge a `main`.
+Cierre de la noche del 2 de noviembre de 2026. No se desplegó ni se mergeó a `main`.
+
+## Verificación de la noche del 2 de noviembre de 2026
+
+No se corrió `npm run check` completo ni `npm run build`. No se reinició el proceso de la API.
+
+- Edición de usuario: el encabezado muestra nombre, empresa y estado. El pie deja «Blanqueo de clave» arriba y, en la fila de abajo, «Desactivar cuenta» a la izquierda y «Guardar» a la derecha, con ícono de disquete. `node scripts/check-usuario-identidad.js`, `check-usuario-modificacion.js`, `check-usuario-estado-rol.js` y `check-ux-panel.js` terminaron sin fallos.
+- Turnos: el formulario no deja agregar más de 7 días y «Agregar día» queda deshabilitado al llegar a ese tope. `node scripts/check-turnos-dias-roundtrip.js`, `check-turnos-modal-compacto.js` y `check-descanso-numerico.js` terminaron sin fallos.
+- Inicio de sesión: Correo electrónico y Contraseña ya no muestran el asterisco rojo. Se vio en `http://localhost:5173/#/login`. Siguen siendo obligatorios.
+- API: `TurnoService.EliminarAsync` permite el borrado lógico si no hay una asignación abierta ni con fin de hoy o posterior. Una asignación ya cerrada no bloquea. `dotnet test` con filtro `Turno_SeBorraSiSoloTieneAsignacionHistorica|Turno_NoSeBorraSiTieneAsignacionVigente|EliminarAsync_RealizaBorradoLogico` dejó 3 pruebas correctas. No se corrió la suite completa.
+
+## Cierre anterior del 2 de noviembre de 2026
+
+Cierre en `control-accesos-frontend`, rama `feat/turnos-asignaciones-ux`. El remoto es `https://github.com/centralmat12/control-accesos-frontend.git`. No implica despliegue ni merge a `main`.
 
 ## Verificación del 2 de noviembre de 2026
 

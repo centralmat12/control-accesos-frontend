@@ -152,3 +152,7 @@ const reenvio = buildTurnoBody({
   dias: editado.dias.map((dia) => ({ ...dia, minutosAlmuerzo: minutosAlmuerzoCargado(dia.minutosAlmuerzo) })),
 })
 assert.deepEqual(reenvio.dias.map((dia) => dia.minutosAlmuerzo), [0, 30, 60])
+assert.match(panel, /const MAX_DIAS_TURNO = 7/)
+assert.match(panel, /list\.children\.length >= MAX_DIAS_TURNO/)
+assert.match(panel, /agregar\.disabled = rows\.length >= MAX_DIAS_TURNO/)
+assert.match(panel, /Un turno puede tener hasta 7 días\./)

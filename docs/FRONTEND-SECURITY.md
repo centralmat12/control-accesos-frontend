@@ -89,7 +89,9 @@ Cabeceras recomendadas en el reverse proxy (no implementadas aquí):
 
 ## 10. Actividad local del panel
 
-La vista Registros (SuperAdmin) muestra **actividad local del panel**. Vive en `sessionStorage`. El usuario puede borrarla o falsearla. No es evidencia, no reemplaza logs del servidor y no debe contener JWT, contraseñas ni secretos. `src/utils/activity-log.js` filtra claves sensibles.
+`src/utils/activity-log.js` sigue guardando trazas de la sesión en `sessionStorage`. El usuario puede borrarlas o modificarlas. No son evidencia y no reemplazan logs del servidor. El filtro de claves sensibles sigue vigente.
+
+La vista Registros no usa esa actividad local como bitácora. No hay un endpoint de auditoría: la pantalla queda vacía hasta que la API publique eventos persistidos. No guarda la bitácora en `localStorage` ni en `sessionStorage`.
 
 ## 11. Variables de entorno
 

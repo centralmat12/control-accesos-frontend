@@ -23,6 +23,11 @@ function clock(minutes) {
   return `${String(hours).padStart(2, '0')}:${String(rest).padStart(2, '0')}`
 }
 
+function blinkingClock(minutes) {
+  const [hours, rest] = clock(minutes).split(':')
+  return `<span data-now-hour>${hours}</span><span class="retro-colon" aria-hidden="true">:</span><span data-now-minute>${rest}</span>`
+}
+
 function formatDuration(minutes) {
   const safe = Math.max(0, Math.round(minutes))
   const hours = Math.floor(safe / 60)
@@ -313,11 +318,12 @@ export function createFichadasTimeline(
             <p class="mt-0.5 flex flex-wrap items-center gap-1 text-xs font-normal text-slate-600 dark:text-slate-300">${detalle}</p>
             ${jornada.advertencia ? `<p class="truncate text-[10px] font-normal text-amber-700 dark:text-amber-300">${escapeHtml(jornada.advertencia)}</p>` : ''}
           </div>
-          <div class="relative h-7 min-w-0 w-full self-center overflow-hidden" data-timeline-track>
-            ${ticks.map((minute) => `<span class="pointer-events-none absolute inset-y-0 w-px bg-slate-200/40 dark:bg-slate-600/30" style="left:${axisPoint(percent(minute), true)}" data-grid-line data-tick="${minute}"></span>`).join('')}
-            ${plan}
-            ${bar}
-            ${showNow ? `<span data-now-line class="pointer-events-none absolute inset-y-0 z-[2] w-px bg-red-500" style="left:${axisPoint(nowPercent, true)}"></span>` : ''}
+          <div class="relative flex min-w-0 items-center self-stretch">
+            <div class="relative h-7 min-w-0 w-full" data-timeline-track>
+              ${ticks.map((minute) => `<span class="pointer-events-none absolute inset-y-0 w-px bg-slate-200/40 dark:bg-slate-600/30" style="left:${axisPoint(percent(minute), true)}" data-grid-line data-tick="${minute}"></span>`).join('')}
+              ${plan}
+              ${bar}
+            </div>
           </div>
         </li>`
     })
@@ -326,15 +332,16 @@ export function createFichadasTimeline(
   section.innerHTML = `
     ${band.outside ? '<p class="border-b border-amber-200 bg-amber-50 px-3 py-1.5 text-xs text-amber-900 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-100" role="status">Hay fichadas fuera de la franja visible.</p>' : ''}
     <div class="${bodyClass} overflow-x-hidden">
-      <div class="w-full min-w-0" data-timeline-scale>
+      <div class="relative w-full min-w-0" data-timeline-scale>
         <div class="${rowGrid} sticky top-0 z-10 h-10 items-center border-b border-slate-200 bg-slate-50 px-4 dark:border-slate-700 dark:bg-slate-800">
           <p class="border-r border-slate-200 pr-3 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:border-slate-700">Jornada</p>
           <div class="relative h-4 min-w-0" data-timeline-track>
             ${ticks.map((minute) => `<span data-scale-tick data-tick="${minute}" class="absolute whitespace-nowrap text-xs font-semibold text-slate-500">${minute === 24 * 60 ? '00:00' : clock(minute >= 24 * 60 ? minute - 24 * 60 : minute)}</span>`).join('')}
-            ${showNow ? `<span data-now-label class="absolute bottom-0 z-[3] inline-flex items-center gap-1 rounded-md border border-red-700 bg-red-800 px-1.5 py-0.5 text-[11px] font-semibold leading-none text-white dark:border-red-500 dark:bg-red-950" aria-label="Hora actual: ${clock(nowMinutes)}"><span class="[&_svg]:h-3 [&_svg]:w-3" aria-hidden="true">${iconClock()}</span><span>Ahora</span> <span data-now-clock>${clock(nowMinutes)}</span></span>` : ''}
+            ${showNow ? `<span data-now-label class="absolute bottom-0 z-[3] inline-flex items-center gap-1 rounded-md border border-red-700 bg-red-800 px-1.5 py-0.5 text-[11px] font-semibold leading-none text-white dark:border-red-500 dark:bg-red-950" aria-label="Hora actual: ${clock(nowMinutes)}"><span class="[&_svg]:h-3 [&_svg]:w-3" aria-hidden="true">${iconClock()}</span><span data-now-clock>${blinkingClock(nowMinutes)}</span></span>` : ''}
           </div>
         </div>
         <ol>${rows}</ol>
+        ${showNow ? `<div class="${rowGrid} pointer-events-none absolute inset-0 px-4" aria-hidden="true"><div></div><div class="relative self-stretch"><span data-now-line class="timeline-now-line absolute bottom-0 z-[2] w-[3px] -translate-x-1/2" style="top:2.5rem;left:${axisPoint(nowPercent, true)}"></span></div></div>` : ''}
       </div>
     </div>
   `
@@ -409,8 +416,11 @@ export function createFichadasTimeline(
         node.style.right = !inset && left >= 100 ? '0' : 'auto'
       })
       const label = section.querySelector('[data-now-label]')
-      const clockNode = section.querySelector('[data-now-clock]')
-      if (clockNode) clockNode.textContent = clock(minute)
+      const [hours, rest] = clock(minute).split(':')
+      const hourNode = section.querySelector('[data-now-hour]')
+      const minuteNode = section.querySelector('[data-now-minute]')
+      if (hourNode) hourNode.textContent = hours
+      if (minuteNode) minuteNode.textContent = rest
       if (label) {
         label.dataset.percent = String(left)
         label.setAttribute('aria-label', `Hora actual: ${clock(minute)}`)

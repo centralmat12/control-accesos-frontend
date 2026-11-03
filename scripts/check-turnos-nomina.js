@@ -10,13 +10,22 @@ import {
   NOMINA_SIN_COINCIDENCIAS,
   NOMINA_TEMPORAL,
   NOMINA_VACIA,
+  aplicarMarcadoTurno,
   aplicarSeleccionVisible,
   clasificarEstadoNomina,
   coincideAsignadoTurno,
+  esEmpleadoDesasignable,
   esEmpleadoElegible,
+  estadoMarcadoTurno,
   estadoSeleccionVisible,
+  fechaAsignacionVisible,
+  fechaCierreDesasignacion,
+  fechaIsoDesdeVisible,
+  mascaraFechaDia,
+  textoCantidadCambiosTurno,
   textoCantidadSeleccionada,
   textoConfirmacionAsignacion,
+  textoConfirmacionDesasignacion,
 } from '../src/utils/turno-presentacion.js'
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..')
@@ -103,9 +112,33 @@ assert.equal(sinElegibles.deshabilitado, true)
 assert.equal(textoCantidadSeleccionada(0), '0 seleccionados')
 assert.equal(textoCantidadSeleccionada(1), '1 seleccionado')
 assert.equal(textoCantidadSeleccionada(8), '8 seleccionados')
+assert.equal(esEmpleadoDesasignable(candidatos[2]), true)
+assert.equal(esEmpleadoDesasignable(candidatos[0]), false)
+assert.equal(fechaAsignacionVisible('2026-11-02'), '02/11/2026')
+assert.equal(fechaIsoDesdeVisible('02/11/2026'), '2026-11-02')
+assert.equal(fechaIsoDesdeVisible('11/02/2026'), '2026-02-11')
+assert.equal(fechaIsoDesdeVisible('31/02/2026'), '')
+assert.equal(mascaraFechaDia('02112026'), '02/11/2026')
+assert.equal(fechaCierreDesasignacion('2026-10-06', '2026-11-02'), '2026-11-01')
+assert.equal(fechaCierreDesasignacion('2026-11-02', '2026-11-02'), '2026-11-02')
+assert.equal(textoCantidadCambiosTurno({ asignar: 0, quitar: 1 }), '1 para quitar')
+assert.equal(textoCantidadCambiosTurno({ asignar: 2, quitar: 1 }), '2 para asignar · 1 para quitar')
+const marcados = aplicarMarcadoTurno(candidatos, new Set(), new Set(), false)
+assert.equal(marcados.quitar.has(3), true)
+assert.equal(marcados.seleccion.size, 0)
+const soloAsignados = estadoMarcadoTurno([candidatos[2]], new Set(), new Set())
+assert.equal(soloAsignados.marcado, true)
+assert.equal(soloAsignados.deshabilitado, false)
+const desmarcados = estadoMarcadoTurno([candidatos[2]], new Set(), new Set([3]))
+assert.equal(desmarcados.marcado, false)
+assert.match(textoConfirmacionDesasignacion({
+  nombre: 'Jornada semanal',
+  bajas: [{ nombre: 'Genova Hernandez', fechaInicio: '2026-10-06', fechaFin: '2026-11-01' }],
+}), /desde hoy no forman parte de este turno/)
 
 assert.match(turnos, /const seleccion = new Set\(\)/)
-assert.match(turnos, /if \(!elegidos\.length\)/)
+assert.match(turnos, /const quitar = new Set\(\)/)
+assert.match(turnos, /if \(!elegidos\.length && !aQuitar\.length\)/)
 assert.match(turnos, /if \(asignando\) return/)
 assert.match(turnos, /Seleccionar todos los resultados/)
 assert.match(turnos, /aria-checked/)

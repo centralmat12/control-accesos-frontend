@@ -6,6 +6,7 @@ import {
   validateDepartamentoNombre,
   DEPARTAMENTO_NOMBRE_MAX,
 } from '../api/departamentos.js'
+import { getEmpleados } from '../api/empleados.js'
 import {
   ADMIN_CARD_CLASS,
   ADMIN_CARD_DESCRIPTION_CLASS,
@@ -46,6 +47,20 @@ export function mensajeConfirmacionEliminar(nombre, sucursal = '') {
 
 export function asignadosLabel(cantidad) {
   return Number.isInteger(cantidad) ? String(cantidad) : '—'
+}
+
+export function aplicarConteoEmpleados(departamentos, empleados) {
+  const conteo = new Map()
+  for (const empleado of empleados ?? []) {
+    const id = Number(empleado?.departamentoId)
+    if (!Number.isInteger(id) || id <= 0) continue
+    conteo.set(id, (conteo.get(id) ?? 0) + 1)
+  }
+  return (departamentos ?? []).map((item) =>
+    Number.isInteger(item?.cantidadEmpleados)
+      ? item
+      : { ...item, cantidadEmpleados: conteo.get(Number(item?.id)) ?? 0 },
+  )
 }
 
 export function tooltipEliminarBloqueado(cantidad) {
@@ -225,6 +240,14 @@ export function createDepartamentosAdmin({
     listHost.innerHTML = `<p class="text-sm text-slate-500" role="status">Cargando departamentos…</p>`
     try {
       items = await getDepartamentosBySucursal(currentSucursalId)
+      if (items.some((item) => !Number.isInteger(item.cantidadEmpleados))) {
+        try {
+          const empleados = await getEmpleados({ incluirInactivos: true })
+          if (!disposed) items = aplicarConteoEmpleados(items, empleados)
+        } catch (error) {
+          console.error(error)
+        }
+      }
       if (disposed) return
       renderList()
     } catch (error) {
@@ -289,11 +312,18 @@ export function createDepartamentosAdmin({
       section.className = ADMIN_TABLE_FRAME_CLASS
       section.innerHTML = `
         <div class="overflow-x-auto">
-          <table class="min-w-full divide-y divide-slate-200 text-left dark:divide-slate-700">
+          <table class="w-full table-fixed divide-y divide-slate-200 text-left dark:divide-slate-700">
+            <colgroup>
+              <col class="w-[22%]" />
+              <col class="w-[16%]" />
+              <col />
+              <col class="w-56" />
+            </colgroup>
             <thead class="bg-slate-50 dark:bg-slate-800">
               <tr>
                 <th scope="col" class="${ADMIN_TH_CLASS} text-left">Departamento</th>
                 <th scope="col" class="${ADMIN_TH_CLASS} text-left">Sucursal</th>
+                <th scope="col" class="${ADMIN_TH_CLASS} text-left">Empleados asignados</th>
                 <th scope="col" class="${ADMIN_TH_CLASS} text-right">Acciones</th>
               </tr>
             </thead>
@@ -304,7 +334,8 @@ export function createDepartamentosAdmin({
                     <tr class="h-12 hover:bg-slate-50 dark:hover:bg-slate-800/60" data-departamento-id="${item.id}">
                       <td class="px-3 py-2 text-sm font-medium text-slate-900 dark:text-slate-100">${escapeHtml(item.nombre)}</td>
                       <td class="px-3 py-2 text-sm text-slate-600 dark:text-slate-300">${escapeHtml(sucursalNombre(item, disponibles))}</td>
-                      <td class="px-3 py-2 text-right">${actionsMarkup(item, 'nowrap')}</td>
+                      <td class="px-3 py-2 text-sm tabular-nums text-slate-600 dark:text-slate-300">${escapeHtml(asignadosLabel(item.cantidadEmpleados))}</td>
+                      <td class="px-3 py-2 text-right whitespace-nowrap">${actionsMarkup(item, 'nowrap')}</td>
                     </tr>
                   `,
                 )
@@ -320,9 +351,10 @@ export function createDepartamentosAdmin({
     const rows = items.map((item) => rowMarkup(item)).join('')
     listHost.innerHTML = `
       <div class="${heading ? ADMIN_TABLE_SHELL_CLASS : ''} dept-admin-scroll max-h-[min(22rem,calc(100dvh-16rem))] overflow-x-hidden overflow-y-auto">
-        <div class="grid grid-cols-1 text-left sm:grid-cols-[minmax(220px,1fr)_180px_auto]">
+        <div class="grid grid-cols-1 text-left sm:grid-cols-[minmax(220px,0.8fr)_minmax(140px,0.7fr)_minmax(180px,1.2fr)_auto]">
           <div class="${ADMIN_TABLE_HEADER_CELL_CLASS}">Departamento</div>
           <div class="${ADMIN_TABLE_HEADER_CELL_CLASS}">Sucursal</div>
+          <div class="${ADMIN_TABLE_HEADER_CELL_CLASS}">Empleados asignados</div>
           <div class="${ADMIN_TABLE_HEADER_CELL_CLASS} justify-end">Acciones</div>
           ${rows}
         </div>
@@ -332,9 +364,10 @@ export function createDepartamentosAdmin({
   }
 
   function rowMarkup(item) {
-    return `<div class="${ADMIN_TABLE_ROW_CLASS} sm:col-span-3 sm:grid-cols-subgrid sm:h-[50px] sm:gap-0 sm:py-0" data-departamento-id="${item.id}">
+    return `<div class="${ADMIN_TABLE_ROW_CLASS} sm:col-span-4 sm:grid-cols-subgrid sm:h-[50px] sm:gap-0 sm:py-0" data-departamento-id="${item.id}">
       <div class="min-w-0 text-sm font-semibold text-slate-900 dark:text-slate-100">${escapeHtml(item.nombre)}</div>
       <div class="min-w-0 text-sm text-slate-600 dark:text-slate-300">${escapeHtml(sucursalNombre(item, disponibles))}</div>
+      <div class="min-w-0 text-sm tabular-nums text-slate-600 dark:text-slate-300">${escapeHtml(asignadosLabel(item.cantidadEmpleados))}</div>
       <div class="flex justify-end">${actionsMarkup(item, 'nowrap')}</div>
     </div>`
   }

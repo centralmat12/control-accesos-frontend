@@ -7,24 +7,26 @@ import { puedeAdministrarTurnos } from '../config/labor-access.js'
 import { escapeHtml } from '../utils/format.js'
 import {
   ACCESOS_DESCANSO,
-  aplicarSeleccionVisible,
+  aplicarMarcadoTurno,
   clasificarEstadoNomina,
   coincideAsignadoTurno,
   coincideEmpleadoTurno,
+  esEmpleadoDesasignable,
   esEmpleadoElegible,
-  estadoSeleccionVisible,
+  estadoMarcadoTurno,
+  fechaCierreDesasignacion,
+  marcadoEnTurno,
   NOMINA_SIN_COINCIDENCIAS,
   NOMINA_VACIA,
   parseMinutosAlmuerzo,
-  textoCantidadSeleccionada,
-  textoConfirmacionAsignacion,
+  textoCantidadCambiosTurno,
+  textoConfirmacionCambiosTurno,
   textoDiasConfigurados,
   textoEmpleadosAsignados,
-  textoResumenAsignadosTurno,
   textoHorarioHabitual,
   textoHorasSemanales,
   textoJornadaNeta,
-  textoResultadoAsignacion,
+  textoResultadoCambiosTurno,
   validarTramoTurno,
   valorCampoDescanso,
   horaTexto,
@@ -54,10 +56,10 @@ function loadingState() {
 }
 
 const DAY_LABELS = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado']
+const MAX_DIAS_TURNO = 7
 const SHELL = 'w-full min-w-0 max-w-full overflow-x-hidden rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-900'
 const TURNOS_COLUMNS = 'md:grid-cols-[minmax(0,1.2fr)_minmax(0,0.7fr)_minmax(0,1.5fr)_minmax(0,0.9fr)_minmax(0,1fr)_auto]'
-const DIA_COLUMNS = 'xl:grid-cols-[minmax(130px,1.35fr)_minmax(92px,1fr)_minmax(92px,1fr)_minmax(115px,1fr)_minmax(90px,auto)_40px]'
-const DIA_COLUMNS_MEDIO = 'md:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)_minmax(0,1fr)]'
+const DIA_COLUMNS = 'grid-cols-[minmax(8.25rem,9rem)_minmax(5.5rem,6.25rem)_minmax(5.5rem,6.25rem)_minmax(7rem,8rem)_max-content_2.25rem]'
 const CELL = 'min-w-0 break-words px-3 py-3 text-left'
 const CELL_CENTER = 'min-w-0 break-words px-3 py-3 text-center'
 
@@ -256,14 +258,14 @@ function montarPopoverDescanso({ input, toggle, control, onSelect }) {
 
 function turnoForm(initial, { canAssign = false, onCantidad } = {}) {
   const form = document.createElement('form')
-  form.className = 'flex min-h-0 flex-1 flex-col gap-2 overflow-x-hidden'
+  form.className = 'flex min-h-0 flex-1 flex-col w-fit max-w-full gap-2 overflow-x-hidden'
   const dias = initial?.dias?.length ? initial.dias : [{ diaSemana: 1, horaEntrada: '09:00', horaSalida: '18:00', minutosAlmuerzo: 60 }]
   const fieldLabel = 'mb-1 inline-flex min-h-5 items-center gap-1 text-sm font-medium leading-5 text-slate-700 dark:text-slate-200'
   const controlClass = 'h-10 w-full min-w-0 rounded-lg border border-slate-200 px-3 text-sm dark:border-slate-600 dark:bg-slate-900'
   const submitLabel = initial?.id ? 'Guardar' : 'Crear turno'
   const mostrarAsignar = Boolean(initial?.id) && canAssign
   form.innerHTML = `
-    <div class="grid w-full shrink-0 grid-cols-1 items-end justify-start gap-3 ${mostrarAsignar ? 'sm:grid-cols-[minmax(0,1fr)_7rem_auto]' : 'sm:grid-cols-[minmax(0,1fr)_7rem]'}">
+    <div class="grid w-fit shrink-0 grid-cols-1 items-end justify-start gap-3 ${mostrarAsignar ? 'sm:grid-cols-[14rem_7rem_auto]' : 'sm:grid-cols-[14rem_7rem]'}">
       <label class="block min-w-0">
         <span class="${fieldLabel}">Nombre del turno ${infoHelpButton('Usá un nombre fácil de identificar.')}</span>
         ${helpText('turno-nombre-help', 'Usá un nombre fácil de identificar.')}
@@ -277,8 +279,7 @@ function turnoForm(initial, { canAssign = false, onCantidad } = {}) {
           <span class="shrink-0 text-xs text-slate-500" aria-hidden="true">min</span>
         </span>
       </label>
-      ${mostrarAsignar ? `<div class="flex min-h-10 min-w-0 flex-wrap items-center gap-2 sm:justify-self-end">
-        <span data-empleados-cantidad class="min-w-0 text-sm font-medium text-slate-700 dark:text-slate-200"></span>
+      ${mostrarAsignar ? `<div class="flex min-h-10 min-w-0 items-center sm:justify-self-end">
         <button type="button" data-gestionar-empleados class="${BTN_SECONDARY_CLASS} h-10 shrink-0 gap-1.5 px-3" aria-label="Gestionar empleados">${iconUsers('h-4 w-4')}<span>Gestionar empleados</span></button>
       </div>` : ''}
     </div>
@@ -288,11 +289,11 @@ function turnoForm(initial, { canAssign = false, onCantidad } = {}) {
           <h3 class="text-sm font-semibold text-slate-800 dark:text-slate-100">Días y horarios</h3>
           <button type="button" data-add-day class="${BTN_SECONDARY_CLASS} h-8 shrink-0 gap-1.5 px-2.5 text-[13px]">${iconPlus('h-3.5 w-3.5')}<span>Agregar día</span></button>
         </div>
-        <div data-dias-grid class="xl:grid ${DIA_COLUMNS} xl:items-center xl:gap-x-2 xl:gap-y-1">
-          <div class="hidden text-xs font-medium text-slate-500 dark:text-slate-400 xl:contents">
+        <div data-dias-grid class="grid w-full min-w-0 ${DIA_COLUMNS} items-center gap-x-2 gap-y-1">
+          <div class="contents text-xs font-medium text-slate-500 dark:text-slate-400">
             <span>Día</span><span>Entrada</span><span>Salida</span><span>Descanso</span><span>Horas netas</span><span><span class="sr-only">Quitar</span></span>
           </div>
-          <div data-dias class="contents space-y-1 xl:space-y-0"></div>
+          <div data-dias class="contents"></div>
         </div>
       </div>
     </div>
@@ -306,9 +307,8 @@ function turnoForm(initial, { canAssign = false, onCantidad } = {}) {
     </div>
   `
   const list = form.querySelector('[data-dias]')
-  const dayLabel = 'mb-0.5 inline-flex min-h-4 items-center gap-1 text-xs font-medium leading-4 text-slate-500 dark:text-slate-400 xl:sr-only'
+  const dayLabel = 'sr-only'
   const dayControl = 'h-9 w-full min-w-0 rounded-lg border border-slate-200 px-2 text-sm dark:border-slate-600 dark:bg-slate-900'
-  const horasClass = 'inline-flex h-9 items-center whitespace-nowrap text-sm'
 
   function nombreDia(value) {
     const nombre = DAY_LABELS[Number(value)] || 'día'
@@ -329,7 +329,8 @@ function turnoForm(initial, { canAssign = false, onCantidad } = {}) {
     )
     const vacio = resumen === '—'
     field.textContent = resumen
-    field.className = `${horasClass} ${vacio ? 'text-slate-400' : 'font-medium text-emerald-700 dark:text-emerald-300'}`
+    field.dataset.empty = vacio ? 'true' : 'false'
+    field.className = 'turno-horas-netas'
   }
 
   function syncRemove() {
@@ -338,6 +339,14 @@ function turnoForm(initial, { canAssign = false, onCantidad } = {}) {
       const button = row.querySelector('[data-remove-day]')
       if (button) button.hidden = rows.length < 2
     })
+    const agregar = form.querySelector('[data-add-day]')
+    if (agregar) agregar.disabled = rows.length >= MAX_DIAS_TURNO
+  }
+
+  function siguienteDia() {
+    const usados = new Set([...list.querySelectorAll('[name="diaSemana"]')].map((select) => Number(select.value)))
+    const libre = [1, 2, 3, 4, 5, 6, 0].find((dia) => !usados.has(dia))
+    return { diaSemana: libre ?? 1, horaEntrada: '09:00', horaSalida: '18:00', minutosAlmuerzo: 60 }
   }
 
   function addDay(dia = { diaSemana: 1, horaEntrada: '09:00', horaSalida: '18:00', minutosAlmuerzo: 60 }) {
@@ -346,7 +355,7 @@ function turnoForm(initial, { canAssign = false, onCantidad } = {}) {
     const salida = horaTexto(dia.horaSalida)
     const descanso = valorCampoDescanso(dia.minutosAlmuerzo)
     row.dataset.diaRow = 'true'
-    row.className = `grid w-full min-w-0 grid-cols-1 items-center gap-1 rounded-lg border border-slate-200 p-1.5 dark:border-slate-700 ${DIA_COLUMNS_MEDIO} md:gap-x-2 md:gap-y-1 xl:contents`
+    row.className = 'contents'
     row.innerHTML = `
       <label class="min-w-0">
         <span class="${dayLabel}">Día</span>
@@ -372,9 +381,9 @@ function turnoForm(initial, { canAssign = false, onCantidad } = {}) {
       </label>
       <div class="min-w-0">
         <span class="${dayLabel}">Horas netas</span>
-        <span data-horas data-tooltip="Horas programadas después del descanso" class="${horasClass} text-slate-400" role="status" aria-readonly="true" aria-live="polite">—</span>
+        <span data-horas data-tooltip="Horas programadas después del descanso" class="turno-horas-netas" data-empty="true" role="status" aria-readonly="true" aria-live="polite">—</span>
       </div>
-      <button type="button" data-remove-day data-tooltip="Quitar día" aria-label="Quitar ${escapeHtml(nombreDia(dia.diaSemana))}" class="${BTN_DELETE_CLASS} h-9 w-9 shrink-0 justify-self-end px-0 xl:justify-self-center">${iconTrash('h-4 w-4')}</button>
+      <button type="button" data-remove-day data-tooltip="Quitar día" aria-label="Quitar ${escapeHtml(nombreDia(dia.diaSemana))}" class="${BTN_DELETE_CLASS} h-9 w-9 shrink-0 justify-self-end px-0">${iconTrash('h-4 w-4')}</button>
     `
     row.querySelector('[data-hora-entrada]').replaceWith(createTurnoHoraField({
       name: 'horaEntrada',
@@ -420,19 +429,12 @@ function turnoForm(initial, { canAssign = false, onCantidad } = {}) {
 
   dias.forEach(addDay)
   let gestion = null
-  function pintarResumen(cantidad = initial?.cantidadEmpleadosAsignados) {
-    const node = form.querySelector('[data-empleados-cantidad]')
-    if (!node) return
-    node.textContent = textoResumenAsignadosTurno(cantidad)
-  }
-  pintarResumen()
   if (initial?.id) {
     form.querySelector('[data-gestionar-empleados]')?.addEventListener('click', () => {
       const button = form.querySelector('[data-gestionar-empleados]')
       if (!button || button.disabled || gestion) return
       gestion = openGestionarEmpleados(initial, form, (cantidad) => {
         if (initial) initial.cantidadEmpleadosAsignados = cantidad
-        pintarResumen(cantidad)
         onCantidad?.(cantidad)
       }, () => {
         gestion = null
@@ -447,7 +449,10 @@ function turnoForm(initial, { canAssign = false, onCantidad } = {}) {
     remove.classList.add('h-10', 'w-full', 'justify-center', 'sm:w-auto')
     form.querySelector('[data-delete-slot]').append(remove)
   }
-  form.querySelector('[data-add-day]').addEventListener('click', () => addDay())
+  form.querySelector('[data-add-day]').addEventListener('click', () => {
+    if (list.children.length >= MAX_DIAS_TURNO) return
+    addDay(siguienteDia())
+  })
   form.collect = () => {
     const rows = [...list.children]
     const fieldError = form.querySelector('[data-error]')
@@ -475,6 +480,11 @@ function turnoForm(initial, { canAssign = false, onCantidad } = {}) {
         minutosAlmuerzo: minutos.value,
       })
     }
+    if (parsed.length > MAX_DIAS_TURNO) {
+      fieldError.textContent = 'Un turno puede tener hasta 7 días.'
+      fieldError.classList.remove('hidden')
+      return null
+    }
     if (new Set(parsed.map((dia) => dia.diaSemana)).size !== parsed.length) {
       fieldError.textContent = 'No puede haber más de un horario para el mismo día.'
       fieldError.classList.remove('hidden')
@@ -494,6 +504,13 @@ function turnoForm(initial, { canAssign = false, onCantidad } = {}) {
 function fechaCorta(value) {
   const text = String(value ?? '')
   return text.length >= 10 ? text.slice(0, 10) : ''
+}
+
+function hoyLocal() {
+  const date = new Date()
+  const mes = String(date.getMonth() + 1).padStart(2, '0')
+  const dia = String(date.getDate()).padStart(2, '0')
+  return `${date.getFullYear()}-${mes}-${dia}`
 }
 
 function idTurnoValido(id) {
@@ -704,7 +721,8 @@ function openAsignar(turno, nomina, onDone) {
   let asignando = false
   let filtro = ''
   const seleccion = new Set()
-  const asignadosIds = new Set((Array.isArray(nomina) ? nomina : []).map((item) => item.empleadoId))
+  const quitar = new Set()
+  const asignadosPorId = new Map((Array.isArray(nomina) ? nomina : []).map((item) => [item.empleadoId, item]))
   const content = document.createElement('form')
   content.className = 'min-w-0 space-y-3 overflow-x-hidden'
   content.innerHTML = `
@@ -735,7 +753,7 @@ function openAsignar(turno, nomina, onDone) {
     <p data-error class="hidden text-sm text-red-600" role="alert"></p>
     <div class="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
       <button type="button" data-cancel class="${BTN_SECONDARY_CLASS} h-10 justify-center">Cancelar</button>
-      <button type="submit" class="${CONFIRM_PRIMARY_CLASS} h-10">Revisar asignación</button>
+      <button type="submit" class="${CONFIRM_PRIMARY_CLASS} h-10">Revisar cambios</button>
     </div>
   `
   const resultado = content.querySelector('[data-resultado]')
@@ -753,12 +771,12 @@ function openAsignar(turno, nomina, onDone) {
   }
 
   function sincronizarSeleccion() {
-    const estado = estadoSeleccionVisible(visibles(), seleccion)
+    const estado = estadoMarcadoTurno(visibles(), seleccion, quitar)
     todos.checked = estado.marcado
     todos.indeterminate = estado.indeterminado
     todos.disabled = estado.deshabilitado
     todos.setAttribute('aria-checked', estado.indeterminado ? 'mixed' : String(estado.marcado))
-    contador.textContent = textoCantidadSeleccionada(seleccion.size)
+    contador.textContent = textoCantidadCambiosTurno({ asignar: seleccion.size, quitar: quitar.size })
   }
 
   function pintar() {
@@ -769,11 +787,11 @@ function openAsignar(turno, nomina, onDone) {
       return
     }
     resultado.innerHTML = lista.map((empleado) => {
-      const elegido = esEmpleadoElegible(empleado)
-      const marcado = empleado.yaAsignado || (elegido && seleccion.has(empleado.id))
+      const marcado = marcadoEnTurno(empleado, seleccion, quitar)
+      const bloqueado = empleado.activo === false
       return `
       <label class="flex min-w-0 items-center gap-2 rounded-lg px-2 py-1.5 text-sm hover:bg-slate-50 dark:hover:bg-slate-800">
-        <input type="checkbox" name="empleadoId" value="${empleado.id}" class="h-4 w-4 rounded border-slate-300 text-blue-600 focus-visible:ring-2 focus-visible:ring-blue-500" ${marcado ? 'checked' : ''} ${elegido ? '' : 'disabled'} />
+        <input type="checkbox" name="empleadoId" value="${empleado.id}" class="h-4 w-4 rounded border-slate-300 text-blue-600 focus-visible:ring-2 focus-visible:ring-blue-500" ${marcado ? 'checked' : ''} ${bloqueado ? 'disabled' : ''} />
         <span class="min-w-0 break-words">${escapeHtml(nombreEmpleado(empleado))}${empleado.legajo ? ` · ${escapeHtml(empleado.legajo)}` : ''}</span>
         ${empleado.yaAsignado ? '<span class="shrink-0 text-xs text-slate-500">Ya asignado</span>' : ''}
       </label>`
@@ -784,10 +802,14 @@ function openAsignar(turno, nomina, onDone) {
   async function cargar() {
     resultado.innerHTML = '<p class="text-sm text-slate-500">Cargando empleados...</p>'
     try {
-      empleados = (await getEmpleados()).filter((empleado) => empleado.activo !== false).map((empleado) => ({
-        ...empleado,
-        yaAsignado: Array.isArray(nomina) && asignadosIds.has(empleado.id),
-      }))
+      empleados = (await getEmpleados()).filter((empleado) => empleado.activo !== false).map((empleado) => {
+        const asignado = asignadosPorId.get(empleado.id)
+        return {
+          ...empleado,
+          yaAsignado: Boolean(asignado),
+          fechaInicioAsignacion: asignado?.fechaInicio || '',
+        }
+      })
       pintar()
     } catch (loadError) {
       if (loadError.status === 401) return
@@ -810,16 +832,22 @@ function openAsignar(turno, nomina, onDone) {
     pintar()
   })
   todos.addEventListener('change', () => {
-    const next = aplicarSeleccionVisible(visibles(), seleccion, todos.checked)
+    const next = aplicarMarcadoTurno(visibles(), seleccion, quitar, todos.checked)
     seleccion.clear()
-    next.forEach((id) => seleccion.add(id))
+    quitar.clear()
+    next.seleccion.forEach((id) => seleccion.add(id))
+    next.quitar.forEach((id) => quitar.add(id))
     pintar()
   })
   resultado.addEventListener('change', (event) => {
     const input = event.target
     if (!(input instanceof HTMLInputElement) || input.name !== 'empleadoId' || input.disabled) return
     const id = Number(input.value)
-    if (input.checked) seleccion.add(id)
+    const empleado = empleados.find((candidato) => candidato.id === id)
+    if (esEmpleadoDesasignable(empleado)) {
+      if (input.checked) quitar.delete(id)
+      else quitar.add(id)
+    } else if (input.checked) seleccion.add(id)
     else seleccion.delete(id)
     sincronizarSeleccion()
   })
@@ -840,17 +868,18 @@ function openAsignar(turno, nomina, onDone) {
     event.preventDefault()
     if (asignando) return
     const elegidos = empleados.filter((empleado) => esEmpleadoElegible(empleado) && seleccion.has(empleado.id))
+    const aQuitar = empleados.filter((empleado) => esEmpleadoDesasignable(empleado) && quitar.has(empleado.id))
     const fechaInicio = content.fechaInicio.value
     const fechaFin = content.fechaFin.value
-    if (!elegidos.length) {
-      mostrarError('Seleccioná al menos un empleado.')
+    if (!elegidos.length && !aQuitar.length) {
+      mostrarError('Seleccioná un empleado para asignar o desmarcá uno para quitarlo del turno.')
       return
     }
-    if (!fechaInicio) {
+    if (elegidos.length && !fechaInicio) {
       mostrarError('Indicá la fecha de inicio.')
       return
     }
-    if (fechaFin && fechaFin < fechaInicio) {
+    if (elegidos.length && fechaFin && fechaFin < fechaInicio) {
       mostrarError('La fecha final no puede ser anterior al inicio.')
       return
     }
@@ -858,12 +887,26 @@ function openAsignar(turno, nomina, onDone) {
     asignando = true
     const submit = content.querySelector('[type="submit"]')
     submit.disabled = true
+    const hoy = hoyLocal()
+    const bajas = aQuitar.map((empleado) => ({
+      id: empleado.id,
+      nombre: nombreEmpleado(empleado),
+      fechaInicio: empleado.fechaInicioAsignacion,
+      fechaFin: fechaCierreDesasignacion(empleado.fechaInicioAsignacion, hoy),
+    }))
+    if (bajas.some((item) => !item.fechaFin)) {
+      mostrarError('No se pudo determinar hasta cuándo sigue asignado el empleado.')
+      asignando = false
+      submit.disabled = false
+      return
+    }
     const confirmado = await confirmarAsignacion({
       turno,
       cantidad: elegidos.length,
       fechaInicio,
       fechaFin,
       nombres: elegidos.map(nombreEmpleado),
+      bajas,
     })
     if (!confirmado) {
       asignando = false
@@ -875,19 +918,35 @@ function openAsignar(turno, nomina, onDone) {
     for (const empleado of elegidos) {
       try {
         await assignTurno(empleado.id, { turnoId: turno.id, fechaInicio, fechaFin: fechaFin || null })
-        resultados.push({ ok: true, empleadoId: empleado.id })
+        resultados.push({ ok: true, accion: 'asignar', empleadoId: empleado.id })
       } catch (assignError) {
-        resultados.push({ ok: false, status: assignError.status, message: assignError.message, empleadoId: empleado.id })
+        resultados.push({ ok: false, accion: 'asignar', status: assignError.status, message: assignError.message, empleadoId: empleado.id })
+      }
+    }
+    for (const baja of bajas) {
+      try {
+        await assignTurno(baja.id, { turnoId: turno.id, fechaInicio: baja.fechaInicio, fechaFin: baja.fechaFin })
+        resultados.push({ ok: true, accion: 'quitar', empleadoId: baja.id })
+      } catch (assignError) {
+        resultados.push({ ok: false, accion: 'quitar', status: assignError.status, message: assignError.message, empleadoId: baja.id })
       }
     }
     for (const item of resultados) {
       if (!item.ok) continue
-      seleccion.delete(item.empleadoId)
       const empleado = empleados.find((candidato) => candidato.id === item.empleadoId)
-      if (empleado) empleado.yaAsignado = true
+      if (item.accion === 'quitar') {
+        quitar.delete(item.empleadoId)
+        if (empleado) {
+          empleado.yaAsignado = false
+          empleado.fechaInicioAsignacion = ''
+        }
+      } else {
+        seleccion.delete(item.empleadoId)
+        if (empleado) empleado.yaAsignado = true
+      }
     }
     pintar()
-    const resumen = textoResultadoAsignacion(resultados)
+    const resumen = textoResultadoCambiosTurno(resultados)
     asignando = false
     submit.disabled = false
     submit.removeAttribute('aria-busy')
@@ -902,23 +961,23 @@ function openAsignar(turno, nomina, onDone) {
   cargar()
 }
 
-function confirmarAsignacion({ turno, cantidad, fechaInicio, fechaFin, nombres }) {
+function confirmarAsignacion({ turno, cantidad, fechaInicio, fechaFin, nombres, bajas = [] }) {
   return new Promise((resolve) => {
     let settled = false
     let busy = false
     const content = document.createElement('div')
     const copy = document.createElement('p')
     copy.className = 'text-sm text-slate-700 dark:text-slate-200'
-    copy.textContent = textoConfirmacionAsignacion({
+    copy.textContent = textoConfirmacionCambiosTurno({
       nombre: turno.nombre,
-      cantidad,
-      fechaInicio,
-      fechaFin,
-      nombres,
+      altas: cantidad ? { cantidad, fechaInicio, fechaFin, nombres } : null,
+      bajas,
     })
     const detail = document.createElement('p')
     detail.className = 'mt-2 text-sm text-slate-500'
-    detail.textContent = 'Si ya hay una asignación que se cruza, el servicio la cierra el día anterior o informa el conflicto. No se reemplaza sin esta confirmación.'
+    detail.textContent = cantidad
+      ? 'Si ya hay una asignación que se cruza, el servicio la cierra el día anterior o informa el conflicto. No se reemplaza sin esta confirmación.'
+      : 'Quitar cierra la vigencia en este turno. No se borra el historial de días ya trabajados.'
     const actions = document.createElement('div')
     actions.className = 'mt-4 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end'
     const cancel = document.createElement('button')
@@ -928,7 +987,7 @@ function confirmarAsignacion({ turno, cantidad, fechaInicio, fechaFin, nombres }
     const confirm = document.createElement('button')
     confirm.type = 'button'
     confirm.className = CONFIRM_PRIMARY_CLASS
-    confirm.textContent = 'Confirmar asignación'
+    confirm.textContent = cantidad && bajas.length ? 'Confirmar cambios' : bajas.length ? 'Quitar del turno' : 'Confirmar asignación'
     actions.append(cancel, confirm)
     content.append(copy, detail, actions)
     const finish = (value) => {
@@ -938,7 +997,7 @@ function confirmarAsignacion({ turno, cantidad, fechaInicio, fechaFin, nombres }
       resolve(value)
     }
     const modal = openModal({
-      title: 'Confirmar asignación',
+      title: cantidad && bajas.length ? 'Confirmar cambios' : bajas.length ? 'Quitar del turno' : 'Confirmar asignación',
       content,
       stacked: true,
       closeOnBackdrop: false,
@@ -1135,7 +1194,7 @@ function openEditor(turno, reload, onSaved) {
   const modal = openFormModal({
     title: turno ? 'Editar turno' : 'Nuevo turno',
     content: form,
-    dialogClass: 'max-w-[1080px]',
+    dialogClass: '!w-fit max-w-[min(48rem,calc(100vw-2rem))]',
     scrollBody: false,
     onClose: () => {
       form.cerrarGestion?.()

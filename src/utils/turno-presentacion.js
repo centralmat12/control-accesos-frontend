@@ -208,6 +208,66 @@ export function esEmpleadoElegible(empleado) {
   return Boolean(empleado) && empleado.activo !== false && empleado.yaAsignado !== true && Number(empleado.id) > 0
 }
 
+export function esEmpleadoDesasignable(empleado) {
+  return Boolean(empleado) && empleado.activo !== false && empleado.yaAsignado === true && Number(empleado.id) > 0
+}
+
+export function restarDiaIso(iso) {
+  const match = String(iso ?? '').match(/^(\d{4})-(\d{2})-(\d{2})/)
+  if (!match) return ''
+  const date = new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3])))
+  date.setUTCDate(date.getUTCDate() - 1)
+  const mes = String(date.getUTCMonth() + 1).padStart(2, '0')
+  const dia = String(date.getUTCDate()).padStart(2, '0')
+  return `${date.getUTCFullYear()}-${mes}-${dia}`
+}
+
+export function fechaCierreDesasignacion(fechaInicio, hoy) {
+  const inicio = String(fechaInicio ?? '').slice(0, 10)
+  const actual = String(hoy ?? '').slice(0, 10)
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(inicio) || !/^\d{4}-\d{2}-\d{2}$/.test(actual)) return ''
+  const ayer = restarDiaIso(actual)
+  return inicio <= ayer ? ayer : inicio
+}
+
+export function aplicarMarcadoTurno(visibles, seleccion, quitar, marcar) {
+  const nextSeleccion = new Set(seleccion)
+  const nextQuitar = new Set(quitar)
+  for (const empleado of visibles ?? []) {
+    if (esEmpleadoElegible(empleado)) {
+      if (marcar) nextSeleccion.add(empleado.id)
+      else nextSeleccion.delete(empleado.id)
+    } else if (esEmpleadoDesasignable(empleado)) {
+      if (marcar) nextQuitar.delete(empleado.id)
+      else nextQuitar.add(empleado.id)
+    }
+  }
+  return { seleccion: nextSeleccion, quitar: nextQuitar }
+}
+
+export function marcadoEnTurno(empleado, seleccion, quitar) {
+  if (esEmpleadoDesasignable(empleado)) return !quitar?.has?.(empleado.id)
+  return esEmpleadoElegible(empleado) && Boolean(seleccion?.has?.(empleado.id))
+}
+
+export function estadoMarcadoTurno(visibles, seleccion, quitar) {
+  const marcables = (visibles ?? []).filter((empleado) => esEmpleadoElegible(empleado) || esEmpleadoDesasignable(empleado))
+  const marcados = marcables.filter((empleado) => marcadoEnTurno(empleado, seleccion, quitar)).length
+  if (!marcables.length) return { marcado: false, indeterminado: false, deshabilitado: true, marcados }
+  if (marcados === 0) return { marcado: false, indeterminado: false, deshabilitado: false, marcados }
+  if (marcados === marcables.length) return { marcado: true, indeterminado: false, deshabilitado: false, marcados }
+  return { marcado: false, indeterminado: true, deshabilitado: false, marcados }
+}
+
+export function textoCantidadCambiosTurno({ asignar = 0, quitar = 0 } = {}) {
+  const altas = Number(asignar) || 0
+  const bajas = Number(quitar) || 0
+  const partes = []
+  if (altas) partes.push(altas === 1 ? '1 para asignar' : `${altas} para asignar`)
+  if (bajas) partes.push(bajas === 1 ? '1 para quitar' : `${bajas} para quitar`)
+  return partes.length ? partes.join(' · ') : '0 seleccionados'
+}
+
 export function aplicarSeleccionVisible(visibles, seleccion, marcar) {
   const next = new Set(seleccion)
   for (const empleado of visibles ?? []) {
@@ -238,10 +298,70 @@ export function fechaAsignacionVisible(value) {
   return `${match[3]}/${match[2]}/${match[1]}`
 }
 
+export function fechaIsoDesdeVisible(value) {
+  const match = String(value ?? '').trim().match(/^(\d{2})\/(\d{2})\/(\d{4})$/)
+  if (!match) return ''
+  const day = Number(match[1])
+  const month = Number(match[2])
+  const year = Number(match[3])
+  const date = new Date(year, month - 1, day)
+  if (date.getFullYear() !== year || date.getMonth() !== month - 1 || date.getDate() !== day) return ''
+  return `${match[3]}-${match[2]}-${match[1]}`
+}
+
+export function mascaraFechaDia(value) {
+  const digits = String(value ?? '').replace(/\D/g, '').slice(0, 8)
+  return [digits.slice(0, 2), digits.slice(2, 4), digits.slice(4, 8)].filter(Boolean).join('/')
+}
+
 export function resumirNombres(nombres, maximo = 4) {
   const lista = (nombres ?? []).map((nombre) => String(nombre ?? '').trim()).filter(Boolean)
   if (lista.length <= maximo) return lista.join(', ')
   return `${lista.slice(0, maximo).join(', ')} y ${lista.length - maximo} más`
+}
+
+export function textoConfirmacionDesasignacion({ nombre, bajas } = {}) {
+  const turno = String(nombre || 'el turno')
+  const lista = Array.isArray(bajas) ? bajas : []
+  const total = lista.length
+  const personas = total === 1 ? '1 empleado' : `${total} empleados`
+  const resumen = resumirNombres(lista.map((item) => item?.nombre))
+  const limitadas = lista.filter((item) => item?.fechaFin && item.fechaFin === item.fechaInicio)
+  const cerradas = lista.filter((item) => item?.fechaFin && item.fechaFin !== item.fechaInicio)
+  const partes = [`Se quitará a ${personas} de “${turno}”.`]
+  if (cerradas.length) {
+    partes.push('La vigencia abierta se cierra ayer: desde hoy no forman parte de este turno.')
+  }
+  if (limitadas.length) {
+    partes.push('La asignación que empieza hoy o más adelante no se puede borrar: queda limitada a su día de inicio.')
+  }
+  const base = partes.join(' ')
+  return resumen ? `${base} Empleados: ${resumen}.` : base
+}
+
+export function textoConfirmacionCambiosTurno({ nombre, altas = null, bajas = [] } = {}) {
+  const partes = []
+  if (altas?.cantidad) partes.push(textoConfirmacionAsignacion({ nombre, ...altas }))
+  if (bajas?.length) partes.push(textoConfirmacionDesasignacion({ nombre, bajas }))
+  return partes.join(' ')
+}
+
+export function textoResultadoCambiosTurno(resultados) {
+  const lista = Array.isArray(resultados) ? resultados : []
+  const okAsignar = lista.filter((item) => item?.ok && item.accion !== 'quitar').length
+  const okQuitar = lista.filter((item) => item?.ok && item.accion === 'quitar').length
+  const fail = lista.filter((item) => item && !item.ok)
+  const detalle = fail.map((item) => String(item.message || 'No se pudo completar el cambio.').trim()).filter(Boolean).join(' ')
+  const hechos = [
+    okAsignar ? (okAsignar === 1 ? 'se asignó a 1 empleado' : `se asignó a ${okAsignar} empleados`) : '',
+    okQuitar ? (okQuitar === 1 ? 'se quitó a 1 empleado' : `se quitó a ${okQuitar} empleados`) : '',
+  ].filter(Boolean)
+  if (!fail.length) {
+    const mensaje = hechos.length ? `${hechos.join(' y ').replace(/^./, (letra) => letra.toUpperCase())}.` : 'No hubo cambios.'
+    return { parcial: false, mensaje }
+  }
+  if (!hechos.length) return { parcial: false, mensaje: detalle || 'No se pudo completar el cambio.' }
+  return { parcial: true, mensaje: `${hechos.join(' y ').replace(/^./, (letra) => letra.toUpperCase())}. ${fail.length} no se pudieron cambiar. ${detalle}`.trim() }
 }
 
 export function textoConfirmacionAsignacion({ nombre, cantidad, fechaInicio, fechaFin, nombres } = {}) {

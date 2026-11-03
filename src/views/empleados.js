@@ -20,7 +20,7 @@ import {
   createReactivateConfirm,
 } from '../components/empleado-form.js'
 import { guardarAsignacionSiCorresponde } from '../components/horario-laboral.js'
-import { createEmpleadosTable, fullName } from '../components/empleados-table.js'
+import { createEmpleadosTable, pintarTituloEmpleado, tituloEmpleado } from '../components/empleados-table.js'
 import { createFeedbackState, createSelectEmpresaState } from '../components/feedback-state.js'
 import { createPagination } from '../components/pagination.js'
 import { BTN_SECONDARY_CLASS } from '../components/button-styles.js'
@@ -632,7 +632,7 @@ export async function renderEmpleados(container, { initialQuery, empleadoId, ope
     const loading = createDetailSkeleton()
 
     const modal = openModal({
-      title: fullName(empleado) || 'Empleado',
+      title: tituloEmpleado(empleado),
       content: loading,
       labelledBy: 'empleado-detail-title',
       closeOnBackdrop: () => !modal.dialog.querySelector('form'),
@@ -642,6 +642,7 @@ export async function renderEmpleados(container, { initialQuery, empleadoId, ope
       },
     })
     activeModalClose = modal.close
+    pintarTituloEmpleado(modal.dialog.querySelector('#empleado-detail-title'), empleado)
 
     try {
       const inactive = empleado.activo === false
@@ -662,12 +663,15 @@ export async function renderEmpleados(container, { initialQuery, empleadoId, ope
           onDepartamentosChanged: loadDepartamentos,
           onUpdated: (updated) => {
             empleados = empleados.map((item) => (Number(item.id) === Number(updated.id) ? { ...item, ...updated } : item))
+            const title = modal.dialog.querySelector('#empleado-detail-title')
+            pintarTituloEmpleado(title, updated)
             renderSummary()
             renderResults()
             showToast({ message: 'Cambios guardados.', tone: 'success' })
           },
         }),
       )
+      pintarTituloEmpleado(modal.dialog.querySelector('#empleado-detail-title'), detail)
     } catch (error) {
       if (error.message === 'Sesión expirada o no autorizada.') {
         closeActiveModal({ force: true })

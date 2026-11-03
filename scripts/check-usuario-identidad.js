@@ -94,7 +94,7 @@ function updatedResponse(usuario) {
 }
 
 function sectionOrder(markup) {
-  return ['acciones', 'resumen', 'acceso']
+  return ['acceso', 'cuenta']
     .map((name) => markup.indexOf(`data-section="${name}"`))
     .filter((index) => index >= 0)
 }
@@ -122,8 +122,9 @@ await check('1-2. Campos nombre y correo editables; empresa estática', () => {
   })
   assert.match(markup, /<input[^>]+name="nombreUsuario"/)
   assert.match(markup, /<input[^>]+name="correo"/)
-  assert.match(markup, /data-usuario-empresa-resumen/)
-  assert.match(markup, /Empresa Norte/)
+  assert.equal(markup.includes('>Empresa<'), false)
+  assert.match(read('src/components/usuario-edit-panel.js'), /pintarTituloUsuario\(heading, usuario, empresaLabel/)
+  assert.match(read('src/views/administracion.js'), /empresaLabel\(actual\?\.empresaId\)/)
   assert.equal(/<input[^>]+name="empresaId"/.test(markup), false)
   assert.equal(/<select[^>]+name="empresaId"/.test(markup), false)
   assert.equal(markup.includes('formStaticFieldMarkup'), false)
@@ -311,9 +312,10 @@ await check('15-18. Matriz de identidad y rol editable solo para SuperAdmin', ()
   assert.equal(markupAdmin.includes('id="usuario-edit-rol"'), false)
   assert.equal(markupAdmin.includes('Guardar rol'), false)
   assert.match(markupAdmin, /name="nombreUsuario"/)
-  assert.match(markupSa, /Datos de acceso y permisos/)
-  assert.match(markupSa, /Guardar cambios/)
-  assert.match(markupAdmin, /Guardar cambios/)
+  assert.equal(markupSa.includes('Datos de acceso y permisos'), false)
+  assert.match(markupSa, />\s*Guardar\s*</)
+  assert.match(markupAdmin, />\s*Guardar\s*</)
+  assert.equal(markupSa.includes('Guardar cambios'), false)
 })
 
 await check('19-21. Acciones superiores según estado y sin Eliminar', () => {
@@ -328,13 +330,13 @@ await check('19-21. Acciones superiores según estado y sin Eliminar', () => {
   })
 
   assert.match(activo, /btn-secondary/)
-  assert.match(activo, /sm:flex-row sm:items-center sm:justify-end/)
-  assert.match(activo, /w-full shrink-0/)
-  assert.match(activo, /sm:w-auto/)
-  assert.match(activo, /Restablecer clave/)
+  assert.match(activo, /h-10 w-fit shrink-0/)
+  assert.match(activo, /Blanqueo de clave/)
+  assert.match(activo, /btn-action-reset/)
+  assert.match(activo, /btn-action-delete/)
   assert.match(activo, /Desbloquear/)
   assert.match(activo, /data-tooltip="/)
-  assert.equal(inactivo.includes('Restablecer clave'), false)
+  assert.equal(inactivo.includes('Blanqueo de clave'), false)
   assert.equal(inactivo.includes('Desbloquear'), false)
   assert.match(inactivo, /Reactivar cuenta/)
   assert.match(activo, /Desactivar cuenta/)
@@ -345,13 +347,10 @@ await check('19-21. Acciones superiores según estado y sin Eliminar', () => {
   assert.equal(inactivo.includes('Eliminar usuario'), false)
 
   const orderActivo = sectionOrder(activo)
-  assert.equal(orderActivo.length, 3)
-  assert.deepEqual(
-    orderActivo,
-    [...orderActivo].sort((a, b) => a - b),
-  )
-  assert.ok(activo.indexOf('data-section="acceso"') > activo.indexOf('data-section="resumen"'))
-  assert.ok(activo.indexOf('data-section="resumen"') > activo.indexOf('data-section="acciones"'))
+  assert.deepEqual(orderActivo, [activo.indexOf('data-section="acceso"')])
+  assert.equal(activo.includes('data-section="cuenta"'), false)
+  assert.equal(activo.includes('>Acceso<'), false)
+  assert.ok(activo.indexOf('Desactivar cuenta') > activo.indexOf('Blanqueo de clave'))
 })
 
 await check('22. No existe DELETE ni cambio directo de contraseña', () => {
@@ -375,16 +374,15 @@ await check('23-24. Tema y layout responsive verificables por clases', () => {
   const viewSrc = read('src/views/administracion.js')
   const css = read('src/style.css')
   assert.match(markup, /dark:border-slate-700/)
-  assert.match(markup, /dark:bg-slate-800/)
-  assert.match(markup, /dark:text-slate-100/)
+  assert.match(markup, /dark:text-slate-300/)
   assert.match(css, /\.btn-secondary/)
   assert.match(css, /html\.dark \.btn-secondary/)
   assert.match(modalSrc, /dialogClass/)
   assert.match(modalSrc, /dark:border-slate-700 dark:bg-slate-900/)
-  assert.match(viewSrc, /dialogClass: 'max-w-2xl'/)
-  assert.match(markup, /min-\[28rem\]:grid-cols-2 lg:grid-cols-\[minmax\(0,1fr\)_minmax\(0,1.5fr\)_minmax\(0,1.2fr\)_minmax\(0,1.6fr\)\]/)
-  assert.match(markup, /w-full shrink-0/)
-  assert.match(markup, /sm:w-auto/)
+  assert.match(viewSrc, /dialogClass: 'max-w-md'/)
+  assert.match(markup, /space-y-4/)
+  assert.match(markup, /h-10 w-fit shrink-0/)
+  assert.match(markup, /btn-action-reset/)
 })
 
 await check('25-26. Regresión de rol, estado, reset, unlock, alta y superficies vecinas', () => {

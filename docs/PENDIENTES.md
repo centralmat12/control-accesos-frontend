@@ -1,5 +1,13 @@
 # Pendientes
 
+Hechos abiertos al cierre de la noche del 2 de noviembre de 2026.
+
+- `feat/turnos-asignaciones-ux` no está mergeada a `main` y no se desplegó.
+- El proceso de la API que ya estaba en marcha no se reinició. Hasta reiniciarlo, el borrado de turnos puede seguir rechazando asignaciones históricas.
+- No se repitió `npm run check`, `npm run build` ni la suite completa de `dotnet test`.
+
+## Cierre anterior
+
 Hechos abiertos al 2 de noviembre de 2026.
 
 ## Publicación
@@ -10,6 +18,13 @@ Hechos abiertos al 2 de noviembre de 2026.
 ## Informe de asistencia
 
 - El panel calcula el informe con los datos que el frontend ya puede consultar. Falta un endpoint autoritativo de la API para informes históricos y exportables. Hasta que exista, no tratar el resultado del navegador como cierre contable.
+
+## Bitácora
+
+- La vista Registros no lee `sessionStorage`. `activity-log.js` queda solo como traza local de la sesión y no es la bitácora.
+- No existe un endpoint de auditoría. El cliente no llama a una ruta inventada ni muestra eventos de ejemplo.
+- La API tiene que publicar el listado persistido. Cada evento necesita fecha y hora, usuario, módulo, acción, elemento afectado, detalle, resultado, empresa, sucursal, origen y, cuando haya un cambio real, los campos modificados con su valor anterior y posterior. No debe incluir contraseñas, JWT, secretos, huellas ni connection strings.
+- Módulos visibles: Empleados, Fichadas, Administración, Dispositivos, Seguridad y Sistema. Resultados: Exitoso, Advertencia, Rechazado y Error. Origen: Web, Agente o Sistema.
 
 ## Interfaz pedida y no cerrada
 

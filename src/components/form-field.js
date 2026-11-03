@@ -177,6 +177,7 @@ export function formFieldMarkup({
   name,
   label,
   required = false,
+  showRequiredIndicator = true,
   helpText = '',
   extraHelpText = '',
   placeholder = '',
@@ -215,7 +216,7 @@ export function formFieldMarkup({
   return `
     <div data-form-field="${escapeHtml(name)}">
       <label for="${escapeHtml(id)}" class="${FORM_LABEL_CLASS}">
-        ${escapeHtml(label)}${required ? requiredMarkHtml() : ''}
+        ${escapeHtml(label)}${required && showRequiredIndicator ? requiredMarkHtml() : ''}
       </label>
       ${control}
       ${helpText ? `<p id="${helpId}" class="${FORM_HELP_CLASS}">${escapeHtml(helpText)}</p>` : ''}
