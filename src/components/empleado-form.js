@@ -1,4 +1,4 @@
-import { displayValue, escapeHtml, formatHorarioDisplay } from '../utils/format.js'
+import { displayValue, escapeHtml, formatHorarioDisplay, todayDateKey } from '../utils/format.js'
 import {
   CUIL_LENGTH,
   DNI_MAX_LENGTH,
@@ -15,6 +15,9 @@ import {
   suggestedLegajoLabel,
   validateEmpleadoValues,
 } from '../utils/empleado-data.js'
+import { getAsignaciones } from '../api/jornadas.js'
+import { getTurnos } from '../api/turnos.js'
+import { textoHorarioHabitual } from '../utils/turno-presentacion.js'
 import { getCurrentUser } from '../api/auth.js'
 import { getOperativeEmpresaId } from '../api/empresa-context.js'
 import { getDepartamentos, notifyDepartamentosLoadError } from '../api/departamentos.js'
@@ -23,7 +26,7 @@ import { normalizeRole } from '../config/roles.js'
 import { puedeCrearDepartamentos, puedeMostrarAltaDepartamento } from '../config/administracion.js'
 import { iconSettings, iconStatusOff, iconStatusOk } from './icons.js'
 import { createDepartamentosAdmin } from './departamentos-admin.js'
-import { biometricStatusBadge, employeeStatusBadge } from './badge.js'
+import { biometricStatusBadge } from './badge.js'
 import { openFormModal, openModal } from './modal.js'
 import {
   bindSucursalDepartamentoCascade,
@@ -526,8 +529,13 @@ export function createEmpleadoForm({
         helpId: horarioIds.helpId,
         errorId: horarioIds.errorId,
         controls: [horarioDesde, horarioHasta],
-        readValue: () => `${horarioDesde.value}|${horarioHasta.value}`,
-        getError: () => currentErrors().horario ?? '',
+        readValue: () => {
+          if (form.dataset.horarioLaboral === 'turno') return 'turno'
+          const desde = form.querySelector('[name="horarioDesde"]')
+          const hasta = form.querySelector('[name="horarioHasta"]')
+          return `${desde?.value ?? ''}|${hasta?.value ?? ''}`
+        },
+        getError: () => (form.dataset.horarioLaboral === 'turno' ? '' : currentErrors().horario ?? ''),
       },
     ],
     {
@@ -849,7 +857,28 @@ export function createEmpleadoForm({
   return wrapper
 }
 
-export function createEmpleadoDetail(empleado) {
+function fechaDia(value) {
+  const match = String(value ?? '').match(/^(\d{4})-(\d{2})-(\d{2})/)
+  return match ? `${match[3]}/${match[2]}/${match[1]}` : ''
+}
+
+function turnoVigente(asignaciones, fecha) {
+  const vigentes = (asignaciones ?? []).filter((item) => item?.fechaInicio && item.fechaInicio.slice(0, 10) <= fecha && (!item.fechaFin || item.fechaFin.slice(0, 10) >= fecha))
+  vigentes.sort((a, b) => String(b.fechaInicio).localeCompare(String(a.fechaInicio)))
+  return vigentes[0] ?? null
+}
+
+function describirTurno(asignacion) {
+  if (!asignacion) return { turno: 'Sin turno vigente', vigencia: '' }
+  const desde = fechaDia(asignacion.fechaInicio)
+  const hasta = fechaDia(asignacion.fechaFin)
+  return {
+    turno: asignacion.nombreTurno || 'Turno',
+    vigencia: hasta ? `${desde} a ${hasta}` : desde ? `Desde ${desde}` : '',
+  }
+}
+
+export function createEmpleadoDetail(empleado, { empresa = '' } = {}) {
   const wrapper = document.createElement('div')
   const horario = formatHorarioDisplay(empleado.horario)
   const rows = [
@@ -861,7 +890,10 @@ export function createEmpleadoDetail(empleado) {
     ['Departamento', empleado.departamento],
     ['Categoría', empleado.categoria],
     ['Sucursal', empleado.sucursal],
+    ['Empresa', empresa],
     ['Horario', horario],
+    ['Turno', ''],
+    ['Vigencia', ''],
   ]
 
   wrapper.innerHTML = `
@@ -871,7 +903,7 @@ export function createEmpleadoDetail(empleado) {
           ([label, value]) => `
             <div>
               <dt class="text-xs font-medium uppercase tracking-wide text-slate-500">${escapeHtml(label)}</dt>
-              <dd class="mt-1 text-sm text-slate-900">${displayValue(value)}</dd>
+              <dd class="mt-1 text-sm text-slate-900 dark:text-slate-100" ${label === 'Horario' ? 'data-horario' : ''} ${label === 'Turno' ? 'data-turno-nombre' : ''} ${label === 'Vigencia' ? 'data-turno-vigencia' : ''}>${displayValue(value)}</dd>
             </div>
           `,
         )
@@ -881,26 +913,34 @@ export function createEmpleadoDetail(empleado) {
         <dd class="mt-1.5 flex flex-wrap items-center gap-1.5">${biometricStatusBadge(empleado.tieneHuella)}</dd>
       </div>
     </dl>
-    <div class="mt-4 rounded-lg border border-slate-200 bg-white px-4 py-3 text-center dark:border-slate-700 dark:bg-slate-900">
-      <p class="text-xs font-medium uppercase tracking-wide text-slate-500">Estado</p>
-      <div class="mt-2 flex justify-center">${employeeStatusBadge(empleado.activo)}</div>
-    </div>
     <p class="mt-4 text-xs text-slate-500">La información biométrica no se gestiona en este panel. El enrolamiento de huella se realiza desde la app de escritorio.</p>
   `
 
+  const turnoNode = wrapper.querySelector('[data-turno-nombre]')
+  const vigenciaNode = wrapper.querySelector('[data-turno-vigencia]')
+  const horarioNode = wrapper.querySelector('[data-horario]')
+  const empleadoId = Number(empleado?.id)
+  if (turnoNode && vigenciaNode && Number.isInteger(empleadoId) && empleadoId > 0) {
+    getAsignaciones(empleadoId).then(async (asignaciones) => {
+      if (!wrapper.isConnected) return
+      const vigente = turnoVigente(asignaciones, todayDateKey())
+      const texto = describirTurno(vigente)
+      turnoNode.textContent = texto.turno || '—'
+      vigenciaNode.textContent = texto.vigencia || '—'
+      if (!vigente || !horarioNode) return
+      const turnos = await getTurnos().catch(() => [])
+      if (!wrapper.isConnected) return
+      const turno = turnos.find((item) => Number(item.id) === Number(vigente.turnoId))
+      const horas = textoHorarioHabitual(turno?.dias)
+      if (horas && horas !== '—') horarioNode.textContent = horas
+    }).catch(() => {
+      if (!wrapper.isConnected) return
+      turnoNode.textContent = '—'
+      vigenciaNode.textContent = '—'
+    })
+  }
+
   return wrapper
-}
-
-function createReadonlyMeta(empleado) {
-  const meta = document.createElement('div')
-  meta.className =
-    'mb-4 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-center'
-  meta.innerHTML = `
-    <p class="text-xs font-medium uppercase tracking-wide text-slate-500">Estado</p>
-    <div class="mt-2 flex justify-center">${employeeStatusBadge(empleado.activo)}</div>
-  `
-
-  return meta
 }
 
 function promptEmpleadoChangesConfirm(changes) {
@@ -1003,7 +1043,7 @@ export function createEmpleadoRecord({
       alert.textContent = LEGAJO_EDIT_DUPLICATE_ALERT
       view.append(alert)
     }
-    view.append(createEmpleadoDetail(current))
+    view.append(createEmpleadoDetail(current, { empresa: empresaLabel }))
 
     const actions = document.createElement('div')
     actions.className = 'mt-6 flex flex-col gap-2 border-t border-slate-100 pt-4 sm:flex-row sm:justify-end'
@@ -1087,7 +1127,6 @@ export function createEmpleadoRecord({
 
   function showEdit() {
     const view = document.createElement('div')
-    view.append(createReadonlyMeta(current))
 
     const notice = document.createElement('p')
     notice.className = 'mb-4 rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-sm text-blue-800'

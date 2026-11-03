@@ -9,6 +9,23 @@ export function fullName(empleado) {
   return [empleado.nombre, empleado.apellido].filter(Boolean).join(' ')
 }
 
+export function tituloEmpleado(empleado) {
+  const nombre = fullName(empleado) || 'Empleado'
+  const estado = empleado?.activo === false ? 'Inactivo' : 'Activo'
+  return `${nombre} - ${estado}`
+}
+
+export function pintarTituloEmpleado(heading, empleado) {
+  if (!heading) return
+  heading.classList.add('flex', 'min-w-0', 'flex-wrap', 'items-center', 'gap-2')
+  const name = document.createElement('span')
+  name.className = 'min-w-0 truncate'
+  name.textContent = fullName(empleado) || 'Empleado'
+  const host = document.createElement('span')
+  host.innerHTML = employeeStatusBadge(empleado?.activo !== false, { withIcon: true })
+  heading.replaceChildren(name, host.firstElementChild)
+}
+
 function sortIndicator(active, direction) {
   if (!active) return '<span class="text-slate-300" aria-hidden="true">↕</span>'
   return `<span class="text-slate-700" aria-hidden="true">${direction === 'desc' ? '↓' : '↑'}</span>`

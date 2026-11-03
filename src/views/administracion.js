@@ -88,11 +88,11 @@ import {
   applyUsuarioEditSaves,
   createUsuarioEditPanel,
   openUsuarioModificacionesConfirm,
+  pintarTituloUsuario,
   USUARIO_EDIT_SUCCESS_MESSAGE,
   USUARIO_EDIT_TITLE,
   usuarioEditIdentidadPayload,
   usuarioEditRolPayload,
-  usuarioEditSubtitle,
   usuarioEstadoConfirmMessage,
 } from '../components/usuario-edit-panel.js'
 import { createUsuarioForm } from '../components/usuario-form.js'
@@ -283,7 +283,7 @@ export async function renderAdministracion(container) {
   let secretHolder = null
   let passwordTemporalOpen = false
   let usuarioEditPanel = null
-  let usuarioEditSetSubtitle = null
+  let usuarioEditPaintTitle = null
   let usuariosRequestId = 0
   const life = createViewLifecycle()
   const usuarioAccionLock = createKeyedLock()
@@ -723,7 +723,7 @@ export async function renderAdministracion(container) {
       return
     }
     usuarioEditPanel.update(next)
-    usuarioEditSetSubtitle?.(usuarioEditSubtitle(next))
+    usuarioEditPaintTitle?.(next)
     applyUsuarioAccionBusy()
   }
 
@@ -966,8 +966,8 @@ export async function renderAdministracion(container) {
     usuarioEditPanel = panelEdit
     const modal = openModal({
       title: USUARIO_EDIT_TITLE,
-      subtitle: usuarioEditSubtitle(usuario),
-      dialogClass: 'max-w-2xl',
+      subtitle: '',
+      dialogClass: 'max-w-md',
       content: panelEdit.element,
       labelledBy: 'usuario-edit-title',
       unsavedChanges: true,
@@ -975,11 +975,14 @@ export async function renderAdministracion(container) {
       isDirty: () => panelEdit.isDirty(),
       onClose: () => {
         if (usuarioEditPanel === panelEdit) usuarioEditPanel = null
-        usuarioEditSetSubtitle = null
+        usuarioEditPaintTitle = null
         if (activeModalClose === modal.close) activeModalClose = null
       },
     })
-    usuarioEditSetSubtitle = modal.setSubtitle
+    usuarioEditPaintTitle = (actual) => {
+      pintarTituloUsuario(modal.dialog.querySelector('#usuario-edit-title'), actual, empresaLabel(actual?.empresaId))
+    }
+    usuarioEditPaintTitle(usuario)
     activeModalClose = modal.close
     applyUsuarioAccionBusy()
   }

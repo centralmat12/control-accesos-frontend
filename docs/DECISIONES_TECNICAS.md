@@ -38,6 +38,17 @@ El frontend y la API tienen remotos distintos. El directorio que los contiene no
 - Las pestañas de Administración ocupan el ancho de sus etiquetas (`w-fit`), no el ancho del módulo.
 - El Dashboard no repite una descripción bajo la barra ni muestra el botón manual Actualizar. El intervalo de actualización sigue. El aviso de empresa solo se muestra cuando no hay una empresa seleccionada.
 
+## Bitácora
+
+- Registros muestra solo eventos persistidos por la API. Hasta que ese listado exista, la pantalla queda vacía.
+- La traza de `activity-log.js` no se presenta como auditoría.
+
+## Borrado de un turno
+
+- El listado cuenta asignaciones vigentes.
+- El DELETE hace borrado lógico. Lo rechaza solo si queda una asignación sin fecha de fin, o con fin de hoy o posterior.
+- Las filas históricas de `EmpleadoTurno` se conservan.
+
 ## Lo que no se decidió aquí
 
 No se eligió un repositorio único para la documentación y no se cambió el descanso fijo de 60 minutos de una excepción de jornada con horario propio. La skill de traspaso sí existe; el procedimiento está en `.cursor/skills/traspaso-computadora/SKILL.md`.

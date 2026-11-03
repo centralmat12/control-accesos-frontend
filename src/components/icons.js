@@ -111,8 +111,8 @@ export function iconEyeOff() {
   </svg>`
 }
 
-export function iconStatusOk() {
-  return `<svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true">
+export function iconStatusOk(className = 'h-4 w-4') {
+  return `<svg class="${className}" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true">
     <path stroke-linecap="round" stroke-linejoin="round" d="M20 6 9 17l-5-5" />
   </svg>`
 }
@@ -188,6 +188,23 @@ export function iconChevronDown(className = 'h-4 w-4') {
 export function iconLock() {
   return `<svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
     <path stroke-linecap="round" stroke-linejoin="round" d="M7 11V8a5 5 0 0 1 10 0v3m-11 0h12v9H6z" />
+  </svg>`
+}
+
+export function iconSave(className = 'h-4 w-4') {
+  return `<svg class="${className}" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+    <path stroke-linecap="round" stroke-linejoin="round" d="M5 4.5h11.2L19.5 8v11.5H5z" />
+    <path stroke-linecap="round" stroke-linejoin="round" d="M8 4.5v5h7" />
+    <path stroke-linecap="round" stroke-linejoin="round" d="M8 19.5v-5.5h8v5.5" />
+  </svg>`
+}
+
+export function iconLockReset(className = 'h-4 w-4') {
+  return `<svg class="${className}" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+    <path stroke-linecap="round" stroke-linejoin="round" d="M8 10.5V8a4 4 0 0 1 7.4-2.1" />
+    <path stroke-linecap="round" stroke-linejoin="round" d="M15.2 3.1 14.4 6.2 17.6 6.6" />
+    <path stroke-linecap="round" stroke-linejoin="round" d="M6 10.5h12v8.2a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1z" />
+    <path stroke-linecap="round" d="M12 14v2.2" />
   </svg>`
 }
 

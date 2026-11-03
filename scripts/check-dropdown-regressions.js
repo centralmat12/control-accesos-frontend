@@ -42,7 +42,7 @@ check('1. Header: enhanceSelect, ancho estable y refresh asíncrono', () => {
 check('2. Registros: select migrado por enhanceSelectsIn', () => {
   const registros = read('src/views/registros.js')
   const app = read('src/app.js')
-  assert.match(registros, /<select id="registros-nivel"/)
+  assert.match(registros, /<select id="registros-resultado"/)
   assert.match(app, /enhanceSelectsIn\(main\)/)
   assert.equal(registros.includes('createDropdownBase'), false)
 })

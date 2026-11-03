@@ -1,4 +1,5 @@
 import { displayTipoLabel, esTipoEntrada, esTipoSalida, escapeHtml } from '../utils/format.js'
+import { iconStatusOk } from './icons.js'
 
 const TONES = {
   success:
@@ -7,6 +8,8 @@ const TONES = {
     'bg-amber-50 text-amber-700 ring-amber-600/10 dark:bg-amber-950/60 dark:text-amber-300 dark:ring-amber-400/20',
   danger:
     'bg-red-50 text-red-700 ring-red-600/10 dark:bg-red-950/60 dark:text-red-300 dark:ring-red-400/20',
+  orange:
+    'bg-orange-50 text-orange-800 ring-orange-600/15 dark:bg-orange-950/60 dark:text-orange-200 dark:ring-orange-400/25',
   neutral:
     'bg-slate-100 text-slate-700 ring-slate-500/10 dark:bg-slate-800 dark:text-slate-300 dark:ring-slate-400/20',
   info:
@@ -33,7 +36,8 @@ export function badgeHtml(label, tone = 'neutral', options = {}) {
     ? ` data-tooltip="${escapeHtml(options.tooltip)}" tabindex="0"`
     : ''
   const extra = options.className ? ` ${options.className}` : ''
-  return `<span class="inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium ring-1 ring-inset ${TONES[tone] ?? TONES.neutral}${extra}"${title}${ariaLabel}${tooltip}>${escapeHtml(label)}</span>`
+  const icon = options.icon ? `<span class="inline-flex shrink-0" aria-hidden="true">${options.icon}</span>` : ''
+  return `<span class="inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium ring-1 ring-inset ${TONES[tone] ?? TONES.neutral}${extra}"${title}${ariaLabel}${tooltip}>${icon}${escapeHtml(label)}</span>`
 }
 
 export function featureStatusBadge(kind) {
@@ -41,8 +45,11 @@ export function featureStatusBadge(kind) {
   return badgeHtml(status.label, status.tone)
 }
 
-export function employeeStatusBadge(active) {
-  return badgeHtml(active ? 'Activo' : 'Inactivo', active ? 'success' : 'neutral')
+export function employeeStatusBadge(active, { withIcon = false } = {}) {
+  return badgeHtml(active ? 'Activo' : 'Inactivo', active ? 'success' : 'neutral', {
+    className: withIcon && active !== false ? 'gap-1' : '',
+    icon: withIcon && active !== false ? iconStatusOk('h-3.5 w-3.5') : '',
+  })
 }
 
 export function movementBadge(tipo, options = {}) {

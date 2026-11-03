@@ -219,8 +219,8 @@ await check('8-12. Modal: identidad editable, empresa estática y rol según ope
   assert.match(markupSa, /name="correo"/)
   assert.match(markupSa, /value="martin\.eloy"/)
   assert.match(markupSa, /value="martin@example\.com"/)
-  assert.match(markupSa, /Empresa Norte/)
-  assert.match(markupSa, /data-usuario-empresa-resumen/)
+  assert.equal(markupSa.includes('>Empresa<'), false)
+  assert.match(read('src/components/usuario-edit-panel.js'), /dataset\.usuarioEmpresaResumen/)
   assert.equal(/<input[^>]+name="empresaId"/.test(markupSa), false)
   assert.equal(markupSa.includes('type="text"') || markupSa.includes('name="nombreUsuario"'), true)
   assert.match(markupSa, /id="usuario-edit-rol"/)
@@ -286,7 +286,7 @@ await check('20-21. Inactivo no ofrece reset/unlock; bloqueado activo sí', () =
   assert.match(markupInactivo, /Reactivar cuenta/)
   assert.equal(puedeDesbloquearUsuarioObjetivo(sa, bloqueado), true)
   assert.match(markupBloqueado, /Desbloquear/)
-  assert.match(markupBloqueado, /Restablecer clave/)
+  assert.match(markupBloqueado, /Blanqueo de clave/)
 })
 
 await check('22-23. No existe Eliminar ni DELETE de usuarios', () => {

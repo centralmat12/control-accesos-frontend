@@ -14,8 +14,10 @@ import {
 import { ROLES, USUARIO_ROLES_API, normalizeRole, usuarioRolLabel } from '../config/roles.js'
 import { escapeHtml, formatApiDateTime } from '../utils/format.js'
 import { sanitizePublicErrorMessage } from '../utils/public-error.js'
-import { BTN_SECONDARY_CLASS } from './button-styles.js'
-import { fieldIds, formFieldMarkup, wireFormFields } from './form-field.js'
+import { BTN_DELETE_CLASS, BTN_SECONDARY_CLASS } from './button-styles.js'
+import { iconLockReset, iconSave, iconTrash } from './icons.js'
+import { employeeStatusBadge } from './badge.js'
+import { fieldIds, FORM_LABEL_CLASS, formFieldMarkup, wireFormFields } from './form-field.js'
 import { enhanceSelectsIn, refreshEnhancedSelect } from './dropdown.js'
 import { openModal } from './modal.js'
 import { bindTooltipRoot, tooltipTriggerAttributes } from './tooltip.js'
@@ -33,7 +35,7 @@ export { USUARIO_CORREO_DUPLICADO, USUARIO_IDENTIDAD_CORREO_CONFIRM }
 export const USUARIO_EDIT_TITLE = 'Modificación de usuario'
 export const USUARIO_EDIT_FORM_TITLE = 'Datos de acceso y permisos'
 export const USUARIO_EDIT_FORM_HELP = 'Modificá la identificación, el correo o el rol.'
-export const USUARIO_EDIT_SAVE_LABEL = 'Guardar cambios'
+export const USUARIO_EDIT_SAVE_LABEL = 'Guardar'
 export const USUARIO_EDIT_CONFIRM_TITLE = 'Confirmar modificaciones'
 export const USUARIO_EDIT_CONFIRM_LABEL = 'Confirmar cambios'
 export const USUARIO_EDIT_SUCCESS_MESSAGE = 'Usuario actualizado correctamente.'
@@ -47,15 +49,14 @@ export const USUARIO_EDIT_TOOLTIPS = Object.freeze({
 })
 
 const BTN_PRIMARY_CLASS =
-  'inline-flex h-11 w-full shrink-0 items-center justify-center rounded-lg bg-blue-600 px-4 text-sm font-semibold text-white hover:bg-blue-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 active:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-600/70 disabled:text-white disabled:opacity-100 sm:w-auto'
+  'inline-flex h-10 w-fit shrink-0 items-center justify-center gap-1.5 rounded-lg bg-blue-600 px-3 text-sm font-semibold text-white hover:bg-blue-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 active:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-600/70 disabled:text-white disabled:opacity-100'
+const BTN_FIELD_SECONDARY = `${BTN_SECONDARY_CLASS} inline-flex h-10 w-fit shrink-0 items-center justify-center rounded-lg px-3 text-sm font-semibold`
+const BTN_RESET_CLASS = 'btn-action-reset gap-1.5'
 const BTN_COMPACT_SECONDARY = `${BTN_SECONDARY_CLASS} h-8 px-2.5 py-0 text-xs`
 const BTN_COMPACT_DANGER =
   'inline-flex h-8 items-center justify-center rounded-lg bg-red-600 px-2.5 text-xs font-semibold text-white hover:bg-red-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500 active:bg-red-700 disabled:cursor-not-allowed disabled:opacity-60'
 const BTN_COMPACT_POSITIVE =
   'inline-flex h-8 items-center justify-center rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 text-xs font-semibold text-emerald-800 hover:bg-emerald-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 disabled:cursor-not-allowed disabled:opacity-60 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-200 dark:hover:bg-emerald-950/70'
-const SECTION_TITLE_CLASS = 'text-sm font-semibold text-slate-900 dark:text-slate-100'
-const SECTION_HELP_CLASS = 'text-sm text-slate-500 dark:text-slate-400'
-
 export function rolCambioConfirmMessage(rolActual, rolNuevo) {
   const from = normalizeRole(rolActual)
   const to = normalizeRole(rolNuevo)
@@ -66,6 +67,26 @@ export function rolCambioConfirmMessage(rolActual, rolNuevo) {
 
 export function usuarioEstadoConfirmMessage(activar) {
   return activar ? USUARIO_REACTIVAR_MESSAGE : USUARIO_DESACTIVAR_MESSAGE
+}
+
+export function pintarTituloUsuario(heading, usuario, empresaLabel = '') {
+  if (!heading) return
+  heading.classList.add('flex', 'min-w-0', 'flex-wrap', 'items-center', 'gap-x-2', 'gap-y-1')
+  const name = document.createElement('span')
+  name.className = 'min-w-0 truncate'
+  name.textContent = String(usuario?.nombreUsuario ?? '').trim() || 'Usuario'
+  const nodes = [name]
+  const empresa = String(empresaLabel ?? '').trim()
+  if (empresa && empresa !== '—') {
+    const company = document.createElement('span')
+    company.className = 'min-w-0 truncate text-sm font-medium text-slate-500 dark:text-slate-400'
+    company.dataset.usuarioEmpresaResumen = ''
+    company.textContent = empresa
+    nodes.push(company)
+  }
+  const host = document.createElement('span')
+  host.innerHTML = employeeStatusBadge(usuario?.activo !== false, { withIcon: true })
+  heading.replaceChildren(...nodes, host.firstElementChild)
 }
 
 export function usuarioEditSubtitle(usuario) {
@@ -230,76 +251,77 @@ function resumenItem(label, valueHtml, { valueClass = '' } = {}) {
   `
 }
 
-function estadoDotMarkup(activo) {
-  const tone = activo ? 'bg-emerald-500' : 'bg-red-500'
-  return `<span class="inline-flex min-w-0 items-center gap-2">
-      <span class="h-2 w-2 shrink-0 rounded-full ${tone}" aria-hidden="true"></span>
-      <span>${escapeHtml(usuarioEditEstadoResumen({ activo }))}</span>
-    </span>`
-}
-
-function actionButtonMarkup({ action, usuarioId, label, className, tooltip, tooltipId }) {
+function actionButtonMarkup({ action, usuarioId, label = '', ariaLabel = '', className, tooltip, tooltipId, iconHtml = '' }) {
   const tip = tooltip ? ` ${tooltipTriggerAttributes(tooltip, tooltipId)}` : ''
+  const accessible = ariaLabel || label
+  const aria = accessible && accessible !== label ? ` aria-label="${escapeHtml(accessible)}"` : ''
+  const content = `${iconHtml}${label ? `<span>${escapeHtml(label)}</span>` : ''}`
   return `
     <button
       type="button"
       data-action="${escapeHtml(action)}"
       data-usuario-accion="${escapeHtml(action)}"
       data-usuario-id="${usuarioId}"
-      class="${className}"${tip}
+      class="${className}"${aria}${tip}
     >
-      ${escapeHtml(label)}
+      ${content}
     </button>
   `
 }
 
-export function usuarioEditHeaderActionsMarkup({ usuario, operador } = {}) {
+function usuarioEditActionGroups({ usuario, operador, matched = false } = {}) {
   const canEstado = puedeCambiarEstadoUsuarioObjetivo(operador, usuario)
   const canReset = puedeRestablecerUsuarioObjetivo(operador, usuario)
   const canUnlock = puedeDesbloquearUsuarioObjetivo(operador, usuario)
   const activo = Boolean(usuario?.activo)
   const usuarioId = Number(usuario?.id) > 0 ? Number(usuario.id) : ''
-  const buttons = []
+  const acceso = []
 
   if (canReset) {
-    buttons.push(
+    acceso.push(
       actionButtonMarkup({
         action: 'restablecer',
         usuarioId,
-        label: 'Restablecer clave',
-        className: BTN_COMPACT_SECONDARY,
+        label: matched ? 'Blanqueo de clave' : 'Restablecer clave',
+        iconHtml: matched ? iconLockReset('h-3.5 w-3.5 shrink-0') : '',
+        className: matched ? BTN_RESET_CLASS : BTN_COMPACT_SECONDARY,
         tooltip: USUARIO_EDIT_TOOLTIPS.restablecer,
         tooltipId: 'usuario-edit-restablecer',
       }),
     )
   }
 
-  if (canEstado) {
-    buttons.push(
-      actionButtonMarkup({
-        action: 'estado',
-        usuarioId,
-        label: activo ? 'Desactivar cuenta' : 'Reactivar cuenta',
-        className: activo ? BTN_COMPACT_DANGER : BTN_COMPACT_POSITIVE,
-        tooltip: activo ? USUARIO_EDIT_TOOLTIPS.desactivar : '',
-        tooltipId: activo ? 'usuario-edit-estado' : '',
-      }),
-    )
-  }
-
   if (canUnlock) {
-    buttons.push(
+    acceso.push(
       actionButtonMarkup({
         action: 'desbloquear',
         usuarioId,
         label: 'Desbloquear',
-        className: BTN_COMPACT_SECONDARY,
+        className: matched ? BTN_FIELD_SECONDARY : BTN_COMPACT_SECONDARY,
         tooltip: USUARIO_EDIT_TOOLTIPS.desbloquear,
         tooltipId: 'usuario-edit-desbloquear',
       }),
     )
   }
 
+  const estado = canEstado
+    ? actionButtonMarkup({
+        action: 'estado',
+        usuarioId,
+        label: activo ? 'Desactivar cuenta' : 'Reactivar cuenta',
+        iconHtml: activo && matched ? iconTrash('h-3.5 w-3.5 shrink-0') : '',
+        className: activo ? (matched ? `${BTN_DELETE_CLASS} gap-1.5` : BTN_COMPACT_DANGER) : BTN_COMPACT_POSITIVE,
+        tooltip: activo ? USUARIO_EDIT_TOOLTIPS.desactivar : '',
+        tooltipId: activo ? 'usuario-edit-estado' : '',
+      })
+    : ''
+
+  return { estado, acceso: acceso.join('') }
+}
+
+export function usuarioEditHeaderActionsMarkup({ usuario, operador } = {}) {
+  const { estado, acceso } = usuarioEditActionGroups({ usuario, operador })
+  const buttons = [acceso, estado].filter(Boolean)
   if (!buttons.length) return ''
 
   return `
@@ -453,13 +475,12 @@ export function usuarioEditPanelMarkup({ usuario, operador, empresaLabel = '—'
   const canIdentidad = puedeActualizarIdentidadUsuarioObjetivo(operador, usuario)
   const canRole = puedeCambiarRolUsuarioObjetivo(operador, usuario)
   const canForm = canIdentidad || canRole
-  const activo = Boolean(usuario?.activo)
   const selectedRol = String(usuario?.rol ?? '')
   const usuarioId = Number(usuario?.id) > 0 ? Number(usuario.id) : ''
   const identity = identityValues(usuario)
 
   const nombreCorreoMarkup = canIdentidad
-    ? `<div class="grid gap-3 sm:grid-cols-2">
+    ? `<div class="space-y-4">
         ${formFieldMarkup({
           id: 'usuario-edit-nombreUsuario',
           name: 'nombreUsuario',
@@ -478,67 +499,62 @@ export function usuarioEditPanelMarkup({ usuario, operador, empresaLabel = '—'
           maxLength: 100,
           autocomplete: 'email',
           value: identity.correo,
-          helpText: 'Se utiliza para iniciar sesión.',
         })}
       </div>`
-    : `<div class="grid gap-3 sm:grid-cols-2">
+    : `<div class="space-y-4">
         ${resumenItem('Nombre de usuario', escapeHtml(identity.nombreUsuario || '—'))}
         ${resumenItem('Correo electrónico', escapeHtml(identity.correo || '—'))}
       </div>`
 
-  const saveButton = `<button type="submit" data-action="guardar-cambios" data-usuario-accion="guardar" data-usuario-id="${usuarioId}" class="${BTN_PRIMARY_CLASS}" disabled>
-                      ${USUARIO_EDIT_SAVE_LABEL}
-                    </button>`
+  const saveButton = `<button type="submit" data-action="guardar-cambios" data-usuario-accion="guardar" data-usuario-id="${usuarioId}" class="${BTN_PRIMARY_CLASS}" disabled>${iconSave('h-3.5 w-3.5 shrink-0')}<span>${USUARIO_EDIT_SAVE_LABEL}</span></button>`
 
-  const rolYGuardarMarkup = canRole
-    ? `<div class="flex flex-col gap-3 sm:flex-row sm:items-end">
-        <div class="min-w-0 flex-1">
-          ${formFieldMarkup({
-            id: 'usuario-edit-rol',
-            name: 'rol',
-            label: 'Rol',
-            tag: 'select',
-            extraInputClass: 'h-11 py-0',
-            optionsHtml: USUARIO_ROLES_API.map(
-              (rol) =>
-                `<option value="${escapeHtml(rol)}"${rol === selectedRol ? ' selected' : ''}>${escapeHtml(usuarioRolLabel(rol))}</option>`,
-            ).join(''),
-          })}
-        </div>
-        ${saveButton}
+  const rolMarkup = canRole
+    ? formFieldMarkup({
+        id: 'usuario-edit-rol',
+        name: 'rol',
+        label: 'Rol',
+        tag: 'select',
+        extraInputClass: 'h-11 py-0',
+        optionsHtml: USUARIO_ROLES_API.map(
+          (rol) =>
+            `<option value="${escapeHtml(rol)}"${rol === selectedRol ? ' selected' : ''}>${escapeHtml(usuarioRolLabel(rol))}</option>`,
+        ).join(''),
+      })
+    : `<div>
+        <p class="${FORM_LABEL_CLASS}">Rol</p>
+        <p class="flex h-11 items-center text-sm font-medium text-slate-900 dark:text-slate-100">${escapeHtml(usuarioRolLabel(usuario?.rol) || '—')}</p>
       </div>`
-    : `<div class="flex justify-end">${saveButton}</div>`
+  const acciones = usuarioEditActionGroups({ usuario, operador, matched: true })
+  const camposMarkup = `
+    <section data-section="acceso" class="space-y-4">
+      ${nombreCorreoMarkup}
+      ${rolMarkup}
+    </section>
+  `
+  const filaPrincipal = acciones.estado || canForm
+    ? `<div class="flex items-center gap-2 ${acciones.estado && canForm ? 'justify-between' : canForm ? 'justify-end' : ''}">
+        ${acciones.estado}
+        ${canForm ? saveButton : ''}
+      </div>`
+    : ''
+  const pieMarkup = `
+    <div class="space-y-3 border-t border-slate-200 pt-4 dark:border-slate-700">
+      ${acciones.acceso ? `<div class="flex flex-wrap gap-2">${acciones.acceso}</div>` : ''}
+      ${filaPrincipal}
+    </div>
+  `
 
-  return `
-      <div class="space-y-4">
-        ${usuarioEditHeaderActionsMarkup({ usuario, operador })}
-
-        <section data-section="resumen" class="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 dark:border-slate-700 dark:bg-slate-800/50">
-          <h3 class="sr-only">Resumen de la cuenta</h3>
-          <dl class="grid grid-cols-1 items-stretch gap-3 min-[28rem]:grid-cols-2 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.5fr)_minmax(0,1.2fr)_minmax(0,1.6fr)] lg:items-center">
-            ${resumenItem('Empresa', `<span data-usuario-empresa-resumen>${escapeHtml(empresaLabel || '—')}</span>`)}
-            ${resumenItem('Rol', escapeHtml(usuarioRolLabel(usuario?.rol) || '—'), { valueClass: 'lg:whitespace-nowrap' })}
-            ${resumenItem('Estado', estadoDotMarkup(activo))}
-            ${resumenItem('Acceso', escapeHtml(usuarioEditAccesoResumen(usuario)))}
-          </dl>
-        </section>
-
-        ${
-          canForm
-            ? `<section data-section="acceso">
-                <form id="usuario-edit-form" class="space-y-4" novalidate>
-                  <div>
-                    <h3 class="${SECTION_TITLE_CLASS}">${USUARIO_EDIT_FORM_TITLE}</h3>
-                    <p class="${SECTION_HELP_CLASS}">${USUARIO_EDIT_FORM_HELP}</p>
-                  </div>
-                  ${nombreCorreoMarkup}
-                  ${rolYGuardarMarkup}
-                </form>
-              </section>`
-            : `<section data-section="acceso">
-                ${nombreCorreoMarkup}
-              </section>`
-        }
+  return canForm
+    ? `
+      <form id="usuario-edit-form" class="space-y-5" novalidate>
+        ${camposMarkup}
+        ${pieMarkup}
+      </form>
+    `
+    : `
+      <div class="space-y-5">
+        ${camposMarkup}
+        ${acciones.estado ? pieMarkup : ''}
       </div>
     `
 }
@@ -591,7 +607,8 @@ export function createUsuarioEditPanel({
     const save = wrapper.querySelector('[data-action="guardar-cambios"]')
     if (!save) return
     save.disabled = saveBusy || !hasFormChanges() || hasIdentidadErrors()
-    save.textContent = USUARIO_EDIT_SAVE_LABEL
+    const label = save.querySelector('span')
+    if (label) label.textContent = USUARIO_EDIT_SAVE_LABEL
   }
 
   function paint() {

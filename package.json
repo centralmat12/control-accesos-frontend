@@ -1,6 +1,6 @@
 {
   "name": "tesis-control-acceso",
-  "version": "0.2.0-beta",
+  "version": "0.5.0-beta",
   "private": true,
   "type": "module",
   "scripts": {

@@ -346,7 +346,29 @@
     color: var(--color-slate-200);
   }
 
+  .timeline-now-line {
+    background-image: repeating-linear-gradient(
+      to bottom,
+      var(--color-red-500) 0 2px,
+      transparent 2px 8px
+    );
+  }
+
+  .retro-colon {
+    display: inline-block;
+    animation: retro-colon 1s steps(1, end) infinite;
+  }
+
+  @keyframes retro-colon {
+    0%, 49.9% { opacity: 1; }
+    50%, 100% { opacity: 0; }
+  }
+
   @media (prefers-reduced-motion: reduce) {
+    .retro-colon {
+      animation: none;
+    }
+
     .btn-secondary {
       transition: none;
     }
@@ -357,7 +379,8 @@
   }
 
   .btn-action-edit,
-  .btn-action-delete {
+  .btn-action-delete,
+  .btn-action-reset {
     display: inline-flex;
     width: fit-content;
     max-width: 100%;
@@ -424,13 +447,38 @@
     color: var(--color-red-100);
   }
 
+  .btn-action-reset {
+    border-color: var(--color-amber-300);
+    background-color: transparent;
+    color: var(--color-amber-800);
+  }
+
+  html.dark .btn-action-reset {
+    border-color: color-mix(in srgb, var(--color-amber-400) 70%, transparent);
+    background-color: color-mix(in srgb, var(--color-amber-950) 72%, transparent);
+    color: var(--color-amber-200);
+  }
+
+  .btn-action-reset:hover:not(:disabled) {
+    border-color: var(--color-amber-400);
+    background-color: var(--color-amber-50);
+  }
+
+  html.dark .btn-action-reset:hover:not(:disabled) {
+    border-color: var(--color-amber-300);
+    background-color: color-mix(in srgb, var(--color-amber-900) 78%, transparent);
+    color: var(--color-amber-100);
+  }
+
   .btn-action-edit:focus,
-  .btn-action-delete:focus {
+  .btn-action-delete:focus,
+  .btn-action-reset:focus {
     outline: none;
   }
 
   .btn-action-edit:focus-visible,
-  .btn-action-delete:focus-visible {
+  .btn-action-delete:focus-visible,
+  .btn-action-reset:focus-visible {
     outline: 2px solid var(--color-blue-500);
     outline-offset: 2px;
   }
@@ -439,10 +487,47 @@
     outline-color: var(--color-red-400);
   }
 
+  .turno-horas-netas {
+    display: inline-flex;
+    height: 2.25rem;
+    align-items: center;
+    justify-content: center;
+    padding: 0 0.75rem;
+    border-radius: 0.5rem;
+    border: 1px solid var(--color-emerald-300);
+    background-color: var(--color-emerald-50);
+    color: var(--color-emerald-800);
+    font-size: 0.8125rem;
+    font-weight: 600;
+    line-height: 1rem;
+    white-space: nowrap;
+  }
+
+  html.dark .turno-horas-netas {
+    border-color: color-mix(in srgb, var(--color-emerald-400) 70%, transparent);
+    background-color: color-mix(in srgb, var(--color-emerald-950) 72%, transparent);
+    color: var(--color-emerald-200);
+  }
+
+  .turno-horas-netas[data-empty='true'] {
+    border-color: var(--color-slate-300);
+    background-color: transparent;
+    color: var(--color-slate-400);
+    font-weight: 500;
+  }
+
+  html.dark .turno-horas-netas[data-empty='true'] {
+    border-color: var(--color-slate-600);
+    background-color: transparent;
+    color: var(--color-slate-400);
+  }
+
   .btn-action-edit:disabled,
   .btn-action-delete:disabled,
+  .btn-action-reset:disabled,
   .btn-action-edit[aria-busy='true'],
-  .btn-action-delete[aria-busy='true'] {
+  .btn-action-delete[aria-busy='true'],
+  .btn-action-reset[aria-busy='true'] {
     cursor: not-allowed;
     opacity: 0.5;
   }
@@ -476,7 +561,8 @@
 
   @media (prefers-reduced-motion: reduce) {
     .btn-action-edit,
-    .btn-action-delete {
+    .btn-action-delete,
+    .btn-action-reset {
       transition: none;
     }
   }

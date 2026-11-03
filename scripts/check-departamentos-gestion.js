@@ -11,6 +11,7 @@ import {
 import {
   mensajeConfirmacionEliminar,
   mensajeRechazoEliminacion,
+  aplicarConteoEmpleados,
   MENSAJE_ELIMINACION_ASIGNADOS,
   MENSAJE_ELIMINACION_TITULO,
 } from '../src/components/departamentos-admin.js'
@@ -114,7 +115,8 @@ check('el selector y el botón comparten la fila y el modal concentra el alta', 
   assert.equal(admin.includes('margin-top'), false)
   assert.match(admin, /La sucursal no se modifica/)
   assert.equal(admin.includes('headerActions'), false)
-  assert.equal(admin.includes('Empleados asignados'), false)
+  assert.match(admin, /Empleados asignados/)
+  assert.match(admin, /asignadosLabel\(item\.cantidadEmpleados\)/)
   assert.match(admin, /createDepartamento\(/)
   assert.match(admin, /openFormModal/)
   assert.match(admin, /flex-nowrap items-center gap-2/)
@@ -124,7 +126,7 @@ check('el selector y el botón comparten la fila y el modal concentra el alta', 
   assert.match(read('src/api/departamentos.js'), /MENSAJE_DEPARTAMENTOS_403/)
   assert.match(read('src/api/departamentos.js'), /inflightDepartamentos/)
   assert.match(admin, /console\.error\(error\)/)
-  assert.match(admin, /minmax\(220px,1fr\)_180px_auto/)
+  assert.match(admin, /minmax\(220px,0\.8fr\)_minmax\(140px,0\.7fr\)_minmax\(180px,1\.2fr\)_auto/)
   assert.match(admin, /items-end/)
   assert.match(read('src/components/admin-panel-layout.js'), /self-end/)
   assert.match(admin, /overflow-x-hidden/)
@@ -308,6 +310,26 @@ check('el selector conserva la edición y limpia la selección eliminada', () =>
   assert.match(form, /event\.type === 'delete'/)
   assert.match(form, /selected === event\.departamentoId \? null : selected/)
   assert.match(form, /event\.type === 'create'/)
+})
+
+check('completa el conteo con los empleados cuando el departamento no lo trae', () => {
+  const admin = read('src/components/departamentos-admin.js')
+  assert.match(admin, /getEmpleados\(\{ incluirInactivos: true \}\)/)
+  assert.match(admin, /aplicarConteoEmpleados\(items, empleados\)/)
+  const contados = aplicarConteoEmpleados(
+    [
+      { id: 8, nombre: 'Limpieza' },
+      { id: 6, nombre: 'Único', cantidadEmpleados: 4 },
+    ],
+    [
+      { departamentoId: 8 },
+      { departamentoId: 6 },
+      { departamentoId: 6 },
+      { departamentoId: null },
+    ],
+  )
+  assert.equal(contados[0].cantidadEmpleados, 1)
+  assert.equal(contados[1].cantidadEmpleados, 4)
 })
 
 if (failed > 0) {
