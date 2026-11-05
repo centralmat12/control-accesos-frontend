@@ -3,6 +3,7 @@ import {
   getCurrentUser,
   isAuthenticated,
   logout,
+  prepararArranque,
   requiresPasswordChange,
 } from './api/auth.js'
 import { EMPRESA_CONTEXTO_EVENT } from './api/empresa-context.js'
@@ -42,7 +43,8 @@ function clearActiveView() {
   activeViewCleanup = null
 }
 
-export function bootstrap(root) {
+export async function bootstrap(root) {
+  await prepararArranque()
   let currentView = DEFAULT_VIEW
   let pendingViewOptions = {}
   let mainEl = null
@@ -150,11 +152,12 @@ export function bootstrap(root) {
       onNavigate: navigate,
       onLogout: () => {
         clearActiveView()
-        logout()
-        currentView = DEFAULT_VIEW
-        pendingViewOptions = {}
-        writeViewHash(DEFAULT_VIEW, { replace: true })
-        mount()
+        void logout().then(() => {
+          currentView = DEFAULT_VIEW
+          pendingViewOptions = {}
+          writeViewHash(DEFAULT_VIEW, { replace: true })
+          mount()
+        })
       },
       onChangePassword: () => {
         openCambiarPasswordModal({
@@ -227,6 +230,18 @@ export function bootstrap(root) {
     setSidebarOpen(false)
     mount()
   }
+
+  window.addEventListener('ca:session-reset', () => {
+    if (!isAuthenticated()) {
+      clearActiveView()
+      mainEl = null
+      passwordChangeViewActive = false
+      currentView = DEFAULT_VIEW
+      pendingViewOptions = {}
+      writeViewHash(DEFAULT_VIEW, { replace: true })
+      mount()
+    }
+  })
 
   window.addEventListener('ca:unauthorized', () => {
     clearActiveView()

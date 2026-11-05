@@ -49,6 +49,20 @@ El frontend y la API tienen remotos distintos. El directorio que los contiene no
 - El DELETE hace borrado lógico. Lo rechaza solo si queda una asignación sin fecha de fin, o con fin de hoy o posterior.
 - Las filas históricas de `EmpleadoTurno` se conservan.
 
+## Sesión renovable del panel
+
+- El access vive en memoria y en `sessionStorage`. `localStorage` no recibe el token ni la cookie. Solo guarda la coordinación: fase `habilitada`, `cerrada` o `incierta`, generación, revisión, usuario, sid y marcador.
+- La generación del encabezado `X-CF-Generacion` es la misma que se guarda. Cada login renovable crea un UUID. La revisión aumenta con cada access nuevo y no usa `iat`.
+- El lock `ca-auth-sesion` cubre login, refresh, cierre y transiciones. No hay mutex en `localStorage`.
+- Antes de enviar el refresh se escriben el marcador y la fase `incierta`. Un 200 válido habilita y sube la revisión. Un 401 cierra esa generación. Red, timeout, cuerpo ilegible o 5xx dejan la incertidumbre y no se reintenta. Un 429 devuelve la fase habilitada y no se repite enseguida.
+- Una fase cerrada o incierta no se restaura al recargar. Hace falta un login explícito.
+- Como máximo se repite una vez un GET o HEAD después de renovar la misma generación, usuario y sid. No se repiten escrituras, el cambio de contraseña ni un resultado ambiguo.
+- El cierre de una generación no borra una generación posterior. Si la red del cierre falla, el estado local queda cerrado y el login lo explica.
+- Si falta una sola de estas tres capacidades, el login queda tradicional: Web Locks, BroadcastChannel o un `localStorage` que no responde o lanza. Ese login envía solo `Content-Type`, sin `credentials`, sin `X-CF-Solicitud`, sin `X-CF-Generacion` y sin refresh.
+- Una pestaña que conserva una generación distinta de la publicada no marca la generación nueva como incierta ni la refresca. Descarta solo su access y cancela la operación.
+- Si el usuario que envió la petición no es el de la renovación, la operación no se repite. El contexto de empresa se olvida cuando la sesión local sigue siendo la anterior. La sesión más nueva no se cierra.
+- El contexto de empresa del SuperAdmin se mantiene si renueva el mismo usuario. Cambia de usuario o cierra sesión, y se limpia.
+
 ## Lo que no se decidió aquí
 
 No se eligió un repositorio único para la documentación y no se cambió el descanso fijo de 60 minutos de una excepción de jornada con horario propio. La skill de traspaso sí existe; el procedimiento está en `.cursor/skills/traspaso-computadora/SKILL.md`.

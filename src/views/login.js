@@ -1,4 +1,4 @@
-import { consumeLoginNotice, login } from '../api/auth.js'
+import { consumeLoginNotice, login, mensajeCompatibilidadSesion, MENSAJE_CIERRE_SIN_CONFIRMAR, MENSAJE_SESION_CAMBIADA } from '../api/auth.js'
 import { brandLogoAuthMarkup } from '../components/brand-logo.js'
 import { createThemeToggle } from '../components/theme-toggle.js'
 import {
@@ -54,6 +54,7 @@ export function renderLogin(container, { onSuccess }) {
             })}
         </div>
 
+        <p id="login-compat" class="mt-4 hidden rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-100" role="status"></p>
         <p id="login-notice" class="mt-4 hidden rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-200" role="status"></p>
         <p id="login-error" class="mt-4 hidden rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-300" role="alert"></p>
 
@@ -72,10 +73,19 @@ export function renderLogin(container, { onSuccess }) {
 
   const form = view.querySelector('#login-form')
   const noticeEl = view.querySelector('#login-notice')
+  const compatEl = view.querySelector('#login-compat')
   const errorEl = view.querySelector('#login-error')
   const submitBtn = view.querySelector('#login-submit')
+  const compatibilidad = mensajeCompatibilidadSesion()
+  if (compatibilidad && compatEl) {
+    compatEl.textContent = compatibilidad
+    compatEl.classList.remove('hidden')
+  }
   const loginNotice = consumeLoginNotice()
-  if (loginNotice && noticeEl) {
+  if (loginNotice && (loginNotice === MENSAJE_CIERRE_SIN_CONFIRMAR || loginNotice === MENSAJE_SESION_CAMBIADA) && errorEl) {
+    errorEl.textContent = loginNotice
+    errorEl.classList.remove('hidden')
+  } else if (loginNotice && noticeEl) {
     noticeEl.textContent = loginNotice
     noticeEl.classList.remove('hidden')
   }

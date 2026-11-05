@@ -295,7 +295,7 @@ Cloudflare no se purga desde este workflow. El smoke test usa un query string co
 | Interfaz principal (sidebar, header, layout) | Implementada |
 | Navegación entre vistas | Implementada (hash: `#/dashboard`, `#/fichadas`, `#/empleados`, `#/administracion`, `#/registros`) |
 | Login | Integrado con la API real (`POST /api/Auth/Login`) |
-| Sesión | JWT en `sessionStorage` (`ca.auth.token`) y usuario en `ca.auth.user` |
+| Sesión | Access en memoria y `sessionStorage` (`ca.auth.token`). Metadatos sin secreto en `localStorage` (`ca.auth.coordinacion`). El refresh queda en la cookie HttpOnly de la API. |
 | Peticiones protegidas | Header `Authorization: Bearer <token>` |
 | Empleados (listado, alta, detalle, baja lógica) | Integrado con la API. Paginación, filtros y ordenamiento en el cliente |
 | Fichadas (filtros server-side, período, jornadas, CSV, impresión) | Integrado con la API |
@@ -303,7 +303,7 @@ Cloudflare no se purga desde este workflow. El smoke test usa un query string co
 | Dashboard | Datos reales (`GET /api/empleados` + `GET /api/fichadas` del día; SuperAdmin también `GET /api/agentes`). Refresco manual y automático. No hay endpoint de dashboard en la API oficial. |
 | Áreas, Horarios, Dispositivos, Agentes | Placeholders: el código de vista genérica se conserva, pero **no aparecen** en el menú principal |
 
-El frontend **no valida la firma** del JWT. Solo decodifica el payload para mostrar nombre, email, rol y `empresa_id`. Un **401** en una petición autenticada cierra la sesión y vuelve al login. La sesión sobrevive a recargar la pestaña; no sobrevive a cerrar el navegador.
+El frontend **no valida la firma** del JWT. Solo decodifica el payload para mostrar nombre, email, rol y `empresa_id`. Un access renovable se actualiza con `POST /api/Auth/refresh` cuando la sesión coordinada está habilitada. Un 401 definitivo cierra la sesión y vuelve al login. Una sesión cerrada o incierta no se restaura al recargar.
 
 ### Endpoints que usa hoy el frontend
 

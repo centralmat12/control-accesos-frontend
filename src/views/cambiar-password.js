@@ -28,12 +28,11 @@ export function renderCambioPasswordObligatorio(container, { onLogout, onComplet
     showLogout: true,
     compactActions: true,
     onLogout: () => {
-      logout()
-      onLogout?.()
+      void logout().then(() => onLogout?.())
     },
     onSubmit: async (dto) => {
-      await cambiarPassword(dto)
-      finishPasswordChange()
+      const resultado = await cambiarPassword(dto)
+      await finishPasswordChange(resultado.generacion)
       onCompleted?.()
     },
   })
@@ -71,9 +70,9 @@ export function openCambiarPasswordModal({ onCompleted } = {}) {
     onCancel: () => modal.close(),
     onSubmit: async (dto) => {
       try {
-        await cambiarPassword(dto)
+        const resultado = await cambiarPassword(dto)
         modal.close({ force: true })
-        finishPasswordChange()
+        await finishPasswordChange(resultado.generacion)
         onCompleted?.()
       } catch (error) {
         if (error?.code === 'UNAUTHORIZED') {

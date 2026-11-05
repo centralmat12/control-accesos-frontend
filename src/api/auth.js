@@ -11,6 +11,15 @@ import { showToast } from '../components/toast.js'
 import { clearActivityLogs, logApiNetworkError, logApiResponse, logInfo } from '../utils/activity-log.js'
 import { sanitizePublicErrorMessage } from '../utils/public-error.js'
 import { clearEmpresaContexto } from './empresa-context.js'
+import {
+  crearSesionCoordinada,
+  MENSAJE_CIERRE_SIN_CONFIRMAR,
+  MENSAJE_COMPATIBILIDAD,
+  MENSAJE_OPERACION_NO_REPETIDA,
+  MENSAJE_SESION_CAMBIADA,
+} from './sesion-coordinada.js'
+
+export { MENSAJE_CIERRE_SIN_CONFIRMAR }
 
 const SESSION_KEY = 'ca.auth.user'
 const TOKEN_KEY = 'ca.auth.token'
@@ -23,6 +32,7 @@ export const PASSWORD_CHANGED_LOGIN_MESSAGE =
   'Contraseña actualizada. Iniciá sesión nuevamente con tu nueva contraseña.'
 export const PASSWORD_CHANGE_REQUIRED_CODE = 'PASSWORD_CHANGE_REQUIRED'
 export const AUTH_CAMBIAR_PASSWORD_PATH = '/api/Auth/cambiar-password'
+export { MENSAJE_COMPATIBILIDAD, MENSAJE_SESION_CAMBIADA, MENSAJE_OPERACION_NO_REPETIDA }
 
 let unauthorizedNotified = false
 let passwordChangeNotified = false
@@ -95,7 +105,8 @@ export function resetSessionGuards() {
 export function notifyUnauthorized() {
   if (unauthorizedNotified) return
   unauthorizedNotified = true
-  logout()
+  clearSession()
+  void logout()
   try {
     showToast({ message: SESSION_EXPIRED_USER_MESSAGE, tone: 'error' })
   } catch {
@@ -195,6 +206,9 @@ function userFromToken(token, fallbackEmail) {
     user.empresaId = empresaId
   }
 
+  const sid = readClaim(payload, 'sid')
+  if (sid) user.sid = sid
+
   return user
 }
 
@@ -207,6 +221,116 @@ function isAgentCredential(token, user) {
   return tokenUse === 'agent'
 }
 
+function identificarAccess(token) {
+  const payload = decodeJwtPayload(token)
+  const userId = Number(readClaim(
+    payload,
+    'http://schemas.xmlsoap.org/ws/2005/05/identity/claims/nameidentifier',
+    'nameid',
+    'sub',
+  ))
+  return {
+    usuarioId: Number.isFinite(userId) && userId > 0 ? userId : null,
+    sid: readClaim(payload, 'sid'),
+  }
+}
+
+function almacenamientoCompartido() {
+  try {
+    return globalThis.localStorage || null
+  } catch {
+    return null
+  }
+}
+
+let coordinador
+function sesion() {
+  if (!coordinador) {
+    const canalNativo = typeof document !== 'undefined' && typeof BroadcastChannel === 'function'
+      ? new BroadcastChannel('ca-auth')
+      : null
+    const oidores = new Set()
+    if (canalNativo) {
+      canalNativo.onmessage = (event) => {
+        for (const fn of oidores) fn(event.data)
+      }
+    }
+    coordinador = crearSesionCoordinada({
+      local: almacenamientoCompartido(),
+      locks: globalThis.navigator?.locks?.request
+        ? { exclusivo: (nombre, fn) => navigator.locks.request(nombre, fn) }
+        : null,
+      canal: canalNativo
+        ? {
+          publicar(mensaje) { canalNativo.postMessage(mensaje) },
+          suscribir(fn) {
+            oidores.add(fn)
+            return () => oidores.delete(fn)
+          },
+        }
+        : null,
+      fetch: (...args) => globalThis.fetch(...args),
+      identificar: identificarAccess,
+      uuid: () => globalThis.crypto.randomUUID(),
+      guardarAccess: writeToken,
+      leerAccess: getToken,
+      limpiarAccess: () => sessionStorage.removeItem(TOKEN_KEY),
+      urlLogin: apiUrl('/api/Auth/Login'),
+      urlRefresh: apiUrl('/api/Auth/refresh'),
+      urlCierre: apiUrl('/api/Auth/cerrar-sesion'),
+      alCambiarRemoto: () => {
+        clearSession()
+        clearEmpresaContexto({ silent: true })
+        window.dispatchEvent(new CustomEvent('ca:session-reset'))
+      },
+    })
+  }
+  return coordinador
+}
+
+export function mensajeCompatibilidadSesion() {
+  return sesion().soporta() ? '' : MENSAJE_COMPATIBILIDAD
+}
+
+export async function prepararArranque() {
+  const resultado = await sesion().preparar()
+  if (resultado.modo === 'login') {
+    clearSession()
+    return resultado
+  }
+  const token = getToken()
+  if (token && !getCurrentUser()) writeSession(userFromToken(token))
+  return resultado
+}
+
+export function olvidarIdentidadLocal() {
+  clearEmpresaContexto({ silent: true })
+  clearSession()
+  setLoginNotice(MENSAJE_SESION_CAMBIADA)
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('ca:session-reset'))
+  }
+}
+
+export function descartarAccessLocal() {
+  clearSession()
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('ca:session-reset'))
+  }
+}
+
+export async function intentarRenovar() {
+  return sesion().renovar()
+}
+
+async function leerJson(response) {
+  try {
+    return await response.json()
+  } catch {
+    return null
+  }
+}
+
 export const LOGIN_TEMPORARY_LOCK_MESSAGE =
   'Por seguridad, la cuenta se encuentra temporalmente bloqueada. Intentá nuevamente más tarde o contactá a un administrador.'
 
@@ -216,79 +340,77 @@ export const LOGIN_RATE_LIMIT_MESSAGE =
 export async function login({ email, password }) {
   const normalizedEmail = String(email ?? '').trim()
   const normalizedPassword = String(password ?? '')
-
   const loginUrl = apiUrl('/api/Auth/Login')
-  let response
+  let token
+  let payload
+  let mismoUsuario = false
 
-  try {
-    response = await fetch(loginUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        email: normalizedEmail,
-        password: normalizedPassword,
-      }),
-    })
-  } catch (error) {
-    logApiNetworkError('POST', '/api/Auth/Login')
-    console.error('Login: error de red o CORS', { url: loginUrl, error })
-    throw new Error(
-      `No se pudo conectar con la API (${loginUrl}). Si el servidor responde, suele ser CORS o que el navegador no llega a esa URL.`,
-    )
-  }
-
-  logApiResponse('POST', '/api/Auth/Login', response.status)
-
-  if (!response.ok) {
-    console.error('Login: respuesta HTTP no exitosa', { url: loginUrl, status: response.status })
-
-    if (response.status === 401) {
-      throw new Error('Correo o contraseña incorrectos.')
+  if (sesion().soporta()) {
+    const resultado = await sesion().iniciar({ email: normalizedEmail, password: normalizedPassword })
+    logApiResponse('POST', '/api/Auth/Login', resultado.status || (resultado.modo === 'renovable' ? 200 : 0))
+    if (resultado.modo === 'red' || resultado.modo === 'ilegible') {
+      logApiNetworkError('POST', '/api/Auth/Login')
+      throw new Error(
+        `No se pudo conectar con la API (${loginUrl}). Si el servidor responde, suele ser CORS o que el navegador no llega a esa URL.`,
+      )
     }
-
-    if (response.status === 400) {
-      throw new Error('Los datos de inicio de sesión no son válidos.')
+    if (resultado.modo === 'http') {
+      throw loginError(resultado.status)
     }
-
-    if (response.status === 403) {
-      throw new Error('No tenés permiso para iniciar sesión.')
+    if (resultado.modo !== 'renovable' || !resultado.token) {
+      throw new Error('La API no devolvió un token de acceso.')
     }
-
-    if (response.status === 423) {
-      throw new Error(LOGIN_TEMPORARY_LOCK_MESSAGE)
+    token = resultado.token
+    payload = resultado.payload
+    mismoUsuario = resultado.mismoUsuario
+  } else {
+    let response
+    try {
+      response = await fetch(loginUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: normalizedEmail, password: normalizedPassword }),
+      })
+    } catch (error) {
+      logApiNetworkError('POST', '/api/Auth/Login')
+      console.error('Login: error de red o CORS', { url: loginUrl, error })
+      throw new Error(
+        `No se pudo conectar con la API (${loginUrl}). Si el servidor responde, suele ser CORS o que el navegador no llega a esa URL.`,
+      )
     }
-
-    if (response.status === 429) {
-      throw new Error(LOGIN_RATE_LIMIT_MESSAGE)
-    }
-
-    throw new Error(`No se pudo iniciar sesión (${response.status}).`)
-  }
-
-  const payload = await response.json()
-  const token = payload?.token ?? payload?.Token
-
-  if (!token) {
-    throw new Error('La API no devolvió un token de acceso.')
+    logApiResponse('POST', '/api/Auth/Login', response.status)
+    if (!response.ok) throw loginError(response.status)
+    payload = await leerJson(response)
+    token = payload?.token ?? payload?.Token
+    if (!token) throw new Error('La API no devolvió un token de acceso.')
+    writeToken(token)
   }
 
   const user = userFromToken(token, normalizedEmail)
   if (isAgentCredential(token, user)) {
+    await logout()
     throw new Error('Esta cuenta no puede usar el panel web.')
   }
 
-  writeToken(token)
   user.requiereCambioPassword = Boolean(
     payload?.requiereCambioPassword ?? payload?.RequiereCambioPassword,
   )
-  if (!isSuperadmin(user)) {
+  if (!(mismoUsuario && isSuperadmin(user))) {
     clearEmpresaContexto({ silent: true })
   }
   resetSessionGuards()
   writeSession(user)
   return user
+}
+
+function loginError(status) {
+  console.error('Login: respuesta HTTP no exitosa', { status })
+  if (status === 401) return new Error('Correo o contraseña incorrectos.')
+  if (status === 400) return new Error('Los datos de inicio de sesión no son válidos.')
+  if (status === 403) return new Error('No tenés permiso para iniciar sesión.')
+  if (status === 423) return new Error(LOGIN_TEMPORARY_LOCK_MESSAGE)
+  if (status === 429) return new Error(LOGIN_RATE_LIMIT_MESSAGE)
+  return new Error(`No se pudo iniciar sesión (${status}).`)
 }
 
 export async function cambiarPassword({ passwordActual, nuevaPassword, confirmarPassword }) {
@@ -297,6 +419,7 @@ export async function cambiarPassword({ passwordActual, nuevaPassword, confirmar
     throw new Error('No hay sesión activa. Iniciá sesión para cambiar la contraseña.')
   }
 
+  const generacion = sesion().identidad()?.generacion || sesion().leer()?.generacion || null
   const path = AUTH_CAMBIAR_PASSWORD_PATH
   const url = apiUrl(path)
   let response
@@ -325,6 +448,24 @@ export async function cambiarPassword({ passwordActual, nuevaPassword, confirmar
   logApiResponse('POST', path, response.status)
 
   if (response.status === 401) {
+    const renovacion = sesion().soporta() ? await intentarRenovar() : null
+    if (renovacion?.ok && !renovacion.identidadDistinta) {
+      const error = new Error(MENSAJE_OPERACION_NO_REPETIDA)
+      error.status = 401
+      error.code = 'NO_REINTENTAR'
+      throw error
+    }
+    if (renovacion?.codigo === 'identidad' || renovacion?.identidadDistinta) {
+      const error = new Error(MENSAJE_SESION_CAMBIADA)
+      error.status = 401
+      error.code = 'SESION_CAMBIADA'
+      throw error
+    }
+    if (renovacion?.codigo === 'incierta' || renovacion?.codigo === 'limite' || renovacion?.codigo === 'red') {
+      const error = new Error('No se pudo confirmar la sesión. Volvé a intentar el cambio cuando inicies sesión.')
+      error.status = response.status
+      throw error
+    }
     notifyUnauthorized()
     const error = new Error(SESSION_EXPIRED_CATCH_MESSAGE)
     error.status = 401
@@ -351,21 +492,26 @@ export async function cambiarPassword({ passwordActual, nuevaPassword, confirmar
     throw error
   }
 
-  return { mensaje: PASSWORD_CHANGED_LOGIN_MESSAGE }
+  return { mensaje: PASSWORD_CHANGED_LOGIN_MESSAGE, generacion }
 }
 
-export function finishPasswordChange() {
+export function finishPasswordChange(generacion) {
   setLoginNotice(PASSWORD_CHANGED_LOGIN_MESSAGE)
-  logout()
+  return logout({ generacion })
 }
 
-export function logout() {
+export async function logout(opciones = {}) {
   logInfo('Autenticación', 'Cierre de sesión.')
+  const pedido = opciones.generacion || null
+  const actual = sesion().leer()
+  if (pedido && actual?.generacion && pedido !== actual.generacion) {
+    return { confirmado: true, omitido: true }
+  }
   passwordChangeNotified = false
   clearEmpresaContexto({ silent: true })
   clearSession()
   clearActivityLogs()
-  if (typeof window !== 'undefined') {
-    window.dispatchEvent(new CustomEvent('ca:session-reset'))
-  }
+  const resultado = await sesion().cerrar({ generacion: pedido || actual?.generacion })
+  if (resultado?.confirmado === false) setLoginNotice(MENSAJE_CIERRE_SIN_CONFIRMAR)
+  return resultado
 }

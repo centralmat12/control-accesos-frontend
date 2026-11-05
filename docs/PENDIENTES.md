@@ -1,6 +1,13 @@
 # Pendientes
 
-Hechos abiertos al cierre de la noche del 2 de noviembre de 2026.
+Hechos abiertos al 4 de noviembre de 2026, después de cerrar la etapa 6B.
+
+- `feat/autenticacion-sesiones-web` tiene un único commit local y no tiene upstream.
+- El access de la API sigue en 1440 minutos. No se redujo a 15. No se empezó MFA ni un bundle de publicación.
+- La API permanece en `79d395dc8e16052db5b8fd8e6a9214c643df9046`.
+- `check-action-buttons.js` falla igual en `09d8fcd` y en esta rama. Espera `minmax(0,1fr)_7rem_auto`. `turnos-panel.js` y ese script no cambiaron en esta entrega.
+
+## Cierre de la noche del 2 de noviembre de 2026
 
 - `feat/turnos-asignaciones-ux` no está mergeada a `main` y no se desplegó.
 - El proceso de la API que ya estaba en marcha no se reinició. Hasta reiniciarlo, el borrado de turnos puede seguir rechazando asignaciones históricas.

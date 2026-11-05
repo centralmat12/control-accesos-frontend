@@ -1,6 +1,38 @@
 # Estado actual
 
-Cierre de la noche del 2 de noviembre de 2026. No se desplegó ni se mergeó a `main`.
+Cierre local del 4 de noviembre de 2026, etapa 6B del frontend. No se desplegó, no se publicó y no se mergeó.
+
+## Sesión renovable en el panel
+
+Rama local `feat/autenticacion-sesiones-web`, creada desde `feat/turnos-asignaciones-ux` en `09d8fcd3f00cbe225bb4f59ff94fe106e4308289`. No tiene upstream. La API no se modificó y sigue en `feat/autenticacion-segura`, commit `79d395dc8e16052db5b8fd8e6a9214c643df9046`. El access de la API sigue en `Jwt:ExpireMinutes` (1440). No se pasó a 15 minutos.
+
+El panel en `http://127.0.0.1:5173` usa el proxy hacia `http://127.0.0.1:5088`. Login, refresh y cierre renovables envían `credentials: 'include'`, `X-CF-Solicitud: 1` y `X-CF-Generacion`. Cada login renovable usa un UUID nuevo. El access queda en memoria y en `sessionStorage` (`ca.auth.token`). `localStorage` guarda solo `ca.auth.coordinacion`: fase, generación, revisión, usuario, sid y marcador. La revisión sube con cada access nuevo. El refresh queda en la cookie HttpOnly de la API.
+
+Un Web Lock `ca-auth-sesion` ordena login, refresh, cierre y cambios de estado. `BroadcastChannel` `ca-auth` comparte el access. Quien recibe un pedido responde sin tomar el lock. Si falta Web Locks, falta BroadcastChannel o `localStorage` no se puede usar, el login queda tradicional y el formulario muestra un aviso breve. Una generación anterior no refresca ni cierra la sesión que la reemplazó.
+
+En el navegador, con la API y MySQL locales y el usuario ficticio `etapa6a.sesion@local.test`:
+
+- El login renovable abrió el dashboard. La coordinación quedó en `localStorage` sin JWT. El access quedó en `sessionStorage`. `document.cookie` no mostró la cookie.
+- `intentarRenovar()` pasó la revisión de 1 a 2 en la misma generación, sin esperar el vencimiento del access.
+- Una segunda pestaña entró al dashboard con la misma sesión. Dos renovaciones concurrentes produjeron un solo refresh: una pestaña `renovado` y la otra `adoptado`, ambas en la revisión 3.
+- Un refresh que no respondió dejó la fase `incierta` y el marcador. La recarga mostró el login y no llamó a refresh.
+- El cierre de la generación anterior, después de un login nuevo, se omitió. La generación nueva siguió habilitada.
+- Cerrar sesión en una pestaña dejó la otra en el login, con fase `cerrada` y sin access. Recargar esa sesión cerrada volvió a mostrar el login.
+- Un cierre cuya red falló dejó la fase `cerrada`, sin access, y el texto de que el cierre del servidor no se confirmó.
+- La pantalla de cambio obligatorio apareció para esa cuenta. Al guardar, la sesión quedó cerrada y el login mostró que la contraseña fue actualizada. La contraseña de laboratorio de esa cuenta quedó restaurada.
+- Un access sin `sid`, guardado como sesión anterior, se conservó al arrancar y no disparó refresh.
+- Un GET que recibió 401 se reintentó una vez después de una renovación. Un POST con 401 no se reenvió y mostró que había que repetir la acción. Un 403 de cambio de contraseña no renovó. Un 429 se devolvió sin otro intento. Un fallo de red de una lectura no borró el access.
+- Este Chrome tiene Web Locks, BroadcastChannel y `localStorage`, así que no apareció el aviso de compatibilidad. Las tres ausencias se comprobaron por separado en `check-sesion-coordinada.js`.
+
+Con el SuperAdmin ficticio `super.local@local.test`, recuperado por el flujo local de recuperación, el login renovable abrió el panel. Se eligió Empresa Dos. La renovación mantuvo el mismo usuario, el mismo sid y ese contexto, y subió la revisión. El GET siguiente envió `X-Empresa-Id: 2` y respondió 200. Al entrar la otra cuenta ficticia, el contexto anterior desapareció. Una operación que ya había salido con el SuperAdmin se envió una sola vez y no se repitió con la otra identidad. El panel indicó que la sesión cambió.
+
+El cierre de pestaña se controló con un proxy local que reenvió el refresh a la API y retuvo la respuesta recién cuando la API la había completado. Se cerró la pestaña que lo había iniciado. La otra adquirió el Web Lock, vio la fase incierta y el marcador, y quedó en login sin enviar otro refresh. La recarga también mostró el login y no pidió refresh. Esa operación produjo un solo refresh en el servidor.
+
+Los atributos de la cookie se observaron en el `Set-Cookie` que ese proxy entregó al navegador, sin el valor y sin el jar de DevTools. El nombre es `cf_g_` seguido de 32 hexadecimales. Atributos: `HttpOnly`, sin `Secure`, `Path=/api/Auth`, sin `Domain`, `SameSite=Lax`, `Max-Age=43199` y `Expires` presente.
+
+`node scripts/check-sesion-coordinada.js` cubre dos pestañas y una renovación, canal sin respuesta, respuesta perdida, 401 y 5xx sin reintento, reintento de GET y no de escritura, arranque cerrado, una generación anterior que no refresca la nueva, y el login tradicional cuando falta cada capacidad por separado. `npm run check` sigue fallando en `check-action-buttons.js`, igual que en `09d8fcd`: espera una grilla `minmax(0,1fr)_7rem_auto` que `turnos-panel.js` ya no tiene. Esos dos archivos no cambiaron en esta entrega. `npm run build` terminó y avisó el chunk grande de siempre. No se versiona `dist/`.
+
+## Cierre de la noche del 2 de noviembre de 2026
 
 ## Verificación de la noche del 2 de noviembre de 2026
 
