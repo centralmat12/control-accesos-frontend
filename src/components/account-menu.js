@@ -42,7 +42,7 @@ function positionAccountMenu(trigger, panel) {
   }
 }
 
-export function createAccountMenu({ user, initials, onChangePassword, onLogout }) {
+export function createAccountMenu({ user, initials, onChangePassword, onOpenSecurity, onLogout }) {
   destroyDisconnectedAccountMenus()
 
   const abort = new AbortController()
@@ -94,6 +94,13 @@ export function createAccountMenu({ user, initials, onChangePassword, onLogout }
   changeItem.className = itemClass
   changeItem.innerHTML = `${iconLock()}<span>Cambiar contraseña</span>`
 
+  const securityItem = document.createElement('button')
+  securityItem.type = 'button'
+  securityItem.id = 'account-menu-security'
+  securityItem.setAttribute('role', 'menuitem')
+  securityItem.className = itemClass
+  securityItem.innerHTML = `${iconLock()}<span>Seguridad</span>`
+
   const logoutItem = document.createElement('button')
   logoutItem.type = 'button'
   logoutItem.id = 'account-menu-logout'
@@ -101,11 +108,11 @@ export function createAccountMenu({ user, initials, onChangePassword, onLogout }
   logoutItem.className = itemClass
   logoutItem.innerHTML = `${iconLogout()}<span>Cerrar sesión</span>`
 
-  panel.append(header, changeItem, logoutItem)
+  panel.append(header, changeItem, securityItem, logoutItem)
   document.body.append(panel)
   wrap.append(trigger)
 
-  const items = [changeItem, logoutItem]
+  const items = [changeItem, securityItem, logoutItem]
   let open = false
   let activeIndex = 0
 
@@ -198,6 +205,7 @@ export function createAccountMenu({ user, initials, onChangePassword, onLogout }
   }, { capture: true, signal: abort.signal })
 
   changeItem.addEventListener('click', () => choose(onChangePassword), { signal: abort.signal })
+  securityItem.addEventListener('click', () => choose(onOpenSecurity), { signal: abort.signal })
   logoutItem.addEventListener('click', () => choose(onLogout), { signal: abort.signal })
 
   const api = {

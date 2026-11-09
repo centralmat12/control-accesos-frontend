@@ -1,11 +1,20 @@
 # Pendientes
 
+Hechos abiertos al 9 de noviembre de 2026, después de la etapa 7C.2.
+
+- `feat/autenticacion-sesiones-web` no tiene upstream. El commit de 7C.2 es local. No hay bundle ni publicación.
+- La API permanece en `b5e397946fc3f1e2d5d3cefc066959e3bc89346a`. Su copia de las guías no se modificó, para no salir de ese commit.
+- Siguen pendientes el requisito administrativo de MFA, el token de vinculación, la desactivación, el reemplazo del autenticador y el restablecimiento administrativo.
+- `Auth:PermitirEnrolamientoMfa` queda en falso. Sin esa bandera, Seguridad informa que la activación no está habilitada.
+- `check-action-buttons.js` falla igual que en `09d8fcd`. Espera `minmax(0,1fr)_7rem_auto`. `turnos-panel.js` y ese script no cambiaron en esta entrega.
+
+## Cierre de la etapa 6B
+
 Hechos abiertos al 4 de noviembre de 2026, después de cerrar la etapa 6B.
 
-- `feat/autenticacion-sesiones-web` tiene un único commit local y no tiene upstream.
-- El access de la API sigue en 1440 minutos. No se redujo a 15. No se empezó MFA ni un bundle de publicación.
-- La API permanece en `79d395dc8e16052db5b8fd8e6a9214c643df9046`.
-- `check-action-buttons.js` falla igual en `09d8fcd` y en esta rama. Espera `minmax(0,1fr)_7rem_auto`. `turnos-panel.js` y ese script no cambiaron en esta entrega.
+- `feat/autenticacion-sesiones-web` no tiene upstream.
+- El access de la API sigue en 1440 minutos para la sesión tradicional. La sesión renovable usa el access corto de la API.
+- `check-action-buttons.js` falla igual en `09d8fcd` y en esta rama. Espera `minmax(0,1fr)_7rem_auto`. `turnos-panel.js` y ese script no cambiaron en esa entrega.
 
 ## Cierre de la noche del 2 de noviembre de 2026
 

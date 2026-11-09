@@ -20,6 +20,7 @@ import { renderEmpleados } from './views/empleados.js'
 import { renderFichadas } from './views/fichadas.js'
 import { openCambiarPasswordModal, renderCambioPasswordObligatorio } from './views/cambiar-password.js'
 import { renderLogin } from './views/login.js'
+import { renderSeguridad } from './views/seguridad.js'
 import { renderRegistros } from './views/registros.js'
 import { logInfo } from './utils/activity-log.js'
 import { assignViewHash, parseHashView, viewHash, writeViewHash } from './utils/hash-route.js'
@@ -30,6 +31,7 @@ const views = {
   empleados: renderEmpleados,
   registros: renderRegistros,
   administracion: renderAdministracion,
+  seguridad: renderSeguridad,
 }
 
 let activeViewCleanup = null
@@ -171,6 +173,7 @@ export async function bootstrap(root) {
           },
         })
       },
+      onOpenSecurity: () => navigate('seguridad'),
     })
 
     root.replaceChildren(layout)

@@ -1,5 +1,17 @@
 # Estado actual
 
+Etapa 7C.2 del frontend, 9 de noviembre de 2026. No se desplegó, no se publicó y no se mergeó. La API no se modificó: sigue en `feat/autenticacion-segura`, `b5e397946fc3f1e2d5d3cefc066959e3bc89346a`, con el commit funcional `da38172767fd8a9d5da69d4116e26389c355e1f4`.
+
+El login trata `401` con `codigo=mfa_requerido` como un paso intermedio. El desafío, el vencimiento, el modo y la generación quedan en memoria. La verificación reutiliza ese modo y esa generación, y la sesión se publica solo después de una respuesta válida. El Web Lock se libera mientras se escribe el código. Antes de enviarlo se revalida el contexto. Una respuesta de un intento cancelado o reemplazado no publica la sesión. Si la verificación queda incierta, hay que volver a iniciar sesión y el código no se reenvía. El acceso sin MFA, el modo tradicional y el cambio obligatorio de contraseña siguen.
+
+Seguridad, en el menú de cuenta, activa el autenticador con contraseña, QR local y clave manual, y confirma con TOTP. Los diez códigos se muestran una sola vez, solo en memoria, y después se vuelve al login. Regenerar usa contraseña y un segundo factor. Si esa respuesta se pierde, la pantalla explica cómo entrar de nuevo y generar otro conjunto. No están el requisito administrativo, la desactivación, el reemplazo ni el restablecimiento.
+
+El QR lo dibuja `qrcode` 1.5.4 en un canvas. No había una dependencia previa para eso y no se usa un servicio externo de imágenes. `Auth:PermitirEnrolamientoMfa` quedó en falso después de las pruebas.
+
+En el navegador, contra `http://127.0.0.1:5173`, la API en `http://127.0.0.1:5088` y MySQL local, una cuenta ficticia activó el autenticador con QR y clave manual, entró con TOTP y con un código de recuperación, regeneró el conjunto y el código anterior fue rechazado. El desafío de un minuto volvió al login sin publicar sesión. Con el segundo factor abierto, el login del SuperAdmin en otra pestaña hizo descartar ese intento. El SuperAdmin compartido entró sin pantalla de segundo factor; su contraseña de laboratorio se restauró y sigue sin MFA ni obligación. La cuenta ficticia se borró. `check-mfa-web.js` cubre, además, la respuesta tardía de un intento cancelado y la verificación incierta que no se reenvía. `npm run build` terminó con el aviso conocido del chunk grande. `npm run check` sigue fallando solo en `check-action-buttons.js`, igual que en `09d8fcd`.
+
+## Cierre de la etapa 6B
+
 Cierre local del 4 de noviembre de 2026, etapa 6B del frontend. No se desplegó, no se publicó y no se mergeó.
 
 ## Sesión renovable en el panel

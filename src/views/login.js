@@ -1,4 +1,12 @@
-import { consumeLoginNotice, login, mensajeCompatibilidadSesion, MENSAJE_CIERRE_SIN_CONFIRMAR, MENSAJE_SESION_CAMBIADA } from '../api/auth.js'
+import {
+  cancelarSegundoFactor,
+  consumeLoginNotice,
+  login,
+  mensajeCompatibilidadSesion,
+  MENSAJE_CIERRE_SIN_CONFIRMAR,
+  MENSAJE_SESION_CAMBIADA,
+  verificarSegundoFactor,
+} from '../api/auth.js'
 import { brandLogoAuthMarkup } from '../components/brand-logo.js'
 import { createThemeToggle } from '../components/theme-toggle.js'
 import {
@@ -125,10 +133,26 @@ export function renderLogin(container, { onSuccess }) {
     submitBtn.textContent = 'Ingresando...'
 
     try {
-      await login({
+      const ingreso = await login({
         email: String(emailInput.value ?? '').trim(),
         password: String(passwordInput.value ?? ''),
       })
+      if (ingreso?.pendienteMfa) {
+        mostrarSegundoFactor(view, {
+          intento: ingreso.intento,
+          expiraEn: ingreso.expiraEn,
+          onSuccess,
+          onVolver(mensaje) {
+            renderLogin(container, { onSuccess })
+            if (!mensaje) return
+            const alerta = container.querySelector('#login-error')
+            if (!alerta) return
+            alerta.textContent = mensaje
+            alerta.classList.remove('hidden')
+          },
+        })
+        return
+      }
       onSuccess()
     } catch (error) {
       errorEl.textContent = sanitizePublicErrorMessage(
@@ -144,4 +168,92 @@ export function renderLogin(container, { onSuccess }) {
 
   container.replaceChildren(view)
   emailInput?.focus()
+}
+
+function mostrarSegundoFactor(view, { intento, expiraEn, onSuccess, onVolver }) {
+  const limite = Date.parse(expiraEn)
+  const anterior = view.querySelector('#login-form')
+  const tarjeta = document.createElement('form')
+  tarjeta.id = 'login-form'
+  tarjeta.className = anterior.className
+  tarjeta.noValidate = true
+  anterior.replaceWith(tarjeta)
+  let activo = true
+  let enviando = false
+  let usandoRecuperacion = false
+  const timer = window.setInterval(() => {
+    if (!activo) return
+    if (Number.isNaN(limite) || limite <= Date.now()) {
+      cerrar('El tiempo para ingresar el código venció. Iniciá sesión de nuevo.')
+    }
+  }, 1000)
+
+  function cerrar(mensaje, duranteEnvio = false) {
+    if (!activo || (enviando && !duranteEnvio)) return
+    activo = false
+    window.clearInterval(timer)
+    cancelarSegundoFactor(intento)
+    onVolver(mensaje)
+  }
+
+  tarjeta.innerHTML = `
+    <h2 class="text-lg font-semibold text-slate-900 dark:text-slate-100">Segundo factor</h2>
+    <p class="mt-2 text-sm text-slate-500 dark:text-slate-400">Ingresá el código de la aplicación o usá un código de recuperación.</p>
+    <label class="mt-4 block text-sm font-medium text-slate-700 dark:text-slate-200" for="mfa-codigo">Código</label>
+    <input id="mfa-codigo" name="codigo" inputmode="numeric" autocomplete="one-time-code" maxlength="40" class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-950 dark:text-white" />
+    <button type="button" id="mfa-modo" class="mt-3 text-sm font-medium text-blue-700 hover:text-blue-600 dark:text-blue-300">Usar un código de recuperación</button>
+    <p id="mfa-error" class="mt-4 hidden rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-300" role="alert"></p>
+    <button type="submit" id="mfa-submit" class="mt-6 w-full rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-60">Verificar</button>
+    <button type="button" id="mfa-volver" class="mt-3 w-full rounded-lg px-4 py-2.5 text-sm font-medium text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800">Volver al inicio</button>
+  `
+  const input = tarjeta.querySelector('#mfa-codigo')
+  const modo = tarjeta.querySelector('#mfa-modo')
+  const errorEl = tarjeta.querySelector('#mfa-error')
+  const submit = tarjeta.querySelector('#mfa-submit')
+  modo.addEventListener('click', () => {
+    usandoRecuperacion = !usandoRecuperacion
+    input.value = ''
+    input.inputMode = usandoRecuperacion ? 'text' : 'numeric'
+    input.autocomplete = usandoRecuperacion ? 'off' : 'one-time-code'
+    input.setAttribute('aria-label', usandoRecuperacion ? 'Código de recuperación' : 'Código de la aplicación')
+    modo.textContent = usandoRecuperacion ? 'Usar el código de la aplicación' : 'Usar un código de recuperación'
+  })
+  tarjeta.querySelector('#mfa-volver').addEventListener('click', () => cerrar('', true))
+  tarjeta.addEventListener('submit', async (event) => {
+    event.preventDefault()
+    if (!activo || tarjeta.dataset.submitting === 'true') return
+    const valor = String(input.value ?? '').trim()
+    if (!valor) {
+      errorEl.textContent = 'Ingresá el código.'
+      errorEl.classList.remove('hidden')
+      return
+    }
+    errorEl.classList.add('hidden')
+    tarjeta.dataset.submitting = 'true'
+    submit.disabled = true
+    enviando = true
+    try {
+      await verificarSegundoFactor(usandoRecuperacion
+        ? { intento, codigoRecuperacion: valor }
+        : { intento, codigo: valor })
+      activo = false
+      enviando = false
+      window.clearInterval(timer)
+      input.value = ''
+      onSuccess()
+    } catch (error) {
+      enviando = false
+      if (!activo) return
+      errorEl.textContent = sanitizePublicErrorMessage(error.message, 'No se pudo comprobar el código.')
+      errorEl.classList.remove('hidden')
+      input.value = ''
+      if (error.volver) {
+        cerrar(errorEl.textContent)
+        return
+      }
+      delete tarjeta.dataset.submitting
+      submit.disabled = false
+    }
+  })
+  input.focus()
 }

@@ -30,6 +30,14 @@ El frontend y la API tienen remotos distintos. El directorio que los contiene no
 - La corrida habitual excluye las categorías `LocalTunnelAcceptance` y `ProductionAcceptance`.
 - Los secretos de desarrollo no se versionan: `appsettings.*.local.json` en la API y `.env.local` en el frontend.
 
+## MFA voluntario en el panel
+
+- El segundo factor del login no se guarda en `localStorage` ni en `sessionStorage`. El desafío, el vencimiento, el modo y la generación viven en la memoria de la pestaña.
+- La sesión renovable se escribe solo cuando `POST /api/Auth/mfa/verificar` responde con un access válido. Una respuesta perdida o un intento reemplazado no se reenvían.
+- El QR se dibuja en el navegador con `qrcode` 1.5.4. No había una biblioteca de QR en el proyecto y no se llama a un generador externo.
+- Esta entrega no desactiva, no reemplaza y no restablece el autenticador. Esas operaciones quedan para etapas posteriores.
+- `Auth:PermitirEnrolamientoMfa` sigue en falso fuera de las pruebas locales.
+
 ## Informe y PDF del frontend
 
 - El informe de asistencia se compone en el navegador con los endpoints ya existentes. No se inventa un contrato nuevo ni se considera cerrado hasta que la API publique un informe histórico.

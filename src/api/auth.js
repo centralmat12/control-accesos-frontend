@@ -276,6 +276,7 @@ function sesion() {
       leerAccess: getToken,
       limpiarAccess: () => sessionStorage.removeItem(TOKEN_KEY),
       urlLogin: apiUrl('/api/Auth/Login'),
+      urlVerificar: apiUrl('/api/Auth/mfa/verificar'),
       urlRefresh: apiUrl('/api/Auth/refresh'),
       urlCierre: apiUrl('/api/Auth/cerrar-sesion'),
       alCambiarRemoto: () => {
@@ -337,61 +338,50 @@ export const LOGIN_TEMPORARY_LOCK_MESSAGE =
 export const LOGIN_RATE_LIMIT_MESSAGE =
   'Se realizaron demasiados intentos. Esperá unos minutos antes de volver a intentar.'
 
-export async function login({ email, password }) {
-  const normalizedEmail = String(email ?? '').trim()
-  const normalizedPassword = String(password ?? '')
-  const loginUrl = apiUrl('/api/Auth/Login')
-  let token
-  let payload
-  let mismoUsuario = false
+export const MFA_INVALID_MESSAGE = 'El código no es válido.'
+export const MFA_LOCKED_MESSAGE = 'Demasiados intentos. Esperá unos minutos e iniciá sesión de nuevo.'
+export const MFA_EXPIRED_MESSAGE = 'El tiempo para ingresar el código venció. Iniciá sesión de nuevo.'
+export const MFA_UNCERTAIN_MESSAGE = 'No se pudo confirmar el ingreso. Iniciá sesión de nuevo. El código no se reenvió.'
+export const MFA_REPLACED_MESSAGE = 'La sesión cambió. Iniciá sesión de nuevo.'
+export const MFA_UNAVAILABLE_MESSAGE = 'El segundo factor no está disponible en este momento.'
 
-  if (sesion().soporta()) {
-    const resultado = await sesion().iniciar({ email: normalizedEmail, password: normalizedPassword })
-    logApiResponse('POST', '/api/Auth/Login', resultado.status || (resultado.modo === 'renovable' ? 200 : 0))
-    if (resultado.modo === 'red' || resultado.modo === 'ilegible') {
-      logApiNetworkError('POST', '/api/Auth/Login')
-      throw new Error(
-        `No se pudo conectar con la API (${loginUrl}). Si el servidor responde, suele ser CORS o que el navegador no llega a esa URL.`,
-      )
-    }
-    if (resultado.modo === 'http') {
-      throw loginError(resultado.status)
-    }
-    if (resultado.modo !== 'renovable' || !resultado.token) {
-      throw new Error('La API no devolvió un token de acceso.')
-    }
-    token = resultado.token
-    payload = resultado.payload
-    mismoUsuario = resultado.mismoUsuario
-  } else {
-    let response
-    try {
-      response = await fetch(loginUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: normalizedEmail, password: normalizedPassword }),
-      })
-    } catch (error) {
-      logApiNetworkError('POST', '/api/Auth/Login')
-      console.error('Login: error de red o CORS', { url: loginUrl, error })
-      throw new Error(
-        `No se pudo conectar con la API (${loginUrl}). Si el servidor responde, suele ser CORS o que el navegador no llega a esa URL.`,
-      )
-    }
-    logApiResponse('POST', '/api/Auth/Login', response.status)
-    if (!response.ok) throw loginError(response.status)
-    payload = await leerJson(response)
-    token = payload?.token ?? payload?.Token
-    if (!token) throw new Error('La API no devolvió un token de acceso.')
-    writeToken(token)
+const MFA_VOLVER = new Set(['vencido', 'incierto', 'reemplazado', 'descartado', 'mfa_bloqueado'])
+let mfaTradicional = null
+
+export function encabezadosRenovables() {
+  if (!sesion().soporta()) return {}
+  const generacion = sesion().identidad()?.generacion || sesion().leer()?.generacion || null
+  if (!generacion) return {}
+  return {
+    'X-CF-Solicitud': '1',
+    'X-CF-Generacion': generacion,
   }
+}
 
-  const user = userFromToken(token, normalizedEmail)
+function errorMfa(codigo, status = 0) {
+  const mensajes = {
+    mfa_invalido: MFA_INVALID_MESSAGE,
+    mfa_bloqueado: MFA_LOCKED_MESSAGE,
+    vencido: MFA_EXPIRED_MESSAGE,
+    incierto: MFA_UNCERTAIN_MESSAGE,
+    reemplazado: MFA_REPLACED_MESSAGE,
+    descartado: MFA_REPLACED_MESSAGE,
+    mfa_no_disponible: MFA_UNAVAILABLE_MESSAGE,
+  }
+  const error = new Error(mensajes[codigo] || 'No se pudo comprobar el segundo factor.')
+  error.code = codigo
+  error.status = status
+  error.volver = MFA_VOLVER.has(codigo)
+  return error
+}
+
+function publicarIngreso(token, payload, email, mismoUsuario) {
+  const user = userFromToken(token, email)
   if (isAgentCredential(token, user)) {
-    await logout()
+    clearSession()
+    void logout()
     throw new Error('Esta cuenta no puede usar el panel web.')
   }
-
   user.requiereCambioPassword = Boolean(
     payload?.requiereCambioPassword ?? payload?.RequiereCambioPassword,
   )
@@ -403,8 +393,160 @@ export async function login({ email, password }) {
   return user
 }
 
-function loginError(status) {
+function traducirVerificacion(resultado) {
+  if (resultado?.modo === 'incierto' || resultado?.status === 500 || resultado?.status === 503) {
+    return errorMfa(resultado?.codigo === 'mfa_no_disponible' ? 'mfa_no_disponible' : 'incierto', resultado.status || 0)
+  }
+  if (resultado?.status === 429) {
+    const error = new Error(LOGIN_RATE_LIMIT_MESSAGE)
+    error.status = 429
+    error.code = 'limite'
+    return error
+  }
+  if (resultado?.codigo === 'mfa_invalido') return errorMfa('mfa_invalido', 401)
+  if (resultado?.codigo === 'mfa_bloqueado') return errorMfa('mfa_bloqueado', 401)
+  if (resultado?.modo === 'vencido') return errorMfa('vencido', 401)
+  if (resultado?.modo === 'reemplazado' || resultado?.status === 403) return errorMfa('reemplazado', resultado.status || 403)
+  return errorMfa(resultado?.modo || 'descartado', resultado?.status || 0)
+}
+
+export async function login({ email, password }) {
+  const normalizedEmail = String(email ?? '').trim()
+  const normalizedPassword = String(password ?? '')
+  const loginUrl = apiUrl('/api/Auth/Login')
+  mfaTradicional = null
+
+  if (sesion().soporta()) {
+    const resultado = await sesion().iniciar({ email: normalizedEmail, password: normalizedPassword })
+    const statusLogin = resultado.modo === 'mfa'
+      ? 401
+      : (resultado.status || (resultado.modo === 'renovable' ? 200 : 0))
+    logApiResponse('POST', '/api/Auth/Login', statusLogin)
+    if (resultado.modo === 'mfa') {
+      return { pendienteMfa: true, intento: resultado.intento, expiraEn: resultado.expiraEn }
+    }
+    if (resultado.modo === 'red' || resultado.modo === 'ilegible') {
+      logApiNetworkError('POST', '/api/Auth/Login')
+      throw new Error(
+        `No se pudo conectar con la API (${loginUrl}). Si el servidor responde, suele ser CORS o que el navegador no llega a esa URL.`,
+      )
+    }
+    if (resultado.modo === 'http') {
+      throw loginError(resultado.status, resultado.codigo)
+    }
+    if (resultado.modo !== 'renovable' || !resultado.token) {
+      throw new Error('La API no devolvió un token de acceso.')
+    }
+    return publicarIngreso(resultado.token, resultado.payload, normalizedEmail, resultado.mismoUsuario)
+  }
+
+  let response
+  try {
+    response = await fetch(loginUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: normalizedEmail, password: normalizedPassword }),
+    })
+  } catch (error) {
+    logApiNetworkError('POST', '/api/Auth/Login')
+    console.error('Login: error de red o CORS', { url: loginUrl, error })
+    throw new Error(
+      `No se pudo conectar con la API (${loginUrl}). Si el servidor responde, suele ser CORS o que el navegador no llega a esa URL.`,
+    )
+  }
+  logApiResponse('POST', '/api/Auth/Login', response.status)
+  if (response.status === 401) {
+    const cuerpo = await leerJson(response)
+    if (cuerpo?.codigo === 'mfa_requerido' && cuerpo.desafio && cuerpo.expiraEn) {
+      mfaTradicional = {
+        id: globalThis.crypto.randomUUID(),
+        desafio: cuerpo.desafio,
+        expiraEn: cuerpo.expiraEn,
+        email: normalizedEmail,
+      }
+      return { pendienteMfa: true, intento: mfaTradicional.id, expiraEn: cuerpo.expiraEn }
+    }
+    throw loginError(401)
+  }
+  if (!response.ok) throw loginError(response.status)
+  const payload = await leerJson(response)
+  const token = payload?.token ?? payload?.Token
+  if (!token) throw new Error('La API no devolvió un token de acceso.')
+  writeToken(token)
+  return publicarIngreso(token, payload, normalizedEmail, false)
+}
+
+export function cancelarSegundoFactor(intento) {
+  if (sesion().soporta()) sesion().cancelar(intento)
+  if (mfaTradicional?.id === intento) mfaTradicional = null
+}
+
+export async function verificarSegundoFactor({ intento, codigo, codigoRecuperacion }) {
+  const totp = String(codigo ?? '').trim()
+  const recuperacion = String(codigoRecuperacion ?? '').trim()
+  if (Boolean(totp) === Boolean(recuperacion)) {
+    throw errorMfa('mfa_codigo_requerido', 400)
+  }
+
+  if (sesion().soporta()) {
+    const resultado = await sesion().verificar({ intento, codigo: totp, codigoRecuperacion: recuperacion })
+    if (resultado.status) logApiResponse('POST', '/api/Auth/mfa/verificar', resultado.status)
+    if (resultado.modo === 'renovable' && resultado.token) {
+      logApiResponse('POST', '/api/Auth/mfa/verificar', 200)
+      const email = userFromToken(resultado.token).email
+      return publicarIngreso(resultado.token, resultado.payload, email, resultado.mismoUsuario)
+    }
+    throw traducirVerificacion(resultado)
+  }
+
+  const pendiente = mfaTradicional
+  if (!pendiente || pendiente.id !== intento) throw errorMfa('descartado')
+  if (Number.isNaN(Date.parse(pendiente.expiraEn)) || Date.parse(pendiente.expiraEn) <= Date.now()) {
+    mfaTradicional = null
+    throw errorMfa('vencido', 401)
+  }
+  let response
+  try {
+    response = await fetch(apiUrl('/api/Auth/mfa/verificar'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(totp
+        ? { desafio: pendiente.desafio, codigo: totp }
+        : { desafio: pendiente.desafio, codigoRecuperacion: recuperacion }),
+    })
+  } catch (error) {
+    mfaTradicional = null
+    logApiNetworkError('POST', '/api/Auth/mfa/verificar')
+    console.error('Verificación MFA: error de red', { error })
+    throw errorMfa('incierto')
+  }
+  logApiResponse('POST', '/api/Auth/mfa/verificar', response.status)
+  if (mfaTradicional?.id !== intento) throw errorMfa('descartado', response.status)
+  if (response.status === 500 || response.status === 503) {
+    mfaTradicional = null
+    throw errorMfa('incierto', response.status)
+  }
+  if (!response.ok) {
+    const cuerpo = await leerJson(response)
+    if (response.status === 401 && cuerpo?.codigo === 'mfa_invalido') throw errorMfa('mfa_invalido', 401)
+    mfaTradicional = null
+    throw traducirVerificacion({ modo: 'http', status: response.status, codigo: cuerpo?.codigo || null })
+  }
+  const payload = await leerJson(response)
+  const token = payload?.token ?? payload?.Token
+  if (mfaTradicional?.id !== intento) throw errorMfa('descartado')
+  if (!token) {
+    mfaTradicional = null
+    throw errorMfa('incierto', response.status)
+  }
+  mfaTradicional = null
+  writeToken(token)
+  return publicarIngreso(token, payload, pendiente.email, false)
+}
+
+function loginError(status, codigo) {
   console.error('Login: respuesta HTTP no exitosa', { status })
+  if (codigo === 'mfa_no_disponible' || status === 503) return errorMfa('mfa_no_disponible', status)
   if (status === 401) return new Error('Correo o contraseña incorrectos.')
   if (status === 400) return new Error('Los datos de inicio de sesión no son válidos.')
   if (status === 403) return new Error('No tenés permiso para iniciar sesión.')

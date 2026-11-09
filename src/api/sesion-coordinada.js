@@ -64,6 +64,15 @@ export function decidirReintento({ method, intento, renovacion }) {
   return 'reintentar'
 }
 
+async function leerCuerpo(response) {
+  try {
+    const cuerpo = await response.json()
+    return cuerpo && typeof cuerpo === 'object' ? cuerpo : null
+  } catch {
+    return null
+  }
+}
+
 export function crearSesionCoordinada(opciones) {
   const local = opciones.local
   const locks = opciones.locks
@@ -78,6 +87,7 @@ export function crearSesionCoordinada(opciones) {
   const timeoutMs = opciones.timeoutMs ?? TIMEOUT_SESION_MS
   let memoria = null
   let suscripcion = null
+  let pendienteMfa = null
 
   function soporta() {
     return Boolean(almacenamientoUtil(local) && locks?.exclusivo && canal?.publicar && canal?.suscribir && uuid && pedir)
@@ -262,6 +272,21 @@ export function crearSesionCoordinada(opciones) {
       }, generacion)
       if (!response) return { modo: 'red', generacion }
       if (response.status === 429) return { modo: 'http', status: 429, generacion }
+      if (response.status === 401) {
+        const cuerpo = await leerCuerpo(response)
+        if (cuerpo?.codigo === 'mfa_requerido' && cuerpo.desafio && cuerpo.expiraEn) {
+          const id = uuid()
+          pendienteMfa = {
+            id,
+            generacion,
+            desafio: cuerpo.desafio,
+            expiraEn: cuerpo.expiraEn,
+            previoUsuarioId: previo?.usuarioId || null,
+          }
+          return { modo: 'mfa', intento: id, expiraEn: cuerpo.expiraEn, generacion }
+        }
+        return { modo: 'http', status: 401, generacion }
+      }
       if (!response.ok) return { modo: 'http', status: response.status, generacion }
       let payload = null
       try {
@@ -290,6 +315,92 @@ export function crearSesionCoordinada(opciones) {
         payload,
         estado,
         mismoUsuario: Boolean(previo?.usuarioId && previo.usuarioId === ident.usuarioId),
+      }
+    })
+  }
+
+  function cancelar(intento) {
+    if (pendienteMfa?.id === intento) pendienteMfa = null
+    return { cancelado: true }
+  }
+
+  async function verificar({ intento, codigo, codigoRecuperacion }) {
+    asegurarEscucha()
+    if (!soporta()) return { modo: 'tradicional' }
+    return exclusivo(async () => {
+      const pendiente = pendienteMfa
+      if (!pendiente || pendiente.id !== intento) return { modo: 'descartado' }
+      const estado = leer()
+      if (estado?.fase === 'habilitada') return { modo: 'reemplazado' }
+      if (Number.isNaN(Date.parse(pendiente.expiraEn)) || Date.parse(pendiente.expiraEn) <= Date.now()) {
+        pendienteMfa = null
+        return { modo: 'vencido' }
+      }
+      const totp = String(codigo ?? '').trim()
+      const recuperacion = String(codigoRecuperacion ?? '').trim()
+      if (Boolean(totp) === Boolean(recuperacion)) return { modo: 'http', status: 400, codigo: 'mfa_codigo_requerido' }
+      const response = await solicitar(opciones.urlVerificar, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(totp
+          ? { desafio: pendiente.desafio, codigo: totp }
+          : { desafio: pendiente.desafio, codigoRecuperacion: recuperacion }),
+      }, pendiente.generacion)
+      const vigente = pendienteMfa
+      const despues = leer()
+      if (!vigente || vigente.id !== intento || (despues?.fase === 'habilitada' && despues.generacion !== pendiente.generacion)) {
+        return { modo: 'descartado' }
+      }
+      if (!response) {
+        pendienteMfa = null
+        return { modo: 'incierto' }
+      }
+      if (response.status === 500 || response.status === 503) {
+        pendienteMfa = null
+        return { modo: 'incierto', status: response.status }
+      }
+      if (!response.ok) {
+        const cuerpo = await leerCuerpo(response)
+        if (response.status === 401 && cuerpo?.codigo === 'mfa_invalido') {
+          return { modo: 'http', status: 401, codigo: 'mfa_invalido' }
+        }
+        pendienteMfa = null
+        return { modo: 'http', status: response.status, codigo: cuerpo?.codigo || null }
+      }
+      let payload = null
+      try {
+        payload = await response.json()
+      } catch {
+        pendienteMfa = null
+        return { modo: 'incierto', status: response.status }
+      }
+      const token = payload?.token ?? payload?.Token
+      const ident = token ? identificar(token) : null
+      const actual = pendienteMfa
+      const publicado = leer()
+      if (!actual || actual.id !== intento || (publicado?.fase === 'habilitada' && publicado.generacion !== pendiente.generacion)) {
+        return { modo: 'descartado' }
+      }
+      if (!token || !ident?.usuarioId) return { modo: 'sin-token', generacion: pendiente.generacion }
+      const siguiente = {
+        fase: 'habilitada',
+        generacion: pendiente.generacion,
+        revision: 1,
+        usuarioId: ident.usuarioId,
+        sid: ident.sid || null,
+        marcador: null,
+      }
+      pendienteMfa = null
+      escribir(siguiente)
+      guardarAccess(token)
+      recordar(token, siguiente)
+      canal.publicar({ tipo: 'access', token, ...siguiente })
+      return {
+        modo: 'renovable',
+        token,
+        payload,
+        estado: siguiente,
+        mismoUsuario: Boolean(pendiente.previoUsuarioId && pendiente.previoUsuarioId === ident.usuarioId),
       }
     })
   }
@@ -415,6 +526,8 @@ export function crearSesionCoordinada(opciones) {
     leer,
     preparar,
     iniciar,
+    verificar,
+    cancelar,
     renovar,
     cerrar,
     asegurarEscucha,
