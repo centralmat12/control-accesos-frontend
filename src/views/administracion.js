@@ -34,6 +34,7 @@ import {
   getUsuarios,
   restablecerPasswordUsuario,
   createUsuario,
+  invitarUsuario,
 } from '../api/usuarios.js'
 import {
   ADMIN_FIELD_CONTROL_CLASS,
@@ -95,7 +96,7 @@ import {
   usuarioEditRolPayload,
   usuarioEstadoConfirmMessage,
 } from '../components/usuario-edit-panel.js'
-import { createUsuarioForm } from '../components/usuario-form.js'
+import { createInvitacionForm, createUsuarioForm } from '../components/usuario-form.js'
 import { isAdmin, isSuperadmin, rolesAsignablesParaAlta, usuarioRolLabel } from '../config/roles.js'
 import { displayValue, escapeHtml, formatApiDateTime } from '../utils/format.js'
 import { createKeyedLock, createViewLifecycle, runLockedConfirmAction } from '../utils/view-guard.js'
@@ -435,12 +436,17 @@ export async function renderAdministracion(container) {
           titleId: 'admin-usuarios-title',
           title: 'Usuarios',
           description: 'Administrá los accesos, roles y estados.',
-          actionHtml: createActionControl({
+          actionHtml: `<div class="flex flex-col gap-2 sm:flex-row">${createActionControl({
             id: 'admin-usuario-new',
             label: 'Nuevo usuario',
             enabled: canCreateUsuarios,
             disabledMessage: usuarioDisabledMessage,
-          }),
+          })}${createActionControl({
+            id: 'admin-usuario-invite',
+            label: 'Invitar',
+            enabled: canCreateUsuarios,
+            disabledMessage: usuarioDisabledMessage,
+          })}</div>`,
         })}
         <div class="${ADMIN_FILTER_GRID_CLASS}">
           <div class="min-w-0">
@@ -506,6 +512,9 @@ export async function renderAdministracion(container) {
     syncClear()
     if (canCreateUsuarios) {
       panel.querySelector('#admin-usuario-new')?.addEventListener('click', openUsuarioCreate, {
+        signal: listenerAbort.signal,
+      })
+      panel.querySelector('#admin-usuario-invite')?.addEventListener('click', openInvitacion, {
         signal: listenerAbort.signal,
       })
     }
@@ -996,6 +1005,30 @@ export async function renderAdministracion(container) {
     if (button.dataset.usuarioAccion === 'editar') {
       openUsuarioEdit(usuario)
     }
+  }
+
+  function openInvitacion() {
+    if (!canCreateUsuarios || !isViewAlive()) return
+    const form = createInvitacionForm({
+      empresaIdPermitida: tenantEmpresaId,
+      permitirElegirEmpresa: isSuperadmin(user),
+      rolesPermitidos: rolesAsignablesParaAlta(user),
+      onCancel: () => closeActiveModal(),
+      onSubmit: async (dto) => {
+        await invitarUsuario(dto)
+        closeActiveModal({ force: true })
+        viewToast({ message: 'Invitación enviada.', tone: 'success' })
+      },
+    })
+    const modal = openFormModal({
+      title: 'Invitar usuario',
+      content: form,
+      labelledBy: 'usuario-invite-title',
+      onClose: () => {
+        activeModalClose = null
+      },
+    })
+    activeModalClose = modal.close
   }
 
   function openUsuarioCreate() {

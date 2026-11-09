@@ -36,6 +36,7 @@ El frontend y la API tienen remotos distintos. El directorio que los contiene no
 - La sesión renovable se escribe solo cuando `POST /api/Auth/mfa/verificar` responde con un access válido. Una respuesta perdida o un intento reemplazado no se reenvían.
 - El QR se dibuja en el navegador con `qrcode` 1.5.4. No había una biblioteca de QR en el proyecto y no se llama a un generador externo.
 - Esta entrega no desactiva, no reemplaza y no restablece el autenticador. Esas operaciones quedan para etapas posteriores.
+- La invitación nueva puede marcar Exigir MFA. El alta con contraseña no cambia. La vinculación usa el mismo QR local y no escribe el desafío, la clave ni los códigos en el almacenamiento.
 - `Auth:PermitirEnrolamientoMfa` sigue en falso fuera de las pruebas locales.
 
 ## Informe y PDF del frontend

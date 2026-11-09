@@ -67,11 +67,20 @@ function laboratorio() {
       limpiarAccess: () => sesiones[indice].removeItem('token'),
       urlLogin: '/api/Auth/Login',
       urlVerificar: '/api/Auth/mfa/verificar',
+      urlVinculacionInicio: '/api/Auth/mfa/vinculacion/iniciar',
+      urlVinculacionConfirmar: '/api/Auth/mfa/vinculacion/confirmar',
       urlRefresh: '/api/Auth/refresh',
       urlCierre: '/api/Auth/cerrar-sesion',
       fetch: async (url, init) => {
         llamadas.push({ url, generacion: init.headers['X-CF-Generacion'] })
         if (url.endsWith('/Login')) {
+          if (control.loginVinculacion) {
+            return {
+              ok: false,
+              status: 401,
+              json: async () => ({ codigo: 'vinculacion_mfa_pendiente', desafio: control.desafio, expiraEn: control.expiraEn }),
+            }
+          }
           if (control.loginMfa) {
             return {
               ok: false,
@@ -85,6 +94,13 @@ function laboratorio() {
             status: 200,
             json: async () => ({ token: jwt({ nameid: 8, sid: generacion }), requiereCambioPassword: false }),
           }
+        }
+        if (url.endsWith('/vinculacion/iniciar')) {
+          return { ok: true, status: 200, json: async () => ({ operacion: 'op', uri: 'otpauth://totp/lab', claveManual: 'MANUAL', expiraEn: control.expiraEn }) }
+        }
+        if (url.endsWith('/vinculacion/confirmar')) {
+          if (control.pausa) await control.pausa
+          return { ok: true, status: 200, json: async () => ({ mensaje: 'listo', codigos: ['codigo-prueba'] }) }
         }
         if (!url.endsWith('/verificar')) return { ok: false, status: 404, json: async () => ({}) }
         if (control.pausa) await control.pausa
@@ -218,6 +234,29 @@ check('un código incorrecto deja el mismo intento', async () => {
   lab.control.verificar = null
   const bueno = await a.verificar({ intento: pendiente.intento, codigo: '123456' })
   assert.equal(bueno.modo, 'renovable')
+})
+
+check('la vinculación no publica sesión y una respuesta tardía se descarta', async () => {
+  const lab = laboratorio()
+  lab.control.loginVinculacion = true
+  lab.control.desafio = 'desafio-vinculo'
+  lab.control.expiraEn = new Date(Date.now() + 60_000).toISOString()
+  let soltar
+  lab.control.pausa = new Promise((resolve) => { soltar = resolve })
+  const a = lab.coordinar(0)
+  const pendiente = await a.iniciar({ email: 'a@local.test', password: 'x' })
+  assert.equal(pendiente.modo, 'vinculacion')
+  const inicio = await a.iniciarVinculacion({ intento: pendiente.intento })
+  assert.equal(inicio.modo, 'inicio')
+  assert.equal(lab.sesiones[0].getItem('token'), null)
+  const tarea = a.confirmarVinculacion({ intento: pendiente.intento, codigo: '123456' })
+  await new Promise((resolve) => setTimeout(resolve, 20))
+  a.cancelar(pendiente.intento)
+  soltar()
+  const resultado = await tarea
+  assert.equal(resultado.modo, 'descartado')
+  assert.equal(lab.local.getItem(ESTADO_SESION_KEY), null)
+  assert.equal(JSON.stringify(lab.local).includes('codigo-prueba'), false)
 })
 
 const fallos = (await Promise.all(checks)).filter(Boolean)

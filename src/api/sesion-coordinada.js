@@ -278,6 +278,7 @@ export function crearSesionCoordinada(opciones) {
           const id = uuid()
           pendienteMfa = {
             id,
+            tipo: 'login',
             generacion,
             desafio: cuerpo.desafio,
             expiraEn: cuerpo.expiraEn,
@@ -285,7 +286,24 @@ export function crearSesionCoordinada(opciones) {
           }
           return { modo: 'mfa', intento: id, expiraEn: cuerpo.expiraEn, generacion }
         }
-        return { modo: 'http', status: 401, generacion }
+        if (cuerpo?.codigo === 'vinculacion_mfa_pendiente' && cuerpo.desafio && cuerpo.expiraEn) {
+          const id = uuid()
+          pendienteMfa = {
+            id,
+            tipo: 'vinculacion',
+            generacion,
+            desafio: cuerpo.desafio,
+            expiraEn: cuerpo.expiraEn,
+            operacion: null,
+            previoUsuarioId: previo?.usuarioId || null,
+          }
+          return { modo: 'vinculacion', intento: id, expiraEn: cuerpo.expiraEn, generacion }
+        }
+        return { modo: 'http', status: 401, codigo: cuerpo?.codigo || null, generacion }
+      }
+      if (response.status === 503) {
+        const cuerpo = await leerCuerpo(response)
+        return { modo: 'http', status: 503, codigo: cuerpo?.codigo || null, generacion }
       }
       if (!response.ok) return { modo: 'http', status: response.status, generacion }
       let payload = null
@@ -319,6 +337,111 @@ export function crearSesionCoordinada(opciones) {
     })
   }
 
+  function desafioVigente(pendiente, intento, tipo) {
+    if (!pendiente || pendiente.id !== intento || pendiente.tipo !== tipo) return { modo: 'descartado' }
+    if (leer()?.fase === 'habilitada') return { modo: 'reemplazado' }
+    if (Number.isNaN(Date.parse(pendiente.expiraEn)) || Date.parse(pendiente.expiraEn) <= Date.now()) {
+      pendienteMfa = null
+      return { modo: 'vencido' }
+    }
+    return null
+  }
+
+  function respuestaAjena(intento, generacion) {
+    const vigente = pendienteMfa
+    const despues = leer()
+    return !vigente || vigente.id !== intento || (despues?.fase === 'habilitada' && despues.generacion !== generacion)
+  }
+
+  async function iniciarVinculacion({ intento }) {
+    asegurarEscucha()
+    if (!soporta()) return { modo: 'tradicional' }
+    return exclusivo(async () => {
+      const pendiente = pendienteMfa
+      const bloqueo = desafioVigente(pendiente, intento, 'vinculacion')
+      if (bloqueo) return bloqueo
+      const response = await solicitar(opciones.urlVinculacionInicio, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ desafio: pendiente.desafio }),
+      }, pendiente.generacion)
+      if (respuestaAjena(intento, pendiente.generacion)) return { modo: 'descartado' }
+      if (!response || response.status === 500 || response.status === 503) {
+        pendienteMfa = null
+        return { modo: 'incierto', status: response?.status || 0 }
+      }
+      if (!response.ok) {
+        const cuerpo = await leerCuerpo(response)
+        if (response.status !== 401 || cuerpo?.codigo !== 'mfa_invalido') pendienteMfa = null
+        return { modo: 'http', status: response.status, codigo: cuerpo?.codigo || null }
+      }
+      let payload = null
+      try {
+        payload = await response.json()
+      } catch {
+        pendienteMfa = null
+        return { modo: 'incierto' }
+      }
+      if (respuestaAjena(intento, pendiente.generacion)) return { modo: 'descartado' }
+      if (!payload?.operacion || !payload?.uri || !payload?.claveManual) return { modo: 'sin-token' }
+      pendiente.operacion = payload.operacion
+      return {
+        modo: 'inicio',
+        operacion: payload.operacion,
+        uri: payload.uri,
+        claveManual: payload.claveManual,
+        expiraEn: payload.expiraEn || pendiente.expiraEn,
+      }
+    })
+  }
+
+  async function confirmarVinculacion({ intento, codigo }) {
+    asegurarEscucha()
+    if (!soporta()) return { modo: 'tradicional' }
+    return exclusivo(async () => {
+      const pendiente = pendienteMfa
+      const bloqueo = desafioVigente(pendiente, intento, 'vinculacion')
+      if (bloqueo) return bloqueo
+      if (!pendiente.operacion) return { modo: 'descartado' }
+      const response = await solicitar(opciones.urlVinculacionConfirmar, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          desafio: pendiente.desafio,
+          operacion: pendiente.operacion,
+          codigo: String(codigo ?? '').trim(),
+        }),
+      }, pendiente.generacion)
+      if (respuestaAjena(intento, pendiente.generacion)) return { modo: 'descartado' }
+      if (!response || response.status === 500 || response.status === 503) {
+        pendienteMfa = null
+        return { modo: 'incierto', status: response?.status || 0 }
+      }
+      if (!response.ok) {
+        const cuerpo = await leerCuerpo(response)
+        if (response.status === 401 && cuerpo?.codigo === 'mfa_invalido') {
+          return { modo: 'http', status: 401, codigo: 'mfa_invalido' }
+        }
+        pendienteMfa = null
+        return { modo: 'http', status: response.status, codigo: cuerpo?.codigo || null }
+      }
+      let payload = null
+      try {
+        payload = await response.json()
+      } catch {
+        pendienteMfa = null
+        return { modo: 'incierto' }
+      }
+      if (respuestaAjena(intento, pendiente.generacion)) return { modo: 'descartado' }
+      pendienteMfa = null
+      return {
+        modo: 'codigos',
+        mensaje: payload?.mensaje || '',
+        codigos: Array.isArray(payload?.codigos) ? payload.codigos.map((item) => String(item)) : [],
+      }
+    })
+  }
+
   function cancelar(intento) {
     if (pendienteMfa?.id === intento) pendienteMfa = null
     return { cancelado: true }
@@ -329,7 +452,7 @@ export function crearSesionCoordinada(opciones) {
     if (!soporta()) return { modo: 'tradicional' }
     return exclusivo(async () => {
       const pendiente = pendienteMfa
-      if (!pendiente || pendiente.id !== intento) return { modo: 'descartado' }
+      if (!pendiente || pendiente.id !== intento || pendiente.tipo === 'vinculacion') return { modo: 'descartado' }
       const estado = leer()
       if (estado?.fase === 'habilitada') return { modo: 'reemplazado' }
       if (Number.isNaN(Date.parse(pendiente.expiraEn)) || Date.parse(pendiente.expiraEn) <= Date.now()) {
@@ -527,6 +650,8 @@ export function crearSesionCoordinada(opciones) {
     preparar,
     iniciar,
     verificar,
+    iniciarVinculacion,
+    confirmarVinculacion,
     cancelar,
     renovar,
     cerrar,

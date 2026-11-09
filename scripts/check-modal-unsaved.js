@@ -65,7 +65,7 @@ check('El modal reutilizable evita el cierre por backdrop en formularios', () =>
 check('Formularios de administración usan openFormModal y force al guardar', () => {
   const src = read('src/views/administracion.js')
   assert.match(src, /openFormModal/)
-  assert.equal((src.match(/openFormModal\(/g) || []).length, 6)
+  assert.equal((src.match(/openFormModal\(/g) || []).length, 7)
   assert.match(src, /closeActiveModal\(\{ force: true \}\)/)
   assert.match(src, /title: 'Contraseña temporal'/)
   assert.match(src, /openModal\(/)

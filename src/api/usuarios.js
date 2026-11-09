@@ -65,6 +65,7 @@ export const USUARIO_API_PATHS = Object.freeze({
   estado: (id) => `/api/usuarios/${id}/estado`,
   rol: (id) => `/api/usuarios/${id}/rol`,
   identidad: (id) => `/api/usuarios/${id}/identidad`,
+  invitar: '/api/usuarios/invitar',
 })
 
 export const USUARIO_LIST_FIELDS = Object.freeze([
@@ -645,6 +646,48 @@ async function createUsuarioOnce({ nombreUsuario, email, password, rol, empresaI
   discardUsuarioCreateSecrets(payload)
 
   return { mensaje: 'Usuario creado correctamente.' }
+}
+
+export async function invitarUsuario({ nombreUsuario, email, rol, empresaId, exigirMfa = false }) {
+  const empresa = parseEmpresaId(empresaId)
+  if (!puedeCrearUsuarios(getCurrentUser(), empresa)) {
+    throw createApiError('No tenés permiso para invitar usuarios.', 403)
+  }
+  if (!empresa) throw createApiError('Seleccioná una empresa.', 400)
+  const nombreError = validateUsuarioNombre(nombreUsuario)
+  if (nombreError) throw createApiError(nombreError, 400)
+  const normalizedRol = normalizeRole(rol)
+  const rolesPermitidos = rolesAsignablesParaAlta(getCurrentUser())
+  if (!rolesPermitidos.includes(normalizedRol) || !isAssignableUsuarioRole(normalizedRol)) {
+    throw createApiError('El rol no está permitido para la invitación.', 400)
+  }
+  const dto = {
+    empresaId: empresa,
+    nombreUsuario: String(nombreUsuario ?? ''),
+    email: String(email ?? '').trim(),
+    rol: normalizedRol,
+    exigirMfa: exigirMfa === true,
+  }
+  const { url, response } = await jsonRequest(USUARIO_API_PATHS.invitar, {
+    method: 'POST',
+    body: JSON.stringify(dto),
+    empresaId: empresa,
+  })
+  if (response.status === 403) throw createApiError('La empresa o los permisos no son correctos.', 403)
+  if (response.status === 409) {
+    const cuerpo = await response.clone().json().catch(() => null)
+    if (cuerpo?.codigo === 'mfa_enrolamiento_deshabilitado') {
+      throw createApiError('No se puede exigir MFA mientras el enrolamiento está deshabilitado.', 409)
+    }
+    throw createApiError(await publicApiMessage(response, 'El correo ya está registrado o la empresa no existe.'), 409)
+  }
+  if (response.status === 400) throw createApiError(await publicApiMessage(response, 'Los datos de la invitación no son válidos.'), 400)
+  if (response.status >= 500) {
+    console.error('Usuarios: la API no pudo enviar la invitación', { url, status: response.status })
+    throw createApiError('La API no pudo enviar la invitación.', response.status)
+  }
+  if (response.status !== 201) throw createApiError(`No se pudo invitar al usuario (${response.status}).`, response.status)
+  return { mensaje: 'Invitación enviada.' }
 }
 
 export async function createUsuario(dto) {

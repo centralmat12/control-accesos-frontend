@@ -277,6 +277,8 @@ function sesion() {
       limpiarAccess: () => sessionStorage.removeItem(TOKEN_KEY),
       urlLogin: apiUrl('/api/Auth/Login'),
       urlVerificar: apiUrl('/api/Auth/mfa/verificar'),
+      urlVinculacionInicio: apiUrl('/api/Auth/mfa/vinculacion/iniciar'),
+      urlVinculacionConfirmar: apiUrl('/api/Auth/mfa/vinculacion/confirmar'),
       urlRefresh: apiUrl('/api/Auth/refresh'),
       urlCierre: apiUrl('/api/Auth/cerrar-sesion'),
       alCambiarRemoto: () => {
@@ -418,12 +420,15 @@ export async function login({ email, password }) {
 
   if (sesion().soporta()) {
     const resultado = await sesion().iniciar({ email: normalizedEmail, password: normalizedPassword })
-    const statusLogin = resultado.modo === 'mfa'
+    const statusLogin = resultado.modo === 'mfa' || resultado.modo === 'vinculacion'
       ? 401
       : (resultado.status || (resultado.modo === 'renovable' ? 200 : 0))
     logApiResponse('POST', '/api/Auth/Login', statusLogin)
     if (resultado.modo === 'mfa') {
       return { pendienteMfa: true, intento: resultado.intento, expiraEn: resultado.expiraEn }
+    }
+    if (resultado.modo === 'vinculacion') {
+      return { vinculacion: true, intento: resultado.intento, expiraEn: resultado.expiraEn }
     }
     if (resultado.modo === 'red' || resultado.modo === 'ilegible') {
       logApiNetworkError('POST', '/api/Auth/Login')
@@ -460,13 +465,29 @@ export async function login({ email, password }) {
     if (cuerpo?.codigo === 'mfa_requerido' && cuerpo.desafio && cuerpo.expiraEn) {
       mfaTradicional = {
         id: globalThis.crypto.randomUUID(),
+        tipo: 'login',
         desafio: cuerpo.desafio,
         expiraEn: cuerpo.expiraEn,
         email: normalizedEmail,
       }
       return { pendienteMfa: true, intento: mfaTradicional.id, expiraEn: cuerpo.expiraEn }
     }
-    throw loginError(401)
+    if (cuerpo?.codigo === 'vinculacion_mfa_pendiente' && cuerpo.desafio && cuerpo.expiraEn) {
+      mfaTradicional = {
+        id: globalThis.crypto.randomUUID(),
+        tipo: 'vinculacion',
+        desafio: cuerpo.desafio,
+        expiraEn: cuerpo.expiraEn,
+        operacion: null,
+        email: normalizedEmail,
+      }
+      return { vinculacion: true, intento: mfaTradicional.id, expiraEn: cuerpo.expiraEn }
+    }
+    throw loginError(401, cuerpo?.codigo)
+  }
+  if (response.status === 503) {
+    const cuerpo = await leerJson(response)
+    throw loginError(503, cuerpo?.codigo)
   }
   if (!response.ok) throw loginError(response.status)
   const payload = await leerJson(response)
@@ -479,6 +500,86 @@ export async function login({ email, password }) {
 export function cancelarSegundoFactor(intento) {
   if (sesion().soporta()) sesion().cancelar(intento)
   if (mfaTradicional?.id === intento) mfaTradicional = null
+}
+
+export async function iniciarVinculacion(intento) {
+  if (sesion().soporta()) {
+    const resultado = await sesion().iniciarVinculacion({ intento })
+    if (resultado.status) logApiResponse('POST', '/api/Auth/mfa/vinculacion/iniciar', resultado.status)
+    if (resultado.modo === 'inicio') {
+      logApiResponse('POST', '/api/Auth/mfa/vinculacion/iniciar', 200)
+      return resultado
+    }
+    throw traducirVerificacion(resultado)
+  }
+  return vinculacionTradicional('iniciar', intento)
+}
+
+export async function confirmarVinculacion({ intento, codigo }) {
+  if (sesion().soporta()) {
+    const resultado = await sesion().confirmarVinculacion({ intento, codigo })
+    if (resultado.status) logApiResponse('POST', '/api/Auth/mfa/vinculacion/confirmar', resultado.status)
+    if (resultado.modo === 'codigos') {
+      logApiResponse('POST', '/api/Auth/mfa/vinculacion/confirmar', 200)
+      return resultado
+    }
+    throw traducirVerificacion(resultado)
+  }
+  return vinculacionTradicional('confirmar', intento, codigo)
+}
+
+async function vinculacionTradicional(paso, intento, codigo) {
+  const pendiente = mfaTradicional
+  if (!pendiente || pendiente.id !== intento || pendiente.tipo !== 'vinculacion') throw errorMfa('descartado')
+  if (Number.isNaN(Date.parse(pendiente.expiraEn)) || Date.parse(pendiente.expiraEn) <= Date.now()) {
+    mfaTradicional = null
+    throw errorMfa('vencido', 401)
+  }
+  const path = paso === 'iniciar'
+    ? '/api/Auth/mfa/vinculacion/iniciar'
+    : '/api/Auth/mfa/vinculacion/confirmar'
+  const body = paso === 'iniciar'
+    ? { desafio: pendiente.desafio }
+    : { desafio: pendiente.desafio, operacion: pendiente.operacion, codigo: String(codigo ?? '').trim() }
+  let response
+  try {
+    response = await fetch(apiUrl(path), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    })
+  } catch {
+    mfaTradicional = null
+    logApiNetworkError('POST', path)
+    throw errorMfa('incierto', 0)
+  }
+  logApiResponse('POST', path, response.status)
+  if (response.status === 500 || response.status === 503) {
+    mfaTradicional = null
+    throw errorMfa('incierto', response.status)
+  }
+  const payload = await leerJson(response)
+  if (!response.ok) {
+    if (response.status === 401 && payload?.codigo === 'mfa_invalido') throw errorMfa('mfa_invalido', 401)
+    mfaTradicional = null
+    throw errorMfa(payload?.codigo || 'descartado', response.status)
+  }
+  if (paso === 'iniciar' && payload?.operacion && payload?.uri && payload?.claveManual) {
+    pendiente.operacion = payload.operacion
+    return {
+      modo: 'inicio',
+      operacion: payload.operacion,
+      uri: payload.uri,
+      claveManual: payload.claveManual,
+      expiraEn: payload.expiraEn || pendiente.expiraEn,
+    }
+  }
+  mfaTradicional = null
+  return {
+    modo: 'codigos',
+    mensaje: payload?.mensaje || '',
+    codigos: Array.isArray(payload?.codigos) ? payload.codigos.map((item) => String(item)) : [],
+  }
 }
 
 export async function verificarSegundoFactor({ intento, codigo, codigoRecuperacion }) {
@@ -546,6 +647,9 @@ export async function verificarSegundoFactor({ intento, codigo, codigoRecuperaci
 
 function loginError(status, codigo) {
   console.error('Login: respuesta HTTP no exitosa', { status })
+  if (codigo === 'vinculacion_no_disponible') {
+    return new Error('La vinculación del autenticador no está disponible. No se abrió una sesión.')
+  }
   if (codigo === 'mfa_no_disponible' || status === 503) return errorMfa('mfa_no_disponible', status)
   if (status === 401) return new Error('Correo o contraseña incorrectos.')
   if (status === 400) return new Error('Los datos de inicio de sesión no son válidos.')

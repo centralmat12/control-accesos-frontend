@@ -3,8 +3,7 @@
 Hechos abiertos al 9 de noviembre de 2026, después de la etapa 7C.2.
 
 - `feat/autenticacion-sesiones-web` no tiene upstream. El commit de 7C.2 es local. No hay bundle ni publicación.
-- La API permanece en `b5e397946fc3f1e2d5d3cefc066959e3bc89346a`. Su copia de las guías no se modificó, para no salir de ese commit.
-- Siguen pendientes el requisito administrativo de MFA, el token de vinculación, la desactivación, el reemplazo del autenticador y el restablecimiento administrativo.
+- La etapa 7D agrega la invitación con MFA opcional y la pantalla de vinculación. Siguen pendientes la desactivación, el reemplazo del autenticador, el restablecimiento administrativo y exigir MFA a cuentas que ya existen.
 - `Auth:PermitirEnrolamientoMfa` queda en falso. Sin esa bandera, Seguridad informa que la activación no está habilitada.
 - `check-action-buttons.js` falla igual que en `09d8fcd`. Espera `minmax(0,1fr)_7rem_auto`. `turnos-panel.js` y ese script no cambiaron en esta entrega.
 

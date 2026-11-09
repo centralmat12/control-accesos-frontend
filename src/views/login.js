@@ -7,6 +7,7 @@ import {
   MENSAJE_SESION_CAMBIADA,
   verificarSegundoFactor,
 } from '../api/auth.js'
+import { mostrarVinculacion } from './vincular-mfa.js'
 import { brandLogoAuthMarkup } from '../components/brand-logo.js'
 import { createThemeToggle } from '../components/theme-toggle.js'
 import {
@@ -137,6 +138,21 @@ export function renderLogin(container, { onSuccess }) {
         email: String(emailInput.value ?? '').trim(),
         password: String(passwordInput.value ?? ''),
       })
+      if (ingreso?.vinculacion) {
+        mostrarVinculacion(view, {
+          intento: ingreso.intento,
+          expiraEn: ingreso.expiraEn,
+          onVolver(mensaje) {
+            renderLogin(container, { onSuccess })
+            if (!mensaje) return
+            const alerta = container.querySelector('#login-error')
+            if (!alerta) return
+            alerta.textContent = mensaje
+            alerta.classList.remove('hidden')
+          },
+        })
+        return
+      }
       if (ingreso?.pendienteMfa) {
         mostrarSegundoFactor(view, {
           intento: ingreso.intento,

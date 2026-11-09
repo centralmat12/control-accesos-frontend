@@ -1,5 +1,7 @@
 # Estado actual
 
+Etapa 7D del frontend, 9 de noviembre de 2026. Usuarios muestra Invitar, con rol y empresa iguales al alta y con **Exigir MFA** desmarcado. `vinculacion_mfa_pendiente` abre el QR local, la clave manual y los códigos antes del panel. El desafío y los secretos quedan en memoria. Cancelar, vencer o cambiar de generación descarta una respuesta tardía y no publica sesión. Después de guardar los códigos se vuelve al login.
+
 Etapa 7C.2 del frontend, 9 de noviembre de 2026. No se desplegó, no se publicó y no se mergeó. La API no se modificó: sigue en `feat/autenticacion-segura`, `b5e397946fc3f1e2d5d3cefc066959e3bc89346a`, con el commit funcional `da38172767fd8a9d5da69d4116e26389c355e1f4`.
 
 El login trata `401` con `codigo=mfa_requerido` como un paso intermedio. El desafío, el vencimiento, el modo y la generación quedan en memoria. La verificación reutiliza ese modo y esa generación, y la sesión se publica solo después de una respuesta válida. El Web Lock se libera mientras se escribe el código. Antes de enviarlo se revalida el contexto. Una respuesta de un intento cancelado o reemplazado no publica la sesión. Si la verificación queda incierta, hay que volver a iniciar sesión y el código no se reenvía. El acceso sin MFA, el modo tradicional y el cambio obligatorio de contraseña siguen.
