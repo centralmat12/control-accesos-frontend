@@ -56,6 +56,10 @@ export function canAccessAdministracion(user) {
   return isSuperadmin(user) || isAdmin(user)
 }
 
+export function puedeAdministrarCorreoSaliente(user) {
+  return isSuperadmin(user)
+}
+
 export function isAssignableUsuarioRole(role) {
   return USUARIO_ROLES_API.includes(normalizeRole(role))
 }

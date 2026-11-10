@@ -9,7 +9,9 @@
  *   SuperAdmin: listado global o filtrado por query empresaId
  *   ADMIN: la API fuerza el empresa_id del claim e ignora la query
  *   Devuelve UsuarioListItemDto: id, empresaId, nombreUsuario, correo, rol, activo,
- *   requiereCambioPassword, bloqueado, bloqueadoHasta. Sin hash, temporal ni token.
+ *   requiereCambioPassword, bloqueado, bloqueadoHasta, totpHabilitado, mfaObligatorio,
+ *   invitacionPendiente.
+ *   Sin hash, secreto, temporal ni token.
  * - POST /api/usuarios  → Policy PuedeCrearUsuarios (SuperAdmin | ADMIN)
  *   SuperAdmin: X-Empresa-Id + body.empresaId coincidentes (JWT sin empresa_id)
  *   ADMIN: JWT empresa_id, sin X-Empresa-Id. El body.rol se fuerza a RRHH en la API.
@@ -55,12 +57,13 @@ export const USUARIOS_TABLE_COLUMNS = Object.freeze([
   'Rol',
   'Empresa',
   'Estado',
+  'MFA',
   'Cambio de clave',
   'Bloqueo',
   'Acciones',
 ])
 
-export const USUARIOS_TABLE_CENTERED_COLUMNS = Object.freeze(['Estado', 'Cambio de clave', 'Bloqueo', 'Acciones'])
+export const USUARIOS_TABLE_CENTERED_COLUMNS = Object.freeze(['Estado', 'MFA', 'Cambio de clave', 'Bloqueo', 'Acciones'])
 
 export const API_ADMIN_ENDPOINTS = Object.freeze({
   listarUsuarios: true,
@@ -202,6 +205,14 @@ export function puedeEditarUsuarioObjetivo(operador, objetivo) {
 
 export function puedeCambiarEstadoUsuarioObjetivo(operador, objetivo) {
   if (!puedeCambiarEstadoUsuario()) return false
+  return puedeAdministrarUsuarioObjetivo(operador, objetivo)
+}
+
+export function puedeExigirMfaUsuarioObjetivo(operador, objetivo) {
+  if (!puedeCambiarEstadoUsuario()) return false
+  if (!objetivo?.activo) return false
+  if (objetivo?.mfaObligatorio !== false) return false
+  if (objetivo?.totpHabilitado !== true && objetivo?.totpHabilitado !== false) return false
   return puedeAdministrarUsuarioObjetivo(operador, objetivo)
 }
 

@@ -1,5 +1,12 @@
 # Pendientes
 
+Cierre del 10 de noviembre de 2026. El detalle está en `api/api-nueva-20261023/docs/CONTINUIDAD_AUTENTICACION.md`.
+
+- El correo de prueba desde Webmail llegó. El envío desde la API sigue sin validar.
+- Diagnosticar el último error de Invitar usuario. El log local registró `invitacion_envio_fallido` con `AuthenticationException` después de crear la invitación.
+- La decisión siguiente no tiene prompt de implementación: retirar Correo saliente, completar la pantalla de aceptación y, probado el flujo, dejar Nuevo usuario como única alta por invitación.
+- Esos cambios de Correo saliente siguen sin commit.
+
 Hechos abiertos al 9 de noviembre de 2026, después de la etapa 7C.2.
 
 - `feat/autenticacion-sesiones-web` no tiene upstream. El commit de 7C.2 es local. No hay bundle ni publicación.

@@ -1,4 +1,6 @@
 import {
+  estadoCuentaUsuario,
+  estadoMfaUsuario,
   estadoPasswordUsuario,
   USUARIO_CORREO_DUPLICADO,
   USUARIO_IDENTIDAD_CORREO_CONFIRM,
@@ -8,15 +10,16 @@ import {
   puedeActualizarIdentidadUsuarioObjetivo,
   puedeCambiarEstadoUsuarioObjetivo,
   puedeCambiarRolUsuarioObjetivo,
+  puedeExigirMfaUsuarioObjetivo,
   puedeDesbloquearUsuarioObjetivo,
   puedeRestablecerUsuarioObjetivo,
 } from '../config/administracion.js'
 import { ROLES, USUARIO_ROLES_API, normalizeRole, usuarioRolLabel } from '../config/roles.js'
 import { escapeHtml, formatApiDateTime } from '../utils/format.js'
 import { sanitizePublicErrorMessage } from '../utils/public-error.js'
-import { BTN_DELETE_CLASS, BTN_SECONDARY_CLASS } from './button-styles.js'
-import { iconLockReset, iconSave, iconTrash } from './icons.js'
-import { employeeStatusBadge } from './badge.js'
+import { BTN_DELETE_CLASS, BTN_POSITIVE_CLASS, BTN_SECONDARY_CLASS } from './button-styles.js'
+import { iconLockReset, iconMail, iconSave, iconShieldLock, iconStatusOff, iconStatusOk, iconStatusWarn, iconTrash } from './icons.js'
+import { badgeHtml, employeeStatusBadge } from './badge.js'
 import { fieldIds, FORM_LABEL_CLASS, formFieldMarkup, wireFormFields } from './form-field.js'
 import { enhanceSelectsIn, refreshEnhancedSelect } from './dropdown.js'
 import { openModal } from './modal.js'
@@ -53,8 +56,6 @@ const BTN_PRIMARY_CLASS =
 const BTN_FIELD_SECONDARY = `${BTN_SECONDARY_CLASS} inline-flex h-10 w-fit shrink-0 items-center justify-center rounded-lg px-3 text-sm font-semibold`
 const BTN_RESET_CLASS = 'btn-action-reset gap-1.5'
 const BTN_COMPACT_SECONDARY = `${BTN_SECONDARY_CLASS} h-8 px-2.5 py-0 text-xs`
-const BTN_COMPACT_DANGER =
-  'inline-flex h-8 items-center justify-center rounded-lg bg-red-600 px-2.5 text-xs font-semibold text-white hover:bg-red-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500 active:bg-red-700 disabled:cursor-not-allowed disabled:opacity-60'
 const BTN_COMPACT_POSITIVE =
   'inline-flex h-8 items-center justify-center rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 text-xs font-semibold text-emerald-800 hover:bg-emerald-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 disabled:cursor-not-allowed disabled:opacity-60 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-200 dark:hover:bg-emerald-950/70'
 export function rolCambioConfirmMessage(rolActual, rolNuevo) {
@@ -67,6 +68,74 @@ export function rolCambioConfirmMessage(rolActual, rolNuevo) {
 
 export function usuarioEstadoConfirmMessage(activar) {
   return activar ? USUARIO_REACTIVAR_MESSAGE : USUARIO_DESACTIVAR_MESSAGE
+}
+
+export const USUARIO_FORZAR_MFA_LABEL = 'Forzar activación de MFA'
+export const USUARIO_FORZAR_MFA_SIN =
+  'Se cerrarán las sesiones de esta cuenta. En el próximo ingreso, la persona deberá configurar su autenticador para continuar.'
+export const USUARIO_FORZAR_MFA_CON =
+  'Se cerrarán las sesiones de esta cuenta. En el próximo ingreso, la persona deberá usar el autenticador que ya configuró.'
+
+export function usuarioForzarMfaConfirmMessage(usuario) {
+  return usuario?.totpHabilitado === true ? USUARIO_FORZAR_MFA_CON : USUARIO_FORZAR_MFA_SIN
+}
+
+export const USUARIO_ELIMINAR_TITLE = 'Eliminar cuenta'
+export const USUARIO_ELIMINAR_LABEL = 'Eliminar cuenta'
+export const USUARIO_ELIMINAR_BUSY = 'Eliminando…'
+export const USUARIO_ELIMINAR_SUCCESS = 'Cuenta eliminada'
+export const USUARIO_CANCELAR_INVITACION_TITLE = 'Cancelar invitación'
+export const USUARIO_CANCELAR_INVITACION_LABEL = 'Cancelar invitación'
+export const USUARIO_CANCELAR_INVITACION_BUSY = 'Cancelando…'
+export const USUARIO_CANCELAR_INVITACION_SUCCESS = 'Invitación cancelada.'
+export const USUARIO_DESACTIVAR_PENDIENTE = 'La desactivación se aplicará al guardar.'
+
+export function usuarioEliminarConfirmacion(nombre) {
+  const visible = String(nombre ?? '').trim() || 'esta cuenta'
+  return {
+    nombre: visible,
+    pierde: 'No podrá iniciar sesión, sus sesiones quedarán invalidadas y no se podrá reactivar desde el panel.',
+    conserva: 'Se conservan las fichadas y la auditoría.',
+  }
+}
+
+export const USUARIO_REENVIAR_INVITACION_LABEL = 'Reenviar invitación'
+export const USUARIO_REENVIAR_INVITACION_TITLE = 'Reenviar invitación'
+export const USUARIO_REENVIAR_INVITACION_SUCCESS = 'Invitación reenviada.'
+
+export function usuarioReenviarInvitacionMessage(nombre) {
+  const visible = String(nombre ?? '').trim() || 'esta cuenta'
+  return `Se enviará una nueva invitación a ${visible}. La invitación anterior dejará de ser válida.`
+}
+
+export function cuentaDesactivadaConfirmada(usuario) {
+  return usuario?.activo === false && usuario?.invitacionPendiente === false
+}
+
+function cuentaEstadoBadgeHtml(usuario) {
+  const estado = estadoCuentaUsuario(usuario)
+  if (estado === 'Invitación pendiente') {
+    return badgeHtml(estado, 'warning', { className: 'gap-1', icon: iconStatusWarn('h-3.5 w-3.5') })
+  }
+  if (estado === 'Bloqueado') return badgeHtml(estado, 'danger')
+  return employeeStatusBadge(usuario?.activo !== false, { withIcon: true })
+}
+
+export function mfaIndicadorHtml(usuario, { encabezado = false } = {}) {
+  const estadoBase = estadoMfaUsuario(usuario)
+  const estado = encabezado && estadoBase === 'Configuración pendiente' ? 'MFA pendiente' : estadoBase
+  const pendiente = estadoBase === 'Configuración pendiente'
+  const tono =
+    estado === 'Con MFA' ? 'success' : estado === 'Sin MFA' ? 'danger' : pendiente ? 'warning' : 'neutral'
+  const icono =
+    estado === 'Con MFA'
+      ? iconStatusOk('h-3.5 w-3.5')
+      : estado === 'Sin MFA'
+        ? iconStatusOff('h-3.5 w-3.5')
+        : pendiente
+          ? iconStatusWarn('h-3.5 w-3.5')
+          : ''
+  return badgeHtml(estado, tono, { className: icono ? 'gap-1' : '', icon: icono })
 }
 
 export function pintarTituloUsuario(heading, usuario, empresaLabel = '') {
@@ -85,8 +154,10 @@ export function pintarTituloUsuario(heading, usuario, empresaLabel = '') {
     nodes.push(company)
   }
   const host = document.createElement('span')
-  host.innerHTML = employeeStatusBadge(usuario?.activo !== false, { withIcon: true })
-  heading.replaceChildren(...nodes, host.firstElementChild)
+  host.innerHTML = cuentaEstadoBadgeHtml(usuario)
+  const mfa = document.createElement('span')
+  mfa.innerHTML = mfaIndicadorHtml(usuario, { encabezado: true })
+  heading.replaceChildren(...nodes, host.firstElementChild, mfa.firstElementChild)
 }
 
 export function usuarioEditSubtitle(usuario) {
@@ -117,7 +188,7 @@ function displayChangeValue(key, value) {
   return text || '—'
 }
 
-export function usuarioEditDiff(original, values) {
+export function usuarioEditDiff(original, values, { desactivar = false, forzarMfa = false } = {}) {
   const current = usuarioEditFormValues(original)
   const next = usuarioEditFormValues(original, values)
   const fields = [
@@ -126,7 +197,7 @@ export function usuarioEditDiff(original, values) {
     { key: 'rol', kind: 'rol', label: 'Rol' },
   ]
 
-  return fields
+  const changes = fields
     .filter((field) => current[field.key] !== next[field.key])
     .map((field) => ({
       ...field,
@@ -135,12 +206,41 @@ export function usuarioEditDiff(original, values) {
       currentLabel: displayChangeValue(field.key, current[field.key]),
       newLabel: displayChangeValue(field.key, next[field.key]),
     }))
+
+  if (desactivar && original?.activo !== false) {
+    changes.push({
+      key: 'activo',
+      kind: 'estado',
+      label: 'Estado',
+      currentValue: true,
+      newValue: false,
+      currentLabel: 'Activo',
+      newLabel: 'Inactivo',
+    })
+  }
+
+  if (forzarMfa && original?.mfaObligatorio !== true) {
+    changes.push({
+      key: 'mfa',
+      kind: 'mfa',
+      label: 'Doble factor',
+      currentValue: false,
+      newValue: true,
+      currentLabel: original?.totpHabilitado === true ? 'Con autenticador' : 'Sin obligación',
+      newLabel: USUARIO_FORZAR_MFA_LABEL,
+      notice: usuarioForzarMfaConfirmMessage(original),
+    })
+  }
+
+  return changes
 }
 
 export function usuarioEditSavePlan(changes = []) {
   return {
     identity: changes.some((change) => change.kind === 'identidad'),
     role: changes.some((change) => change.kind === 'rol'),
+    estado: changes.some((change) => change.kind === 'estado'),
+    mfa: changes.some((change) => change.kind === 'mfa'),
   }
 }
 
@@ -173,13 +273,26 @@ export function summarizeUsuarioEditSave(results) {
     if (results.role.status === 'ok') succeeded.push('rol')
     else failed.push({ kind: 'rol', error: results.role.error })
   }
+  if (results?.estado?.status && results.estado.status !== 'skipped') {
+    attempted.push('estado')
+    if (results.estado.status === 'ok') succeeded.push('estado')
+    else failed.push({ kind: 'estado', error: results.estado.error })
+  }
+  if (results?.mfa?.status && results.mfa.status !== 'skipped') {
+    attempted.push('mfa')
+    if (results.mfa.status === 'ok') succeeded.push('mfa')
+    else failed.push({ kind: 'mfa', error: results.mfa.error })
+  }
 
   const status = failed.length === 0 ? 'ok' : succeeded.length ? 'partial' : 'error'
   return { status, results, attempted, succeeded, failed }
 }
 
 function modificationPhrase(kind) {
-  return kind === 'rol' ? 'del rol' : 'de los datos de acceso'
+  if (kind === 'rol') return 'del rol'
+  if (kind === 'estado') return 'del estado'
+  if (kind === 'mfa') return 'del doble factor'
+  return 'de los datos de acceso'
 }
 
 export function usuarioEditSaveFeedback(summary) {
@@ -203,11 +316,13 @@ export function usuarioEditSaveFeedback(summary) {
   }
 }
 
-export async function applyUsuarioEditSaves({ changes = [], saveIdentidad, saveRol, onProgress } = {}) {
+export async function applyUsuarioEditSaves({ changes = [], saveIdentidad, saveRol, saveEstado, saveMfa, onProgress } = {}) {
   const plan = usuarioEditSavePlan(changes)
   const results = {
     identity: plan.identity ? { status: 'pending' } : { status: 'skipped' },
     role: plan.role ? { status: 'pending' } : { status: 'skipped' },
+    estado: plan.estado ? { status: 'pending' } : { status: 'skipped' },
+    mfa: plan.mfa ? { status: 'pending' } : { status: 'skipped' },
   }
 
   if (plan.identity) {
@@ -225,6 +340,24 @@ export async function applyUsuarioEditSaves({ changes = [], saveIdentidad, saveR
       results.role = { status: 'ok', value: await saveRol() }
     } catch (error) {
       results.role = { status: 'error', error }
+    }
+  }
+
+  if (plan.mfa) {
+    onProgress?.({ step: 'mfa', results })
+    try {
+      results.mfa = { status: 'ok', value: await saveMfa() }
+    } catch (error) {
+      results.mfa = { status: 'error', error }
+    }
+  }
+
+  if (plan.estado) {
+    onProgress?.({ step: 'estado', results })
+    try {
+      results.estado = { status: 'ok', value: await saveEstado() }
+    } catch (error) {
+      results.estado = { status: 'error', error }
     }
   }
 
@@ -269,6 +402,27 @@ function actionButtonMarkup({ action, usuarioId, label = '', ariaLabel = '', cla
   `
 }
 
+const FORZAR_MFA_ROW =
+  'flex min-h-11 w-full cursor-pointer items-center gap-3 rounded-lg border px-3 text-sm transition-colors focus-within:outline-none focus-within:ring-2 focus-within:ring-blue-500'
+const FORZAR_MFA_OFF = 'border-slate-300 bg-white text-slate-600 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-300'
+const FORZAR_MFA_ON = 'border-blue-400 bg-blue-50/70 text-slate-800 dark:border-blue-400 dark:bg-blue-500/10 dark:text-slate-100'
+const FORZAR_MFA_ICON_OFF = 'inline-flex shrink-0 text-slate-500 dark:text-slate-400'
+const FORZAR_MFA_ICON_ON = 'inline-flex shrink-0 text-blue-600 dark:text-blue-300'
+
+function dobleFactorMarkup(usuario, operador) {
+  if (!puedeExigirMfaUsuarioObjetivo(operador, usuario)) return ''
+  return `
+    <div class="space-y-2">
+      <p class="${FORM_LABEL_CLASS}">Doble factor</p>
+      <label data-forzar-mfa class="${FORZAR_MFA_ROW} ${FORZAR_MFA_OFF}">
+        <input name="forzarMfa" type="checkbox" class="h-4 w-4 shrink-0 accent-blue-600" />
+        <span data-forzar-mfa-icon class="${FORZAR_MFA_ICON_OFF}">${iconShieldLock('h-4 w-4')}</span>
+        <span>${escapeHtml(USUARIO_FORZAR_MFA_LABEL)}</span>
+      </label>
+    </div>
+  `
+}
+
 function usuarioEditActionGroups({ usuario, operador, matched = false } = {}) {
   const canEstado = puedeCambiarEstadoUsuarioObjetivo(operador, usuario)
   const canReset = puedeRestablecerUsuarioObjetivo(operador, usuario)
@@ -304,19 +458,51 @@ function usuarioEditActionGroups({ usuario, operador, matched = false } = {}) {
     )
   }
 
-  const estado = canEstado
-    ? actionButtonMarkup({
+  if (canEstado && usuario?.invitacionPendiente === true) {
+    acceso.push(
+      actionButtonMarkup({
+        action: 'reenviar-invitacion',
+        usuarioId,
+        label: USUARIO_REENVIAR_INVITACION_LABEL,
+        iconHtml: matched ? iconMail('h-3.5 w-3.5 shrink-0') : '',
+        className: matched ? BTN_FIELD_SECONDARY : BTN_COMPACT_SECONDARY,
+      }),
+      actionButtonMarkup({
+        action: 'cancelar-invitacion',
+        usuarioId,
+        label: USUARIO_CANCELAR_INVITACION_LABEL,
+        iconHtml: iconTrash('h-3.5 w-3.5 shrink-0'),
+        className: matched ? BTN_DELETE_CLASS : `${BTN_DELETE_CLASS} btn-action-compact`,
+      }),
+    )
+  } else if (canEstado) {
+    acceso.push(
+      actionButtonMarkup({
         action: 'estado',
         usuarioId,
         label: activo ? 'Desactivar cuenta' : 'Reactivar cuenta',
-        iconHtml: activo && matched ? iconTrash('h-3.5 w-3.5 shrink-0') : '',
-        className: activo ? (matched ? `${BTN_DELETE_CLASS} gap-1.5` : BTN_COMPACT_DANGER) : BTN_COMPACT_POSITIVE,
+        className: activo
+          ? (matched ? BTN_FIELD_SECONDARY : BTN_COMPACT_SECONDARY)
+          : (matched ? `${BTN_POSITIVE_CLASS} h-10 w-fit` : BTN_COMPACT_POSITIVE),
         tooltip: activo ? USUARIO_EDIT_TOOLTIPS.desactivar : '',
         tooltipId: activo ? 'usuario-edit-estado' : '',
-      })
-    : ''
+      }),
+    )
+  }
 
-  return { estado, acceso: acceso.join('') }
+  if (puedeCambiarEstadoUsuarioObjetivo(operador, usuario) && cuentaDesactivadaConfirmada(usuario)) {
+    acceso.push(
+      actionButtonMarkup({
+        action: 'eliminar',
+        usuarioId,
+        label: USUARIO_ELIMINAR_LABEL,
+        iconHtml: iconTrash('h-3.5 w-3.5 shrink-0'),
+        className: matched ? BTN_DELETE_CLASS : `${BTN_DELETE_CLASS} btn-action-compact`,
+      }),
+    )
+  }
+
+  return { estado: '', acceso: acceso.join('') }
 }
 
 export function usuarioEditHeaderActionsMarkup({ usuario, operador } = {}) {
@@ -334,6 +520,8 @@ export function usuarioEditHeaderActionsMarkup({ usuario, operador } = {}) {
 }
 
 export function usuarioModificacionesConfirmMarkup({ changes = [], busy = false, resultMessage = '', resultTone = '' } = {}) {
+  const avisoMfa = changes.find((change) => change.kind === 'mfa')?.notice || ''
+  const muestraTabla = changes.some((change) => change.kind !== 'mfa')
   const rows = changes
     .map(
       (change) => `
@@ -353,8 +541,8 @@ export function usuarioModificacionesConfirmMarkup({ changes = [], busy = false,
         ? 'border-red-200 bg-red-50 text-red-900 dark:border-red-900/60 dark:bg-red-950/30 dark:text-red-100'
         : 'border-slate-200 bg-slate-50 text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200'
 
-  return `
-    <div class="space-y-4">
+  const tabla = muestraTabla
+    ? `
       <div class="overflow-x-auto rounded-lg border border-slate-200 dark:border-slate-700">
         <table class="min-w-full divide-y divide-slate-200 dark:divide-slate-700">
           <thead class="bg-slate-50 dark:bg-slate-800">
@@ -367,7 +555,20 @@ export function usuarioModificacionesConfirmMarkup({ changes = [], busy = false,
           <tbody>${rows}</tbody>
         </table>
       </div>
-      <p class="text-sm text-slate-600 dark:text-slate-300">${escapeHtml(USUARIO_EDIT_SAVE_WARNING)}</p>
+    `
+    : ''
+  const aviso = avisoMfa
+    ? `<p class="text-sm text-slate-600 dark:text-slate-300">${escapeHtml(avisoMfa)}</p>`
+    : ''
+  const general = muestraTabla
+    ? `<p class="text-sm text-slate-600 dark:text-slate-300">${escapeHtml(USUARIO_EDIT_SAVE_WARNING)}</p>`
+    : ''
+
+  return `
+    <div class="space-y-4">
+      ${tabla}
+      ${aviso}
+      ${general}
       <div data-save-progress class="${busy ? '' : 'hidden'} flex items-center gap-2 text-sm text-slate-600 dark:text-slate-300" role="status" aria-live="polite">
         <span class="h-3.5 w-3.5 animate-pulse rounded-full bg-blue-600" aria-hidden="true"></span>
         <span>Guardando cambios...</span>
@@ -506,7 +707,11 @@ export function usuarioEditPanelMarkup({ usuario, operador, empresaLabel = '—'
         ${resumenItem('Correo electrónico', escapeHtml(identity.correo || '—'))}
       </div>`
 
-  const saveButton = `<button type="submit" data-action="guardar-cambios" data-usuario-accion="guardar" data-usuario-id="${usuarioId}" class="${BTN_PRIMARY_CLASS}" disabled>${iconSave('h-3.5 w-3.5 shrink-0')}<span>${USUARIO_EDIT_SAVE_LABEL}</span></button>`
+  const canEstado = puedeCambiarEstadoUsuarioObjetivo(operador, usuario)
+  const canGuardar = canForm || (canEstado && Boolean(usuario?.activo))
+  const saveButton = canGuardar
+    ? `<button type="submit" data-action="guardar-cambios" data-usuario-accion="guardar" data-usuario-id="${usuarioId}" class="${BTN_PRIMARY_CLASS}" disabled>${iconSave('h-3.5 w-3.5 shrink-0')}<span>${USUARIO_EDIT_SAVE_LABEL}</span></button>`
+    : ''
 
   const rolMarkup = canRole
     ? formFieldMarkup({
@@ -525,26 +730,30 @@ export function usuarioEditPanelMarkup({ usuario, operador, empresaLabel = '—'
         <p class="flex h-11 items-center text-sm font-medium text-slate-900 dark:text-slate-100">${escapeHtml(usuarioRolLabel(usuario?.rol) || '—')}</p>
       </div>`
   const acciones = usuarioEditActionGroups({ usuario, operador, matched: true })
+  const accionesCuenta = acciones.acceso
+    ? `<section data-section="acciones-cuenta" class="space-y-2 border-t border-slate-200 pt-4 dark:border-slate-700">
+        <p class="${FORM_LABEL_CLASS}">Acciones de cuenta</p>
+        <div class="flex flex-wrap gap-2">${acciones.acceso}</div>
+        <p id="usuario-desactivar-nota" class="hidden text-sm text-slate-600 dark:text-slate-300">${escapeHtml(USUARIO_DESACTIVAR_PENDIENTE)}</p>
+        <p id="usuario-eliminar-motivo" class="hidden text-sm text-red-700 dark:text-red-300" role="alert"></p>
+      </section>`
+    : ''
   const camposMarkup = `
     <section data-section="acceso" class="space-y-4">
       ${nombreCorreoMarkup}
       ${rolMarkup}
+      ${dobleFactorMarkup(usuario, operador)}
     </section>
   `
-  const filaPrincipal = acciones.estado || canForm
-    ? `<div class="flex items-center gap-2 ${acciones.estado && canForm ? 'justify-between' : canForm ? 'justify-end' : ''}">
-        ${acciones.estado}
-        ${canForm ? saveButton : ''}
-      </div>`
-    : ''
   const pieMarkup = `
-    <div class="space-y-3 border-t border-slate-200 pt-4 dark:border-slate-700">
-      ${acciones.acceso ? `<div class="flex flex-wrap gap-2">${acciones.acceso}</div>` : ''}
-      ${filaPrincipal}
+    ${accionesCuenta}
+    <div class="flex flex-col-reverse gap-2 border-t border-slate-200 pt-4 sm:flex-row sm:justify-end dark:border-slate-700">
+      <button type="button" data-action="cerrar" class="${BTN_SECONDARY_CLASS}">Cancelar</button>
+      ${saveButton}
     </div>
   `
 
-  return canForm
+  return canForm || canGuardar
     ? `
       <form id="usuario-edit-form" class="space-y-5" novalidate>
         ${camposMarkup}
@@ -554,24 +763,174 @@ export function usuarioEditPanelMarkup({ usuario, operador, empresaLabel = '—'
     : `
       <div class="space-y-5">
         ${camposMarkup}
-        ${acciones.estado ? pieMarkup : ''}
+        ${pieMarkup}
       </div>
     `
+}
+
+export function openUsuarioCancelarInvitacionConfirm({ nombre, execute } = {}) {
+  const visible = String(nombre ?? '').trim() || 'esta cuenta'
+  return new Promise((resolve) => {
+    let settled = false
+    let busy = false
+    const content = document.createElement('div')
+    content.innerHTML = `
+      <div class="space-y-3 text-sm text-slate-600 dark:text-slate-300">
+        <p>Se cancelará la invitación de <strong class="font-semibold text-slate-900 dark:text-slate-100">${escapeHtml(visible)}</strong>.</p>
+        <p>El enlace dejará de ser válido y la cuenta saldrá del listado. No se podrá reactivar desde el panel.</p>
+      </div>
+      <p data-cancelar-error class="mt-3 hidden rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-900 dark:border-red-900/60 dark:bg-red-950/30 dark:text-red-100" role="alert"></p>
+      <div class="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+        <button type="button" data-action="cancel" data-autofocus class="${BTN_SECONDARY_CLASS}">Volver</button>
+        <button type="button" data-action="confirm" class="rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500 disabled:cursor-not-allowed disabled:opacity-60">${escapeHtml(USUARIO_CANCELAR_INVITACION_LABEL)}</button>
+      </div>
+    `
+    const cancelBtn = content.querySelector('[data-action="cancel"]')
+    const confirmBtn = content.querySelector('[data-action="confirm"]')
+    const errorNode = content.querySelector('[data-cancelar-error]')
+    const finish = (outcome) => {
+      if (settled) return
+      settled = true
+      modal.close({ force: true })
+      resolve(outcome)
+    }
+    const modal = openModal({
+      title: USUARIO_CANCELAR_INVITACION_TITLE,
+      content,
+      labelledBy: 'usuario-cancelar-invitacion-title',
+      stacked: true,
+      closeOnBackdrop: false,
+      closeOnEscape: () => !busy,
+      canClose: () => !busy,
+      unsavedChanges: false,
+      onClose: () => {
+        if (!settled) resolve({ status: 'cancelled' })
+      },
+    })
+    const setBusy = (nextBusy) => {
+      busy = nextBusy
+      cancelBtn.disabled = nextBusy
+      confirmBtn.disabled = nextBusy
+      confirmBtn.textContent = nextBusy ? USUARIO_CANCELAR_INVITACION_BUSY : USUARIO_CANCELAR_INVITACION_LABEL
+      confirmBtn.setAttribute('aria-busy', nextBusy ? 'true' : 'false')
+      const closeButton = modal.dialog.querySelector('[aria-label="Cerrar"]')
+      if (closeButton) closeButton.disabled = nextBusy
+      modal.dialog.setAttribute('aria-busy', nextBusy ? 'true' : 'false')
+    }
+    cancelBtn.addEventListener('click', () => {
+      if (busy) return
+      finish({ status: 'cancelled' })
+    })
+    confirmBtn.addEventListener('click', async () => {
+      if (busy || settled) return
+      setBusy(true)
+      try {
+        await execute?.()
+        finish({ status: 'ok' })
+      } catch (error) {
+        errorNode.textContent = sanitizePublicErrorMessage(error?.message, 'No se pudo cancelar la invitación.')
+        errorNode.classList.remove('hidden')
+        setBusy(false)
+      }
+    })
+  })
+}
+
+export function openUsuarioEliminarConfirm({ nombre, execute } = {}) {
+  return new Promise((resolve) => {
+    let settled = false
+    let busy = false
+    const content = document.createElement('div')
+    const detalle = usuarioEliminarConfirmacion(nombre)
+    content.innerHTML = `
+      <div class="space-y-3 text-sm text-slate-600 dark:text-slate-300">
+        <p>Se eliminará la cuenta de <strong class="font-semibold text-slate-900 dark:text-slate-100">${escapeHtml(detalle.nombre)}</strong>.</p>
+        <p>${escapeHtml(detalle.pierde)}</p>
+        <p>${escapeHtml(detalle.conserva)}</p>
+      </div>
+      <p data-eliminar-error class="mt-3 hidden rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-900 dark:border-red-900/60 dark:bg-red-950/30 dark:text-red-100" role="alert"></p>
+      <div class="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+        <button type="button" data-action="cancel" data-autofocus class="${BTN_SECONDARY_CLASS}">Cancelar</button>
+        <button type="button" data-action="confirm" class="rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500 disabled:cursor-not-allowed disabled:opacity-60">${escapeHtml(USUARIO_ELIMINAR_LABEL)}</button>
+      </div>
+    `
+    const cancelBtn = content.querySelector('[data-action="cancel"]')
+    const confirmBtn = content.querySelector('[data-action="confirm"]')
+    const errorNode = content.querySelector('[data-eliminar-error]')
+
+    const finish = (outcome) => {
+      if (settled) return
+      settled = true
+      modal.close({ force: true })
+      resolve(outcome)
+    }
+
+    const modal = openModal({
+      title: USUARIO_ELIMINAR_TITLE,
+      content,
+      labelledBy: 'usuario-eliminar-title',
+      stacked: true,
+      closeOnBackdrop: false,
+      closeOnEscape: () => !busy,
+      canClose: () => !busy,
+      unsavedChanges: false,
+      onClose: () => {
+        if (!settled) resolve({ status: 'cancelled' })
+      },
+    })
+
+    function setBusy(nextBusy) {
+      busy = nextBusy
+      cancelBtn.disabled = nextBusy
+      confirmBtn.disabled = nextBusy
+      confirmBtn.textContent = nextBusy ? USUARIO_ELIMINAR_BUSY : USUARIO_ELIMINAR_LABEL
+      confirmBtn.setAttribute('aria-busy', nextBusy ? 'true' : 'false')
+      const closeButton = modal.dialog.querySelector('[aria-label="Cerrar"]')
+      if (closeButton) closeButton.disabled = nextBusy
+      modal.dialog.setAttribute('aria-busy', nextBusy ? 'true' : 'false')
+    }
+
+    cancelBtn.addEventListener('click', () => {
+      if (busy) return
+      finish({ status: 'cancelled' })
+    })
+    confirmBtn.addEventListener('click', async () => {
+      if (busy || settled) return
+      setBusy(true)
+      try {
+        await execute?.()
+        finish({ status: 'ok' })
+      } catch (error) {
+        errorNode.textContent = sanitizePublicErrorMessage(
+          error?.message,
+          'No se pudo eliminar la cuenta.',
+        )
+        errorNode.classList.remove('hidden')
+        setBusy(false)
+      }
+    })
+  })
 }
 
 export function createUsuarioEditPanel({
   usuario,
   operador,
   empresaLabel = '—',
+  onRequestClose,
   onRequestSave,
   onRequestEstado,
   onRequestRestablecer,
   onRequestDesbloquear,
+  onRequestEliminar,
+  onRequestCancelarInvitacion,
+  onRequestReenviarInvitacion,
 } = {}) {
   const wrapper = document.createElement('div')
   let current = usuario
   let correoServerError = ''
   let saveBusy = false
+  let desactivarPendiente = false
+  let forzarMfaPendiente = false
   let fields = null
   let tooltipsBound = false
 
@@ -595,7 +954,24 @@ export function createUsuarioEditPanel({
   }
 
   function hasFormChanges() {
-    return usuarioEditDiff(current, readFormValues()).length > 0
+    return desactivarPendiente || forzarMfaPendiente || usuarioEditDiff(current, readFormValues()).length > 0
+  }
+
+  function syncForzarMfa() {
+    const row = wrapper.querySelector('[data-forzar-mfa]')
+    const box = wrapper.querySelector('[name="forzarMfa"]')
+    const icon = wrapper.querySelector('[data-forzar-mfa-icon]')
+    if (!row || !box) return
+    box.checked = forzarMfaPendiente
+    row.className = `${FORZAR_MFA_ROW} ${forzarMfaPendiente ? FORZAR_MFA_ON : FORZAR_MFA_OFF}`
+    if (icon) icon.className = forzarMfaPendiente ? FORZAR_MFA_ICON_ON : FORZAR_MFA_ICON_OFF
+  }
+
+  function syncDesactivarNota() {
+    const nota = wrapper.querySelector('#usuario-desactivar-nota')
+    const boton = wrapper.querySelector('[data-action="estado"]')
+    if (nota) nota.classList.toggle('hidden', !desactivarPendiente)
+    if (boton && current?.activo !== false) boton.setAttribute('aria-pressed', desactivarPendiente ? 'true' : 'false')
   }
 
   function hasIdentidadErrors() {
@@ -604,6 +980,8 @@ export function createUsuarioEditPanel({
   }
 
   function syncSaveButtons() {
+    const cancel = wrapper.querySelector('[data-action="cerrar"]')
+    if (cancel) cancel.disabled = saveBusy
     const save = wrapper.querySelector('[data-action="guardar-cambios"]')
     if (!save) return
     save.disabled = saveBusy || !hasFormChanges() || hasIdentidadErrors()
@@ -670,8 +1048,36 @@ export function createUsuarioEditPanel({
       fields = null
     }
 
-    wrapper.querySelector('[data-action="estado"]')?.addEventListener('click', () => {
-      onRequestEstado?.(!Boolean(current?.activo))
+    wrapper.querySelector('[data-action="reenviar-invitacion"]')?.addEventListener('click', (event) => {
+      event.preventDefault()
+      onRequestReenviarInvitacion?.()
+    })
+    wrapper.querySelector('[data-action="cancelar-invitacion"]')?.addEventListener('click', async (event) => {
+      event.preventDefault()
+      const outcome = await onRequestCancelarInvitacion?.()
+      if (outcome?.status !== 'cancelled' || !wrapper.isConnected) return
+      wrapper.querySelector('[data-action="cancelar-invitacion"]')?.focus()
+    })
+    wrapper.querySelector('[data-action="estado"]')?.addEventListener('click', (event) => {
+      event.preventDefault()
+      if (current?.activo === false) {
+        onRequestEstado?.(true)
+        return
+      }
+      desactivarPendiente = !desactivarPendiente
+      syncDesactivarNota()
+      syncSaveButtons()
+    })
+    wrapper.querySelector('[data-action="cerrar"]')?.addEventListener('click', (event) => {
+      event.preventDefault()
+      if (saveBusy) return
+      onRequestClose?.()
+    })
+    wrapper.querySelector('[data-action="eliminar"]')?.addEventListener('click', async (event) => {
+      event.preventDefault()
+      const outcome = await onRequestEliminar?.()
+      if (outcome?.status !== 'cancelled' || !wrapper.isConnected) return
+      wrapper.querySelector('[data-action="eliminar"]')?.focus()
     })
     wrapper.querySelector('[data-action="restablecer"]')?.addEventListener('click', () => {
       onRequestRestablecer?.()
@@ -679,12 +1085,19 @@ export function createUsuarioEditPanel({
     wrapper.querySelector('[data-action="desbloquear"]')?.addEventListener('click', () => {
       onRequestDesbloquear?.()
     })
+    wrapper.querySelector('[name="forzarMfa"]')?.addEventListener('change', (event) => {
+      forzarMfaPendiente = Boolean(event.target.checked)
+      syncForzarMfa()
+      syncSaveButtons()
+    })
 
     if (!tooltipsBound) {
       bindTooltipRoot(wrapper)
       tooltipsBound = true
     }
 
+    syncDesactivarNota()
+    syncForzarMfa()
     syncSaveButtons()
   }
 
@@ -698,7 +1111,10 @@ export function createUsuarioEditPanel({
       return
     }
 
-    const changes = usuarioEditDiff(current, values)
+    const changes = usuarioEditDiff(current, values, {
+      desactivar: desactivarPendiente,
+      forzarMfa: forzarMfaPendiente,
+    })
     saveBusy = true
     syncSaveButtons()
     try {
@@ -733,10 +1149,24 @@ export function createUsuarioEditPanel({
     syncSaveButtons,
     update(nextUsuario) {
       current = nextUsuario
+      if (current?.activo === false) desactivarPendiente = false
+      if (current?.mfaObligatorio === true) forzarMfaPendiente = false
       paint()
     },
     getUsuario() {
       return current
+    },
+    showMfaError(message) {
+      const nodo = wrapper.querySelector('#usuario-mfa-motivo')
+      if (!nodo) return
+      nodo.textContent = String(message ?? '')
+      nodo.classList.toggle('hidden', !nodo.textContent)
+    },
+    showEliminarError(message) {
+      const nodo = wrapper.querySelector('#usuario-eliminar-motivo')
+      if (!nodo) return
+      nodo.textContent = String(message ?? '')
+      nodo.classList.toggle('hidden', !nodo.textContent)
     },
   }
 }

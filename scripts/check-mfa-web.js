@@ -259,6 +259,27 @@ check('la vinculación no publica sesión y una respuesta tardía se descarta', 
   assert.equal(JSON.stringify(lab.local).includes('codigo-prueba'), false)
 })
 
+check('una sesión anterior no impide configurar el doble factor', async () => {
+  const lab = laboratorio()
+  lab.local.setItem(ESTADO_SESION_KEY, JSON.stringify({
+    fase: 'habilitada',
+    generacion: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+    revision: 1,
+    usuarioId: 6,
+    sid: null,
+    marcador: null,
+  }))
+  lab.control.loginVinculacion = true
+  lab.control.desafio = 'desafio-vinculo'
+  lab.control.expiraEn = new Date(Date.now() + 60_000).toISOString()
+  const a = lab.coordinar(0)
+  const pendiente = await a.iniciar({ email: 'a@local.test', password: 'x' })
+  assert.equal(pendiente.modo, 'vinculacion')
+  const inicio = await a.iniciarVinculacion({ intento: pendiente.intento })
+  assert.equal(inicio.modo, 'inicio')
+  assert.equal(lab.llamadas.some((item) => item.url.endsWith('/vinculacion/iniciar')), true)
+})
+
 const fallos = (await Promise.all(checks)).filter(Boolean)
 if (fallos.length) {
   console.error(fallos.join('\n'))

@@ -22,7 +22,7 @@ export function crearTituloDobleFactor({ obligatorio = false } = {}) {
   const bloque = document.createElement('div')
   bloque.className = 'flex flex-wrap items-center gap-2'
   bloque.innerHTML = `
-    <h2 class="text-lg font-semibold text-slate-900 dark:text-slate-100">Autenticación de doble factor</h2>
+    <h2 class="text-lg font-semibold text-slate-900 dark:text-slate-100">${obligatorio ? 'Configurar doble factor' : 'Autenticación de doble factor'}</h2>
     <button type="button" id="mfa-ayuda" class="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-slate-400 hover:text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 dark:hover:text-slate-100" data-tooltip="${escapeHtml(AYUDA_DOBLE_FACTOR)}" data-tooltip-compact aria-label="Ayuda sobre la autenticación de doble factor">${iconInfo('h-4 w-4')}</button>
     ${obligatorio ? '<p class="rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-semibold text-amber-950 dark:bg-amber-500/15 dark:text-amber-100">Activación obligatoria</p>' : ''}
   `

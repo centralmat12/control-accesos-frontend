@@ -647,7 +647,7 @@ await check('37. Encabezado y skeleton de usuarios usan las mismas columnas', ()
   const markup = usuariosTableHeadMarkup()
   const heads = markup.match(/<th\b/g) || []
   assert.equal(heads.length, USUARIOS_TABLE_COLUMNS.length)
-  assert.equal(USUARIOS_TABLE_COLUMNS.length, 8)
+  assert.equal(USUARIOS_TABLE_COLUMNS.length, 9)
   assert.equal(USUARIOS_TABLE_COLUMNS.includes('Acciones'), true)
   assert.equal(USUARIOS_TABLE_COLUMNS.includes('Cambio de clave'), true)
   assert.equal(USUARIOS_TABLE_COLUMNS.includes('Contraseña'), false)

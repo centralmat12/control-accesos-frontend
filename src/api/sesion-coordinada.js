@@ -283,6 +283,7 @@ export function crearSesionCoordinada(opciones) {
             desafio: cuerpo.desafio,
             expiraEn: cuerpo.expiraEn,
             previoUsuarioId: previo?.usuarioId || null,
+            generacionPrevia: previo?.fase === 'habilitada' ? previo.generacion : null,
           }
           return { modo: 'mfa', intento: id, expiraEn: cuerpo.expiraEn, generacion }
         }
@@ -296,6 +297,7 @@ export function crearSesionCoordinada(opciones) {
             expiraEn: cuerpo.expiraEn,
             operacion: null,
             previoUsuarioId: previo?.usuarioId || null,
+            generacionPrevia: previo?.fase === 'habilitada' ? previo.generacion : null,
           }
           return { modo: 'vinculacion', intento: id, expiraEn: cuerpo.expiraEn, generacion }
         }
@@ -337,9 +339,15 @@ export function crearSesionCoordinada(opciones) {
     })
   }
 
+  function sesionReemplazo(pendiente) {
+    const estado = leer()
+    if (estado?.fase !== 'habilitada') return false
+    return estado.generacion !== (pendiente?.generacionPrevia || null)
+  }
+
   function desafioVigente(pendiente, intento, tipo) {
     if (!pendiente || pendiente.id !== intento || pendiente.tipo !== tipo) return { modo: 'descartado' }
-    if (leer()?.fase === 'habilitada') return { modo: 'reemplazado' }
+    if (sesionReemplazo(pendiente)) return { modo: 'reemplazado' }
     if (Number.isNaN(Date.parse(pendiente.expiraEn)) || Date.parse(pendiente.expiraEn) <= Date.now()) {
       pendienteMfa = null
       return { modo: 'vencido' }
@@ -350,7 +358,11 @@ export function crearSesionCoordinada(opciones) {
   function respuestaAjena(intento, generacion) {
     const vigente = pendienteMfa
     const despues = leer()
-    return !vigente || vigente.id !== intento || (despues?.fase === 'habilitada' && despues.generacion !== generacion)
+    const previa = vigente?.generacionPrevia || null
+    const reemplazo = despues?.fase === 'habilitada'
+      && despues.generacion !== generacion
+      && despues.generacion !== previa
+    return !vigente || vigente.id !== intento || reemplazo
   }
 
   async function iniciarVinculacion({ intento }) {

@@ -29,12 +29,17 @@ import {
   completeUsuarioResetReveal,
   desbloquearUsuario,
   estadoCuentaUsuario,
+  eliminarUsuario,
+  cancelarInvitacionUsuario,
+  estadoMfaUsuario,
   estadoPasswordUsuario,
+  exigirMfaUsuario,
   filterUsuariosByOperador,
   getUsuarios,
   restablecerPasswordUsuario,
   createUsuario,
   invitarUsuario,
+  reenviarInvitacionUsuario,
 } from '../api/usuarios.js'
 import {
   ADMIN_FIELD_CONTROL_CLASS,
@@ -48,8 +53,9 @@ import {
 } from '../components/admin-panel-layout.js'
 import { createDepartamentosAdmin } from '../components/departamentos-admin.js'
 import { createTurnosPanel } from '../components/turnos-panel.js'
+import { createCorreoSalientePanel } from '../components/correo-saliente-panel.js'
 import { puedeAdministrarTurnos } from '../config/labor-access.js'
-import { iconBuilding, iconPlus } from '../components/icons.js'
+import { iconBuilding, iconChevronRight, iconMail, iconPlus, iconUserPlus } from '../components/icons.js'
 import { actionButtonMarkup, BTN_SECONDARY_CLASS } from '../components/button-styles.js'
 import { pageHeadingMarkup } from '../components/page-heading.js'
 import {
@@ -88,21 +94,30 @@ import {
 import {
   applyUsuarioEditSaves,
   createUsuarioEditPanel,
+  openUsuarioEliminarConfirm,
+  openUsuarioCancelarInvitacionConfirm,
   openUsuarioModificacionesConfirm,
   pintarTituloUsuario,
   USUARIO_EDIT_SUCCESS_MESSAGE,
   USUARIO_EDIT_TITLE,
+  USUARIO_ELIMINAR_SUCCESS,
+  USUARIO_CANCELAR_INVITACION_SUCCESS,
+  USUARIO_REENVIAR_INVITACION_SUCCESS,
+  USUARIO_REENVIAR_INVITACION_TITLE,
   usuarioEditIdentidadPayload,
   usuarioEditRolPayload,
+  mfaIndicadorHtml,
   usuarioEstadoConfirmMessage,
+  usuarioReenviarInvitacionMessage,
 } from '../components/usuario-edit-panel.js'
 import { createInvitacionForm, createUsuarioForm } from '../components/usuario-form.js'
-import { isAdmin, isSuperadmin, rolesAsignablesParaAlta, usuarioRolLabel } from '../config/roles.js'
+import { isAdmin, isSuperadmin, puedeAdministrarCorreoSaliente, rolesAsignablesParaAlta, usuarioRolLabel } from '../config/roles.js'
 import { displayValue, escapeHtml, formatApiDateTime } from '../utils/format.js'
 import { createKeyedLock, createViewLifecycle, runLockedConfirmAction } from '../utils/view-guard.js'
 
 const USUARIOS_COL_WIDTH = {
-  Estado: 'w-28 min-w-28',
+  Estado: 'w-44 min-w-44',
+  MFA: 'w-48 min-w-48',
   'Cambio de clave': 'w-36 min-w-36',
   Bloqueo: 'w-36 min-w-36',
   Acciones: 'w-32 min-w-32',
@@ -150,6 +165,7 @@ const SECTIONS = {
   empresas: 'empresas',
   departamentos: 'departamentos',
   turnos: 'turnos',
+  correo: 'correo',
 }
 
 function readAdminTab() {
@@ -170,6 +186,23 @@ function matchesQuery(empresa, query) {
     .join(' ')
     .toLowerCase()
   return haystack.includes(query)
+}
+
+function altaOpcionClass() {
+  return [
+    'flex w-full transform-none cursor-pointer items-center gap-3 rounded-xl border border-[#e2e8f0] bg-[#ffffff] p-3 text-left hover:transform-none',
+    'transition-[background-color,border-color,box-shadow] duration-150',
+    'hover:border-blue-300 hover:bg-[#f4f8ff] hover:shadow-[0_4px_10px_-6px_rgba(37,99,235,0.55)]',
+    'focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500',
+    'dark:border-slate-600 dark:bg-slate-800',
+    'dark:hover:border-blue-400 dark:hover:bg-slate-700',
+    'dark:hover:shadow-[0_4px_10px_-6px_rgba(96,165,250,0.55)]',
+    'dark:focus-visible:outline-blue-400',
+  ].join(' ')
+}
+
+function altaIconoClass() {
+  return 'inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-200'
 }
 
 function createActionControl({ id, label, enabled, disabledMessage = '' }) {
@@ -251,6 +284,13 @@ export async function renderAdministracion(container) {
       </button>`
           : ''
       }
+      ${
+        puedeAdministrarCorreoSaliente(user)
+          ? `<button type="button" data-section="${SECTIONS.correo}" role="tab" class="${TAB_BASE}">
+        Correo
+      </button>`
+          : ''
+      }
     </div>
     <div id="admin-panel"></div>
   `
@@ -280,6 +320,7 @@ export async function renderAdministracion(container) {
   let usuarioQuery = ''
   let usuarioRol = ''
   let usuarioEstado = ''
+  let usuarioMfa = ''
   let activeModalClose = null
   let secretHolder = null
   let passwordTemporalOpen = false
@@ -316,7 +357,8 @@ export async function renderAdministracion(container) {
     if (next === SECTIONS.empresas && !canViewEmpresasSection) return SECTIONS.usuarios
     if (next === SECTIONS.departamentos && !canViewDepartamentosSection) return SECTIONS.usuarios
     if (next === SECTIONS.turnos && !puedeAdministrarTurnos(user)) return SECTIONS.usuarios
-    if (next === SECTIONS.empresas || next === SECTIONS.departamentos || next === SECTIONS.turnos) return next
+    if (next === SECTIONS.correo && !puedeAdministrarCorreoSaliente(user)) return SECTIONS.usuarios
+    if (next === SECTIONS.empresas || next === SECTIONS.departamentos || next === SECTIONS.turnos || next === SECTIONS.correo) return next
     return SECTIONS.usuarios
   }
 
@@ -326,6 +368,7 @@ export async function renderAdministracion(container) {
     writeAdminTab(section)
     disposeDepartamentos()
     disposeTurnos()
+    disposeCorreo()
     if (section !== SECTIONS.empresas) {
       selectedEmpresa = null
       selectedSucursal = null
@@ -365,7 +408,24 @@ export async function renderAdministracion(container) {
     panel.append(turnosPanel)
   }
 
+  let correoPanel = null
+
+  function disposeCorreo() {
+    correoPanel?.dispose?.()
+    correoPanel = null
+  }
+
+  function renderCorreo() {
+    panel.replaceChildren()
+    correoPanel = createCorreoSalientePanel()
+    panel.append(correoPanel)
+  }
+
   function renderPanel() {
+    if (section === SECTIONS.correo && puedeAdministrarCorreoSaliente(user)) {
+      renderCorreo()
+      return
+    }
     if (section === SECTIONS.turnos && puedeAdministrarTurnos(user)) {
       renderTurnos()
       return
@@ -418,6 +478,7 @@ export async function renderAdministracion(container) {
     return visibles.filter((usuario) => {
       if (usuarioRol && String(usuario.rol) !== usuarioRol) return false
       if (usuarioEstado && estadoCuentaUsuario(usuario) !== usuarioEstado) return false
+      if (usuarioMfa && estadoMfaUsuario(usuario) !== usuarioMfa) return false
       if (!query) return true
       const texto = `${usuario.nombreUsuario ?? ''} ${usuario.correo ?? ''}`.toLowerCase()
       return texto.includes(query)
@@ -425,7 +486,7 @@ export async function renderAdministracion(container) {
   }
 
   function usuariosFiltroActivo() {
-    return Boolean(usuarioQuery.trim() || usuarioRol || usuarioEstado)
+    return Boolean(usuarioQuery.trim() || usuarioRol || usuarioEstado || usuarioMfa)
   }
 
   function renderUsuarios() {
@@ -436,19 +497,14 @@ export async function renderAdministracion(container) {
           titleId: 'admin-usuarios-title',
           title: 'Usuarios',
           description: 'Administrá los accesos, roles y estados.',
-          actionHtml: `<div class="flex flex-col gap-2 sm:flex-row">${createActionControl({
+          actionHtml: createActionControl({
             id: 'admin-usuario-new',
             label: 'Nuevo usuario',
             enabled: canCreateUsuarios,
             disabledMessage: usuarioDisabledMessage,
-          })}${createActionControl({
-            id: 'admin-usuario-invite',
-            label: 'Invitar',
-            enabled: canCreateUsuarios,
-            disabledMessage: usuarioDisabledMessage,
-          })}</div>`,
+          }),
         })}
-        <div class="${ADMIN_FILTER_GRID_CLASS}">
+        <div class="grid items-end gap-3 sm:grid-cols-2 xl:grid-cols-[minmax(12rem,1.4fr)_repeat(3,minmax(8.5rem,0.8fr))_auto]">
           <div class="min-w-0">
             <label for="admin-usuarios-search" class="mb-1.5 block text-sm font-medium text-slate-700 dark:text-slate-300">Buscar</label>
             <input id="admin-usuarios-search" type="search" placeholder="Usuario o correo" class="${CONTROL_CLASS} ${ADMIN_FIELD_CONTROL_CLASS}" />
@@ -466,10 +522,21 @@ export async function renderAdministracion(container) {
               <option value="">Todos</option>
               <option value="Activo">Activo</option>
               <option value="Inactivo">Inactivo</option>
+              <option value="Invitación pendiente">Invitación pendiente</option>
               <option value="Bloqueado">Bloqueado</option>
             </select>
           </div>
-          <button type="button" id="admin-usuarios-clear" class="${BTN_SECONDARY_CLASS} h-10">Limpiar</button>
+          <div class="min-w-0">
+            <label for="admin-usuarios-mfa" class="mb-1.5 block text-sm font-medium text-slate-700 dark:text-slate-300">MFA</label>
+            <select id="admin-usuarios-mfa" class="${CONTROL_CLASS} ${ADMIN_FIELD_CONTROL_CLASS}">
+              <option value="">Todos</option>
+              <option value="Con MFA">Con MFA</option>
+              <option value="Sin MFA">Sin MFA</option>
+              <option value="Configuración pendiente">Configuración pendiente</option>
+              <option value="No disponible">No disponible</option>
+            </select>
+          </div>
+          <button type="button" id="admin-usuarios-clear" class="${BTN_SECONDARY_CLASS} h-10 self-end">Limpiar</button>
         </div>
         <div id="admin-usuarios-state"></div>
       </div>
@@ -477,10 +544,12 @@ export async function renderAdministracion(container) {
     const search = panel.querySelector('#admin-usuarios-search')
     const rol = panel.querySelector('#admin-usuarios-rol')
     const estado = panel.querySelector('#admin-usuarios-estado')
+    const mfa = panel.querySelector('#admin-usuarios-mfa')
     const clear = panel.querySelector('#admin-usuarios-clear')
     search.value = usuarioQuery
     rol.value = usuarioRol
     estado.value = usuarioEstado
+    mfa.value = usuarioMfa
     const syncClear = () => {
       clear.disabled = !usuariosFiltroActivo()
     }
@@ -499,22 +568,27 @@ export async function renderAdministracion(container) {
       syncClear()
       paintUsuariosResults()
     }, { signal: listenerAbort.signal })
+    mfa.addEventListener('change', () => {
+      usuarioMfa = mfa.value
+      syncClear()
+      paintUsuariosResults()
+    }, { signal: listenerAbort.signal })
     clear.addEventListener('click', () => {
       usuarioQuery = ''
       usuarioRol = ''
       usuarioEstado = ''
+      usuarioMfa = ''
       search.value = ''
-      rol.value = ''
-      estado.value = ''
+      for (const control of [rol, estado, mfa]) {
+        control.value = ''
+        control._caSelect?.refresh()
+      }
       syncClear()
       paintUsuariosResults()
     }, { signal: listenerAbort.signal })
     syncClear()
     if (canCreateUsuarios) {
       panel.querySelector('#admin-usuario-new')?.addEventListener('click', openUsuarioCreate, {
-        signal: listenerAbort.signal,
-      })
-      panel.querySelector('#admin-usuario-invite')?.addEventListener('click', openInvitacion, {
         signal: listenerAbort.signal,
       })
     }
@@ -529,6 +603,8 @@ export async function renderAdministracion(container) {
     const badge =
       estado === 'Bloqueado'
         ? badgeHtml('Bloqueado', 'danger')
+        : estado === 'Invitación pendiente'
+          ? badgeHtml('Invitación pendiente', 'warning')
         : estado === 'Inactivo'
           ? badgeHtml('Inactivo', 'danger')
           : badgeHtml('Activo', 'success')
@@ -660,7 +736,8 @@ export async function renderAdministracion(container) {
                     <td class="whitespace-nowrap px-3 py-2 text-left text-sm text-slate-600 dark:text-slate-300">${displayValue(usuario.correo)}</td>
                     <td class="whitespace-nowrap px-3 py-2 text-left text-sm text-slate-600 dark:text-slate-300">${escapeHtml(usuarioRolLabel(usuario.rol))}</td>
                     <td class="whitespace-nowrap px-3 py-2 text-left text-sm text-slate-600 dark:text-slate-300">${displayValue(empresaLabel(usuario.empresaId))}</td>
-                    <td class="w-28 min-w-28 whitespace-nowrap px-3 py-2 text-center text-sm">${cuentaEstadoMarkup(usuario)}</td>
+                    <td class="w-44 min-w-44 whitespace-nowrap px-3 py-2 text-center text-sm">${cuentaEstadoMarkup(usuario)}</td>
+                    <td class="w-48 min-w-48 whitespace-nowrap px-3 py-2 text-center text-sm"><div class="flex justify-center">${mfaIndicadorHtml(usuario)}</div></td>
                     <td class="w-36 min-w-36 whitespace-nowrap px-3 py-2 text-center text-sm"><div class="flex justify-center">${passwordEstadoMarkup(usuario)}</div></td>
                     <td class="w-36 min-w-36 whitespace-nowrap px-3 py-2 text-center text-sm">${bloqueoEstadoMarkup(usuario)}</td>
                     <td class="w-32 min-w-32 px-3 py-2 text-center text-sm">${usuarioAccionesMarkup(usuario)}</td>
@@ -873,6 +950,133 @@ export async function renderAdministracion(container) {
     })
   }
 
+  async function confirmarEliminar(usuario, panelEdit) {
+    const key = usuarioAccionLock.key('eliminar', usuario.id)
+    if (!usuarioAccionLock.acquire(key)) return { status: 'busy' }
+    applyUsuarioAccionBusy()
+    try {
+      if (!isViewAlive()) return { status: 'disposed' }
+      const outcome = await openUsuarioEliminarConfirm({
+        nombre: usuario.nombreUsuario,
+        execute: () => eliminarUsuario(usuario.id, { empresaId: empresaSeleccionadaId() }),
+      })
+      if (outcome.status === 'cancelled' || !isViewAlive()) return outcome
+      if (outcome.status !== 'ok') {
+        panelEdit.showEliminarError?.(outcome.error?.message || 'No se pudo eliminar la cuenta.')
+        return outcome
+      }
+      viewToast({ message: USUARIO_ELIMINAR_SUCCESS, tone: 'success' })
+      await loadUsuarios()
+      return outcome
+    } catch (error) {
+      panelEdit.showEliminarError?.(error?.message || 'No se pudo eliminar la cuenta.')
+      handleUsuarioAccionError(error, 'No se pudo eliminar la cuenta.')
+    } finally {
+      usuarioAccionLock.release(key)
+      applyUsuarioAccionBusy()
+    }
+  }
+
+  async function confirmarCancelarInvitacion(usuario, panelEdit) {
+    const key = usuarioAccionLock.key('cancelar-invitacion', usuario.id)
+    if (!usuarioAccionLock.acquire(key)) return { status: 'busy' }
+    applyUsuarioAccionBusy()
+    try {
+      if (!isViewAlive()) return { status: 'disposed' }
+      const outcome = await openUsuarioCancelarInvitacionConfirm({
+        nombre: usuario.nombreUsuario,
+        execute: () => cancelarInvitacionUsuario(usuario.id, { empresaId: empresaSeleccionadaId() }),
+      })
+      if (outcome.status === 'cancelled' || !isViewAlive()) return outcome
+      if (outcome.status !== 'ok') {
+        panelEdit.showEliminarError?.(outcome.error?.message || 'No se pudo cancelar la invitación.')
+        return outcome
+      }
+      closeActiveModal({ force: true })
+      viewToast({ message: USUARIO_CANCELAR_INVITACION_SUCCESS, tone: 'success' })
+      await loadUsuarios()
+      return outcome
+    } catch (error) {
+      panelEdit.showEliminarError?.(error?.message || 'No se pudo cancelar la invitación.')
+      handleUsuarioAccionError(error, 'No se pudo cancelar la invitación.')
+    } finally {
+      usuarioAccionLock.release(key)
+      applyUsuarioAccionBusy()
+    }
+  }
+
+  async function confirmarReenviarInvitacion(usuario) {
+    const key = usuarioAccionLock.key('reenviar-invitacion', usuario.id)
+    const outcome = await runLockedConfirmAction({
+      lock: usuarioAccionLock,
+      key,
+      isAlive: isViewAlive,
+      onLockChange: () => applyUsuarioAccionBusy(),
+      confirm: () =>
+        openModalConfirmacionAzul({
+          title: USUARIO_REENVIAR_INVITACION_TITLE,
+          message: usuarioReenviarInvitacionMessage(usuario.nombreUsuario),
+          confirmLabel: USUARIO_REENVIAR_INVITACION_TITLE,
+        }),
+      execute: () => reenviarInvitacionUsuario(usuario.id, { empresaId: empresaSeleccionadaId() }),
+    })
+
+    if (outcome.status === 'busy' || outcome.status === 'cancelled' || outcome.status === 'confirm-error') {
+      return
+    }
+
+    if (outcome.status === 'error') {
+      handleUsuarioAccionError(outcome.error, 'No se pudo reenviar la invitación.')
+      return
+    }
+
+    if (outcome.status !== 'ok' || !isViewAlive()) return
+    viewToast({ message: outcome.result?.mensaje || USUARIO_REENVIAR_INVITACION_SUCCESS, tone: 'success' })
+    await loadUsuarios()
+  }
+
+  function openModalConfirmacionAzul({ title, message, confirmLabel }) {
+    return new Promise((resolve) => {
+      let settled = false
+      const content = document.createElement('div')
+      const text = document.createElement('p')
+      text.className = 'text-sm text-slate-600 dark:text-slate-300'
+      text.textContent = message
+      const actions = document.createElement('div')
+      actions.className = 'mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end'
+      const cancel = document.createElement('button')
+      cancel.type = 'button'
+      cancel.dataset.autofocus = 'true'
+      cancel.className = BTN_SECONDARY_CLASS
+      cancel.textContent = 'Cancelar'
+      const confirm = document.createElement('button')
+      confirm.type = 'button'
+      confirm.className = 'rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500'
+      confirm.textContent = confirmLabel
+      actions.append(cancel, confirm)
+      content.append(text, actions)
+      const finish = (value) => {
+        if (settled) return
+        settled = true
+        modal.close({ force: true })
+        resolve(value)
+      }
+      const modal = openModal({
+        title,
+        content,
+        labelledBy: 'usuario-reenviar-title',
+        stacked: true,
+        closeOnBackdrop: false,
+        unsavedChanges: false,
+        onClose: () => {
+          if (!settled) resolve(false)
+        },
+      })
+      cancel.addEventListener('click', () => finish(false))
+      confirm.addEventListener('click', () => finish(true))
+    })
+  }
+
   async function confirmarCambioEstado(usuario, activo) {
     const key = usuarioAccionLock.key('estado', usuario.id)
     const outcome = await runLockedConfirmAction({
@@ -928,6 +1132,9 @@ export async function renderAdministracion(container) {
               cambiarRolUsuario(usuario.id, usuarioEditRolPayload(changes), {
                 empresaId: empresaSeleccionadaId(),
               }),
+            saveEstado: () =>
+              cambiarEstadoUsuario(usuario.id, false, { empresaId: empresaSeleccionadaId() }),
+            saveMfa: () => exigirMfaUsuario(usuario.id, { empresaId: empresaSeleccionadaId() }),
           }),
         onAfterAttempt: async (summary) => {
           if (!isViewAlive()) return
@@ -951,10 +1158,12 @@ export async function renderAdministracion(container) {
     if (!puedeEditarUsuarioObjetivo(user, usuario)) return
 
     closeActiveModal({ force: true })
+    let modal
     const panelEdit = createUsuarioEditPanel({
       usuario,
       operador: user,
       empresaLabel: empresaLabel(usuario.empresaId),
+      onRequestClose: () => modal?.close(),
       onRequestSave: (changes) => {
         const actual = panelEdit.getUsuario()
         return confirmarModificaciones(actual, changes)
@@ -971,9 +1180,21 @@ export async function renderAdministracion(container) {
         const actual = panelEdit.getUsuario()
         void confirmarDesbloquear(actual)
       },
+      onRequestEliminar: () => {
+        const actual = panelEdit.getUsuario()
+        return confirmarEliminar(actual, panelEdit)
+      },
+      onRequestCancelarInvitacion: () => {
+        const actual = panelEdit.getUsuario()
+        return confirmarCancelarInvitacion(actual, panelEdit)
+      },
+      onRequestReenviarInvitacion: () => {
+        const actual = panelEdit.getUsuario()
+        void confirmarReenviarInvitacion(actual)
+      },
     })
     usuarioEditPanel = panelEdit
-    const modal = openModal({
+    modal = openModal({
       title: USUARIO_EDIT_TITLE,
       subtitle: '',
       dialogClass: 'max-w-md',
@@ -1007,46 +1228,87 @@ export async function renderAdministracion(container) {
     }
   }
 
-  function openInvitacion() {
-    if (!canCreateUsuarios || !isViewAlive()) return
-    const form = createInvitacionForm({
-      empresaIdPermitida: tenantEmpresaId,
-      permitirElegirEmpresa: isSuperadmin(user),
-      rolesPermitidos: rolesAsignablesParaAlta(user),
-      onCancel: () => closeActiveModal(),
-      onSubmit: async (dto) => {
-        await invitarUsuario(dto)
-        closeActiveModal({ force: true })
-        viewToast({ message: 'Invitación enviada.', tone: 'success' })
-      },
-    })
-    const modal = openFormModal({
-      title: 'Invitar usuario',
-      content: form,
-      labelledBy: 'usuario-invite-title',
-      onClose: () => {
-        activeModalClose = null
-      },
-    })
-    activeModalClose = modal.close
-  }
-
   function openUsuarioCreate() {
     if (!canCreateUsuarios || !isViewAlive()) return
-    const form = createUsuarioForm({
+    const contenido = document.createElement('div')
+    const opciones = document.createElement('div')
+    opciones.className = 'flex w-full flex-col gap-2 px-1 py-1'
+    opciones.innerHTML = `
+      <button type="button" id="alta-invitar" data-autofocus class="${altaOpcionClass()}">
+        <span class="${altaIconoClass()}">${iconMail('h-5 w-5')}</span>
+        <span class="min-w-0 flex-1">
+          <span class="flex flex-wrap items-center gap-2">
+            <span class="text-sm font-semibold text-slate-900 dark:text-slate-100">Invitar por correo</span>
+            ${badgeHtml('Recomendada', 'blue')}
+          </span>
+          <span class="mt-1 block text-sm leading-5 text-slate-500 dark:text-slate-400">La persona recibe un enlace para confirmar su correo y crear su contraseña.</span>
+        </span>
+        <span class="shrink-0 text-slate-400">${iconChevronRight('h-4 w-4')}</span>
+      </button>
+      <button type="button" id="alta-directa" class="${altaOpcionClass()}">
+        <span class="${altaIconoClass()}">${iconUserPlus('h-5 w-5')}</span>
+        <span class="min-w-0 flex-1">
+          <span class="block text-sm font-semibold text-slate-900 dark:text-slate-100">Crear cuenta directamente</span>
+          <span class="mt-1 block text-sm leading-5 text-slate-500 dark:text-slate-400">Vos definís una contraseña inicial para la cuenta.</span>
+        </span>
+        <span class="shrink-0 text-slate-400">${iconChevronRight('h-4 w-4')}</span>
+      </button>
+    `
+    const paso = document.createElement('div')
+    paso.className = 'hidden space-y-3'
+    contenido.append(opciones, paso)
+
+    function volver(origen) {
+      paso.replaceChildren()
+      paso.classList.add('hidden')
+      opciones.classList.remove('hidden')
+      origen?.focus()
+    }
+
+    function mostrar(form, origen) {
+      const volverBoton = document.createElement('button')
+      volverBoton.type = 'button'
+      volverBoton.className = `${BTN_SECONDARY_CLASS} h-10`
+      volverBoton.textContent = 'Volver'
+      volverBoton.addEventListener('click', () => volver(origen))
+      paso.replaceChildren(volverBoton, form)
+      paso.classList.remove('hidden')
+      opciones.classList.add('hidden')
+      volverBoton.focus()
+    }
+
+    const alta = {
       empresaIdPermitida: tenantEmpresaId,
       permitirElegirEmpresa: isSuperadmin(user),
       rolesPermitidos: rolesAsignablesParaAlta(user),
       onCancel: () => closeActiveModal(),
-      onSubmit: async (dto) => {
-        await createUsuario(dto)
-        closeActiveModal({ force: true })
-        viewToast({ message: 'Usuario creado correctamente.', tone: 'success' })
-      },
+    }
+    const tarjetaInvitar = opciones.querySelector('#alta-invitar')
+    const tarjetaDirecta = opciones.querySelector('#alta-directa')
+    tarjetaInvitar.addEventListener('click', () => {
+      mostrar(createInvitacionForm({
+        ...alta,
+        onSubmit: async (dto) => {
+          await invitarUsuario(dto)
+          closeActiveModal({ force: true })
+          viewToast({ message: 'Invitación enviada.', tone: 'success' })
+        },
+      }), tarjetaInvitar)
     })
+    tarjetaDirecta.addEventListener('click', () => {
+      mostrar(createUsuarioForm({
+        ...alta,
+        onSubmit: async (dto) => {
+          await createUsuario(dto)
+          closeActiveModal({ force: true })
+          viewToast({ message: 'Usuario creado correctamente.', tone: 'success' })
+        },
+      }), tarjetaDirecta)
+    })
+
     const modal = openFormModal({
       title: 'Nuevo usuario',
-      content: form,
+      content: contenido,
       labelledBy: 'usuario-create-title',
       onClose: () => {
         activeModalClose = null

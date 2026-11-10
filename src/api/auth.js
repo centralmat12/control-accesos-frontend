@@ -648,7 +648,7 @@ export async function verificarSegundoFactor({ intento, codigo, codigoRecuperaci
 function loginError(status, codigo) {
   console.error('Login: respuesta HTTP no exitosa', { status })
   if (codigo === 'vinculacion_no_disponible') {
-    return new Error('La vinculación del autenticador no está disponible. No se abrió una sesión.')
+    return new Error('El enrolamiento de doble factor está deshabilitado en este entorno. No se abrió una sesión.')
   }
   if (codigo === 'mfa_no_disponible' || status === 503) return errorMfa('mfa_no_disponible', status)
   if (status === 401) return new Error('Correo o contraseña incorrectos.')

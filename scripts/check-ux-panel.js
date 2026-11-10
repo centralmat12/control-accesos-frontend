@@ -106,11 +106,12 @@ check('La tabla de usuarios centra Estado, Cambio de clave, Bloqueo y Acciones',
     'Rol',
     'Empresa',
     'Estado',
+    'MFA',
     'Cambio de clave',
     'Bloqueo',
     'Acciones',
   ])
-  assert.deepEqual([...USUARIOS_TABLE_CENTERED_COLUMNS], ['Estado', 'Cambio de clave', 'Bloqueo', 'Acciones'])
+  assert.deepEqual([...USUARIOS_TABLE_CENTERED_COLUMNS], ['Estado', 'MFA', 'Cambio de clave', 'Bloqueo', 'Acciones'])
   assert.equal(usuariosColumnAlignClass('Usuario'), 'text-left')
   assert.equal(usuariosColumnAlignClass('Estado'), 'text-center')
   assert.equal(usuariosColumnAlignClass('Cambio de clave'), 'text-center')
