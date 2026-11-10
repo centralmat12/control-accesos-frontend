@@ -6,6 +6,7 @@ import {
   probarCorreo,
 } from '../api/correo-saliente.js'
 import { badgeHtml } from './badge.js'
+import { enhanceSelectsIn, refreshEnhancedSelect } from './dropdown.js'
 import { adminSectionHeaderMarkup, ADMIN_FIELD_CONTROL_CLASS, ADMIN_PRIMARY_BUTTON_CLASS, ADMIN_TABLE_FRAME_CLASS } from './admin-panel-layout.js'
 import { BTN_SECONDARY_CLASS } from './button-styles.js'
 import { validateEmailValue } from './form-field.js'
@@ -101,20 +102,20 @@ export function createCorreoSalientePanel() {
   let ocupado = false
   let probado = ''
 
-  function valores() {
+  function leerConexion() {
+    const cambiaClave = cambiandoClave && contrasena.value.length > 0
     return {
       servidor: servidor.value.trim(),
       puerto: puerto.value.trim(),
       cifrado: cifrado.value,
       usuario: usuario.value.trim(),
       remitente: remitente.value.trim(),
-      cambiarContrasena: cambiandoClave && contrasena.value.length > 0,
-      contrasena: cambiandoClave ? contrasena.value : '',
-      destinatario: destinatario.value.trim(),
+      cambiarContrasena: cambiaClave,
+      contrasena: cambiaClave ? contrasena.value : '',
     }
   }
 
-  function firma(datos = valores()) {
+  function firma(datos = leerConexion()) {
     return JSON.stringify({
       servidor: datos.servidor,
       puerto: String(datos.puerto),
@@ -131,7 +132,7 @@ export function createCorreoSalientePanel() {
   }
 
   function erroresLocales(incluirDestino = false) {
-    const datos = valores()
+    const datos = leerConexion()
     const errores = {}
     if (!datos.servidor) errores.servidor = 'Ingresá el servidor SMTP.'
     const puertoNumero = Number(datos.puerto)
@@ -144,7 +145,7 @@ export function createCorreoSalientePanel() {
     if (datos.usuario && !tieneClave) errores.contrasena = 'Si indicás un usuario SMTP, la contraseña es obligatoria.'
     if (!datos.usuario && datos.cambiarContrasena) errores.contrasena = 'Sin usuario SMTP, no corresponde una contraseña.'
     if (incluirDestino) {
-      const destino = validateEmailValue(datos.destinatario, { emptyMessage: 'Ingresá el destinatario.' })
+      const destino = validateEmailValue(destinatario.value.trim(), { emptyMessage: 'Ingresá el destinatario.' })
       if (destino) errores.destinatario = destino
     }
     return errores
@@ -179,6 +180,7 @@ export function createCorreoSalientePanel() {
     cifrado.value = ['tls-conexion', 'starttls', 'ninguno'].includes(vigente.cifrado) ? vigente.cifrado : 'tls-conexion'
     usuario.value = vigente.usuario
     remitente.value = vigente.remitente
+    refreshEnhancedSelect(cifrado)
     contrasena.value = ''
     cambiandoClave = false
     claveCampo.classList.add('hidden')
@@ -232,11 +234,12 @@ export function createCorreoSalientePanel() {
   }
 
   raiz.querySelector('#correo-reintentar').addEventListener('click', () => { void cargar() })
-  formulario.addEventListener('input', () => {
+  formulario.addEventListener('input', alEditar)
+  formulario.addEventListener('change', alEditar)
+  function alEditar() {
     pintarErrores()
     sincronizar()
-  })
-  cifrado.addEventListener('change', sincronizar)
+  }
   claveCambiar.addEventListener('click', () => {
     cambiandoClave = true
     claveCampo.classList.remove('hidden')
@@ -258,9 +261,9 @@ export function createCorreoSalientePanel() {
     probar.dataset.modo = 'probar'
     sincronizar()
     pruebaAviso.className = 'hidden text-sm'
-    const enviados = valores()
+    const enviados = leerConexion()
     try {
-      const resultado = await probarCorreo(enviados)
+      const resultado = await probarCorreo({ ...enviados, destinatario: destinatario.value.trim() })
       probado = firma(enviados)
       mostrarPrueba(resultado.mensaje, true)
     } catch (error) {
@@ -282,7 +285,7 @@ export function createCorreoSalientePanel() {
     guardar.dataset.modo = 'guardar'
     sincronizar()
     try {
-      const resultado = await guardarCorreo(valores())
+      const resultado = await guardarCorreo(leerConexion())
       aplicar(resultado.configuracion)
       probado = ''
       mostrarGuardado(resultado.mensaje, true)
@@ -296,6 +299,7 @@ export function createCorreoSalientePanel() {
     }
   })
 
+  enhanceSelectsIn(raiz)
   void cargar()
   raiz.dispose = () => abort.abort()
   return raiz

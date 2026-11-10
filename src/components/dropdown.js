@@ -168,6 +168,51 @@ export function createDropdownBase({
   return api
 }
 
+function seguirValorNativo(select, alCambiar) {
+  const valor = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value')
+  const indice = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'selectedIndex')
+  let enCurso = false
+  let escribiendo = false
+  const refrescar = () => {
+    if (enCurso) return
+    enCurso = true
+    try {
+      alCambiar()
+    } finally {
+      enCurso = false
+    }
+  }
+  function instalar(propiedad, descriptor) {
+    if (!descriptor?.get || !descriptor?.set) return
+    Object.defineProperty(select, propiedad, {
+      configurable: true,
+      get() {
+        return descriptor.get.call(this)
+      },
+      set(siguiente) {
+        if (escribiendo) {
+          descriptor.set.call(this, siguiente)
+          return
+        }
+        const anterior = descriptor.get.call(this)
+        escribiendo = true
+        try {
+          descriptor.set.call(this, siguiente)
+        } finally {
+          escribiendo = false
+        }
+        if (descriptor.get.call(this) !== anterior) refrescar()
+      },
+    })
+  }
+  instalar('value', valor)
+  instalar('selectedIndex', indice)
+  return () => {
+    delete select.value
+    delete select.selectedIndex
+  }
+}
+
 function optionElements(select) {
   return [...select.options].map((option, index) => ({
     value: option.value,
@@ -304,6 +349,10 @@ export function enhanceSelect(select, { wrapClass = 'relative min-w-0 w-full' } 
     activeIndex = Math.max(0, select.selectedIndex)
     paint()
   }, { signal: localAbort.signal })
+  const dejarDeSeguirValor = seguirValorNativo(select, () => {
+    activeIndex = Math.max(0, select.selectedIndex)
+    paint()
+  })
 
   const observer = new MutationObserver(() => paint())
   observer.observe(select, {
@@ -320,6 +369,7 @@ export function enhanceSelect(select, { wrapClass = 'relative min-w-0 w-full' } 
     destroy() {
       observer.disconnect()
       localAbort.abort()
+      dejarDeSeguirValor()
       dropdown.destroy()
       boundSelects.delete(api)
       if (wrap.isConnected && select.isConnected) {
