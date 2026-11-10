@@ -18,7 +18,7 @@ import { renderAdministracion } from './views/administracion.js'
 import { renderDashboard } from './views/dashboard.js'
 import { renderEmpleados } from './views/empleados.js'
 import { renderFichadas } from './views/fichadas.js'
-import { openCambiarPasswordModal, renderCambioPasswordObligatorio } from './views/cambiar-password.js'
+import { renderCambioPasswordObligatorio } from './views/cambiar-password.js'
 import { renderLogin } from './views/login.js'
 import { renderSeguridad } from './views/seguridad.js'
 import { renderRegistros } from './views/registros.js'
@@ -159,18 +159,6 @@ export async function bootstrap(root) {
           pendingViewOptions = {}
           writeViewHash(DEFAULT_VIEW, { replace: true })
           mount()
-        })
-      },
-      onChangePassword: () => {
-        openCambiarPasswordModal({
-          onCompleted: () => {
-            clearActiveView()
-            mainEl = null
-            currentView = DEFAULT_VIEW
-            pendingViewOptions = {}
-            writeViewHash(DEFAULT_VIEW, { replace: true })
-            mount()
-          },
         })
       },
       onOpenSecurity: () => navigate('seguridad'),

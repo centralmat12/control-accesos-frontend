@@ -42,7 +42,7 @@ function positionAccountMenu(trigger, panel) {
   }
 }
 
-export function createAccountMenu({ user, initials, onChangePassword, onOpenSecurity, onLogout }) {
+export function createAccountMenu({ user, initials, onOpenSecurity, onLogout }) {
   destroyDisconnectedAccountMenus()
 
   const abort = new AbortController()
@@ -87,13 +87,6 @@ export function createAccountMenu({ user, initials, onChangePassword, onOpenSecu
   const itemClass =
     'flex min-h-10 w-full cursor-pointer items-center gap-2 rounded-md px-2.5 py-2 text-left text-sm text-slate-800 hover:bg-slate-50 focus:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 dark:text-slate-200 dark:hover:bg-slate-800 dark:focus:bg-slate-800 [&_svg]:h-4 [&_svg]:w-4'
 
-  const changeItem = document.createElement('button')
-  changeItem.type = 'button'
-  changeItem.id = 'account-menu-change-password'
-  changeItem.setAttribute('role', 'menuitem')
-  changeItem.className = itemClass
-  changeItem.innerHTML = `${iconLock()}<span>Cambiar contraseña</span>`
-
   const securityItem = document.createElement('button')
   securityItem.type = 'button'
   securityItem.id = 'account-menu-security'
@@ -108,11 +101,11 @@ export function createAccountMenu({ user, initials, onChangePassword, onOpenSecu
   logoutItem.className = itemClass
   logoutItem.innerHTML = `${iconLogout()}<span>Cerrar sesión</span>`
 
-  panel.append(header, changeItem, securityItem, logoutItem)
+  panel.append(header, securityItem, logoutItem)
   document.body.append(panel)
   wrap.append(trigger)
 
-  const items = [changeItem, securityItem, logoutItem]
+  const items = [securityItem, logoutItem]
   let open = false
   let activeIndex = 0
 
@@ -204,7 +197,6 @@ export function createAccountMenu({ user, initials, onChangePassword, onOpenSecu
     if (open) positionAccountMenu(trigger, panel)
   }, { capture: true, signal: abort.signal })
 
-  changeItem.addEventListener('click', () => choose(onChangePassword), { signal: abort.signal })
   securityItem.addEventListener('click', () => choose(onOpenSecurity), { signal: abort.signal })
   logoutItem.addEventListener('click', () => choose(onLogout), { signal: abort.signal })
 

@@ -1,5 +1,7 @@
 # Estado actual
 
+Seguridad de la cuenta, sobre 7D. «Cambiar contraseña» salió del menú y quedó en una fila de Seguridad. El cambio obligatorio al iniciar sesión sigue en su pantalla. El título es «Autenticación de doble factor» y la acción «Activar autenticación de doble factor». «Activación obligatoria» aparece en la vinculación, porque el login ya respondió `vinculacion_mfa_pendiente`. La sesión no informa `TotpHabilitado` ni `MfaObligatorio`, así que «Códigos de recuperación» permanece oculto hasta que un intento de activación responde que el autenticador ya está activo.
+
 Etapa 7D del frontend, 9 de noviembre de 2026. Usuarios muestra Invitar, con rol y empresa iguales al alta y con **Exigir MFA** desmarcado. `vinculacion_mfa_pendiente` abre el QR local, la clave manual y los códigos antes del panel. El desafío y los secretos quedan en memoria. Cancelar, vencer o cambiar de generación descarta una respuesta tardía y no publica sesión. Después de guardar los códigos se vuelve al login.
 
 Etapa 7C.2 del frontend, 9 de noviembre de 2026. No se desplegó, no se publicó y no se mergeó. La API no se modificó: sigue en `feat/autenticacion-segura`, `b5e397946fc3f1e2d5d3cefc066959e3bc89346a`, con el commit funcional `da38172767fd8a9d5da69d4116e26389c355e1f4`.

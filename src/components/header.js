@@ -37,7 +37,7 @@ function sortEmpresas(empresas) {
   )
 }
 
-export function createHeader({ currentView, user, onLogout, onChangePassword, onOpenSecurity }) {
+export function createHeader({ currentView, user, onLogout, onOpenSecurity }) {
   const item = NAV_ITEMS.find((nav) => nav.id === currentView)
   const header = document.createElement('header')
   header.className =
@@ -78,7 +78,6 @@ export function createHeader({ currentView, user, onLogout, onChangePassword, on
     const menu = createAccountMenu({
       user,
       initials: initials(user.nombre),
-      onChangePassword: () => onChangePassword?.(),
       onOpenSecurity: () => onOpenSecurity?.(),
       onLogout: () => onLogout?.(),
     })
