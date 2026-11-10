@@ -39,12 +39,11 @@ check('1. Header: enhanceSelect, ancho estable y refresh asíncrono', () => {
   assert.equal((header.match(/refreshEnhancedSelect\(select\)/g) || []).length >= 4, true)
 })
 
-check('2. Registros: select migrado por enhanceSelectsIn', () => {
-  const registros = read('src/views/registros.js')
+check('2. Las vistas se mejoran con enhanceSelectsIn', () => {
   const app = read('src/app.js')
-  assert.match(registros, /<select id="registros-resultado"/)
   assert.match(app, /enhanceSelectsIn\(main\)/)
-  assert.equal(registros.includes('createDropdownBase'), false)
+  assert.equal(app.includes('renderRegistros'), false)
+  assert.equal(app.includes('createDropdownBase'), false)
 })
 
 check('3. Nuevo usuario abre modal después de crear el formulario', () => {

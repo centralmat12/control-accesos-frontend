@@ -293,7 +293,7 @@ Cloudflare no se purga desde este workflow. El smoke test usa un query string co
 | Funcionalidad | Estado |
 | ------------- | ------ |
 | Interfaz principal (sidebar, header, layout) | Implementada |
-| Navegación entre vistas | Implementada (hash: `#/dashboard`, `#/fichadas`, `#/empleados`, `#/administracion`, `#/registros`) |
+| Navegación entre vistas | Implementada (hash: `#/dashboard`, `#/fichadas`, `#/empleados`, `#/administracion`). `#/registros` vuelve al Dashboard. |
 | Login | Integrado con la API real (`POST /api/Auth/Login`) |
 | Sesión | Access en memoria y `sessionStorage` (`ca.auth.token`). Metadatos sin secreto en `localStorage` (`ca.auth.coordinacion`). El refresh queda en la cookie HttpOnly de la API. |
 | Peticiones protegidas | Header `Authorization: Bearer <token>` |

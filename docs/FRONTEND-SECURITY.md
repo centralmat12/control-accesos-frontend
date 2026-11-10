@@ -6,7 +6,7 @@ El frontend utiliza los claims para adaptar la interfaz. La autorización real c
 
 ## 1. Arquitectura general
 
-Aplicación JavaScript vanilla con Vite y Tailwind. Entrada: `index.html` → `src/main.js` → `src/app.js`. Las vistas se montan según el hash (`#/dashboard`, `#/fichadas`, `#/empleados`, `#/administracion`, `#/registros`). No hay React ni Axios.
+Aplicación JavaScript vanilla con Vite y Tailwind. Entrada: `index.html` → `src/main.js` → `src/app.js`. Las vistas se montan según el hash (`#/dashboard`, `#/fichadas`, `#/empleados`, `#/administracion`). `#/registros` vuelve al Dashboard. No hay React ni Axios.
 
 La persistencia y las reglas de negocio viven en ControlFichajes.API. Este cliente solo habla HTTP.
 

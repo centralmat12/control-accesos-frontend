@@ -87,6 +87,7 @@ check('Las rutas hash conocidas se reconocen y las inválidas van al Dashboard',
   assert.equal(viewHash('administracion'), '#/administracion')
   assert.deepEqual(parseHashView('#/empleados'), { viewId: 'empleados', valid: true, empty: false })
   assert.deepEqual(parseHashView('#/no-existe'), { viewId: 'dashboard', valid: false, empty: false })
+  assert.deepEqual(parseHashView('#/registros'), { viewId: 'dashboard', valid: false, empty: false })
   assert.deepEqual(parseHashView('#/areas'), { viewId: 'dashboard', valid: false, empty: false })
   assert.equal(parseHashView('').viewId, 'dashboard')
   assert.equal(parseHashView('').valid, true)

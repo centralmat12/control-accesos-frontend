@@ -212,7 +212,6 @@ export const NAV_ICONS = {
   dashboard: iconDashboard,
   fichadas: iconClock,
   empleados: iconUsers,
-  registros: iconList,
   administracion: iconBuilding,
   areas: iconMap,
   horarios: iconCalendar,
