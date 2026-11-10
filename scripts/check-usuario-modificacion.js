@@ -21,6 +21,7 @@ import {
   usuarioEditSubtitle,
   usuarioModificacionesConfirmMarkup,
 } from '../src/components/usuario-edit-panel.js'
+import { estadoCuentaUsuario } from '../src/api/usuarios.js'
 import { createKeyedLock, runLockedConfirmAction } from '../src/utils/view-guard.js'
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..')
@@ -76,7 +77,7 @@ await check('ningún cambio no arma solicitudes', () => {
     rol: 'RRHH',
   })
   assert.deepEqual(changes, [])
-  assert.deepEqual(usuarioEditSavePlan(changes), { identity: false, role: false })
+  assert.deepEqual(usuarioEditSavePlan(changes), { identity: false, role: false, estado: false, mfa: false })
   assert.equal(usuarioEditSubtitle(original), 'martin.eloy · martin@example.com')
   assert.equal(USUARIO_EDIT_TITLE, 'Modificación de usuario')
 })
@@ -89,7 +90,7 @@ await check('cambio solo de identidad', () => {
   })
   assert.equal(changes.length, 2)
   assert.equal(changes.every((change) => change.kind === 'identidad'), true)
-  assert.deepEqual(usuarioEditSavePlan(changes), { identity: true, role: false })
+  assert.deepEqual(usuarioEditSavePlan(changes), { identity: true, role: false, estado: false, mfa: false })
   assert.deepEqual(usuarioEditIdentidadPayload(original, changes), {
     nombreUsuario: 'martin.nuevo',
     correo: 'nuevo@example.com',
@@ -107,7 +108,7 @@ await check('cambio solo de rol', () => {
   assert.equal(changes[0].key, 'rol')
   assert.equal(changes[0].currentLabel, 'Recursos Humanos')
   assert.equal(changes[0].newLabel, 'Administrador')
-  assert.deepEqual(usuarioEditSavePlan(changes), { identity: false, role: true })
+  assert.deepEqual(usuarioEditSavePlan(changes), { identity: false, role: true, estado: false, mfa: false })
   assert.equal(usuarioEditRolPayload(changes), 'ADMIN')
   assert.deepEqual(usuarioEditIdentidadPayload(original, changes), {
     nombreUsuario: 'martin.eloy',
@@ -124,7 +125,7 @@ await check('ambos cambios arman identidad y rol', () => {
   assert.equal(changes.some((change) => change.key === 'nombreUsuario'), true)
   assert.equal(changes.some((change) => change.key === 'rol'), true)
   assert.equal(changes.some((change) => change.key === 'correo'), false)
-  assert.deepEqual(usuarioEditSavePlan(changes), { identity: true, role: true })
+  assert.deepEqual(usuarioEditSavePlan(changes), { identity: true, role: true, estado: false, mfa: false })
 })
 
 await check('cancelación no envía solicitudes', async () => {
@@ -307,7 +308,7 @@ await check('acciones superiores según estado y permisos', () => {
   assert.match(activo, /Restablecer clave/)
   assert.match(activo, /Desactivar cuenta/)
   assert.match(activo, /Desbloquear/)
-  assert.match(activo, /bg-red-600/)
+  assert.equal(activo.includes('bg-red-600'), false)
   assert.equal(activo.includes('border-red-200 bg-red-50'), false)
   assert.match(inactivo, /Reactivar cuenta/)
   assert.equal(inactivo.includes('Restablecer clave'), false)
@@ -383,9 +384,12 @@ await check('el resumen unifica acceso y el rol queda en una fila con Guardar ca
   assert.equal(markup.includes('>Bloqueo<'), false)
   assert.match(markup, /space-y-4/)
   assert.match(markup, /h-10 w-fit shrink-0/)
-  assert.match(markup, /justify-between/)
+  assert.match(markup, /sm:justify-end/)
+  assert.match(markup, /data-action="cerrar"/)
   assert.ok(markup.indexOf('Guardar') > markup.indexOf('Desactivar cuenta'))
-  assert.match(markup, /btn-action-delete/)
+  assert.ok(markup.indexOf('data-action="cerrar"') > markup.indexOf('Desactivar cuenta'))
+  assert.equal(markup.includes('btn-action-delete'), false)
+  assert.equal(markup.includes('bg-red-600'), false)
   assert.match(markup, /btn-action-reset/)
   assert.match(markup, /id="usuario-edit-rol"/)
   assert.match(markup, /data-action="guardar-cambios"[^>]*disabled/)
@@ -406,6 +410,58 @@ await check('el resumen unifica acceso y el rol queda en una fila con Guardar ca
   assert.match(bloqueado, /Reactivar cuenta/)
   assert.equal(bloqueado.includes('Cuenta inactiva'), false)
   assert.equal(bloqueado.includes('Cambio requerido · Bloqueado'), false)
+  assert.equal(bloqueado.includes('Eliminar cuenta'), false)
+})
+
+await check('eliminar solo aparece en una cuenta desactivada confirmada', () => {
+  const sa = superadmin()
+  const desactivada = usuarioEditPanelMarkup({
+    usuario: usuarioApi({ activo: false, invitacionPendiente: false }),
+    operador: sa,
+  })
+  const invitada = usuarioEditPanelMarkup({
+    usuario: usuarioApi({ activo: false, invitacionPendiente: true }),
+    operador: sa,
+  })
+  const activa = usuarioEditPanelMarkup({
+    usuario: usuarioApi({ activo: true, invitacionPendiente: false }),
+    operador: sa,
+  })
+  assert.match(desactivada, /Acciones de cuenta/)
+  assert.match(desactivada, /Eliminar cuenta/)
+  assert.match(desactivada, /Reactivar cuenta/)
+  assert.match(desactivada, /btn-action-delete/)
+  assert.equal(desactivada.includes('bg-red-600'), false)
+  assert.ok(desactivada.indexOf('Eliminar cuenta') < desactivada.indexOf('data-action="cerrar"'))
+  assert.equal(invitada.includes('Eliminar cuenta'), false)
+  assert.equal(invitada.includes('Reactivar cuenta'), false)
+  assert.match(invitada, /Reenviar invitación/)
+  assert.match(invitada, /Cancelar invitación/)
+  assert.match(invitada, /data-action="cancelar-invitacion"/)
+  assert.equal(activa.includes('Eliminar cuenta'), false)
+  const mfaPendiente = usuarioEditPanelMarkup({
+    usuario: usuarioApi({
+      activo: false,
+      invitacionPendiente: false,
+      mfaObligatorio: true,
+      totpHabilitado: false,
+    }),
+    operador: sa,
+  })
+  assert.match(mfaPendiente, /Eliminar cuenta/)
+  assert.match(mfaPendiente, /Reactivar cuenta/)
+  assert.equal(mfaPendiente.includes('Reenviar invitación'), false)
+  assert.equal(estadoCuentaUsuario(usuarioApi({ activo: false, invitacionPendiente: true, mfaObligatorio: true, totpHabilitado: false })), 'Invitación pendiente')
+  assert.equal(estadoCuentaUsuario(usuarioApi({ activo: false, invitacionPendiente: false, mfaObligatorio: true, totpHabilitado: false })), 'Inactivo')
+  assert.match(read('src/views/administracion.js'), /badgeHtml\('Invitación pendiente', 'warning'\)/)
+  const panelSrc = read('src/components/usuario-edit-panel.js')
+  assert.match(panelSrc, /Eliminando…/)
+  assert.match(panelSrc, /bg-red-600/)
+  assert.match(panelSrc, /Se conservan las fichadas y la auditoría/)
+  assert.match(panelSrc, /data-autofocus/)
+  const changes = usuarioEditDiff(usuarioApi(), usuarioApi(), { desactivar: true })
+  assert.equal(changes.some((change) => change.kind === 'estado' && change.newLabel === 'Inactivo'), true)
+  assert.deepEqual(usuarioEditSavePlan(changes), { identity: false, role: false, estado: true, mfa: false })
 })
 
 console.log(`${passed} passed, ${failed} failed`)

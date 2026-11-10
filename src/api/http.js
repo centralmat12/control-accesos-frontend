@@ -6,6 +6,11 @@ import {
   AUTH_CAMBIAR_PASSWORD_PATH,
   getCurrentUser,
   getToken,
+  intentarRenovar,
+  descartarAccessLocal,
+  olvidarIdentidadLocal,
+  MENSAJE_OPERACION_NO_REPETIDA,
+  MENSAJE_SESION_CAMBIADA,
   notifyPasswordChangeRequired,
   notifyUnauthorized,
   PASSWORD_CHANGE_REQUIRED_API_MESSAGE,
@@ -14,6 +19,7 @@ import {
   SESSION_EXPIRED_CATCH_MESSAGE,
 } from './auth.js'
 import { getEmpresaContexto } from './empresa-context.js'
+import { decidirReintento } from './sesion-coordinada.js'
 
 export { sanitizePublicErrorMessage } from '../utils/public-error.js'
 
@@ -77,7 +83,16 @@ function parseEmpresaId(value) {
  * - logLabel: prefijo de console.error en fallos de red (false = no loguear)
  */
 export async function apiFetch(path, options = {}) {
-  const { headers: extraHeaders, missingAuthMessage, logLabel, skipEmpresaContext, empresaId, ...fetchOptions } = options
+  const {
+    headers: extraHeaders,
+    missingAuthMessage,
+    logLabel,
+    skipEmpresaContext,
+    empresaId,
+    __reintento = false,
+    ...fetchOptions
+  } = options
+  const usuarioAlEnviar = getCurrentUser()
   const token = getToken()
 
   if (!token) {
@@ -119,7 +134,43 @@ export async function apiFetch(path, options = {}) {
 
   logApiResponse(method, path, response.status)
 
+  if (response.status === 429) {
+    return { url, response }
+  }
+
   if (response.status === 401) {
+    if (isCambiarPasswordPath(path)) {
+      notifyUnauthorized()
+      throw createApiError(SESSION_EXPIRED_CATCH_MESSAGE, 401, 'UNAUTHORIZED')
+    }
+    const renovacion = await intentarRenovar()
+    if (
+      renovacion?.ok
+      && renovacion.estado
+      && usuarioAlEnviar?.id
+      && Number(renovacion.estado.usuarioId) !== Number(usuarioAlEnviar.id)
+    ) {
+      renovacion.identidadDistinta = true
+    }
+    const decision = decidirReintento({ method, intento: __reintento, renovacion })
+    if (decision === 'reintentar') {
+      return apiFetch(path, { ...options, __reintento: true })
+    }
+    if (decision === 'no-repetir') {
+      throw createApiError(MENSAJE_OPERACION_NO_REPETIDA, 401, 'NO_REINTENTAR')
+    }
+    if (decision === 'cancelar') {
+      const actual = getCurrentUser()
+      if (!actual?.id || Number(actual.id) === Number(usuarioAlEnviar?.id)) olvidarIdentidadLocal()
+      throw createApiError(MENSAJE_SESION_CAMBIADA, 401, 'SESION_CAMBIADA')
+    }
+    if (decision === 'limite') {
+      throw createApiError('Se realizaron demasiados intentos. Esperá unos minutos antes de volver a intentar.', 429, 'RATE_LIMIT')
+    }
+    if (decision === 'incierta') {
+      descartarAccessLocal()
+      throw createApiError('No se pudo confirmar la sesión. Iniciá sesión nuevamente.', 401, 'SESION_INCIERTA')
+    }
     notifyUnauthorized()
     throw createApiError(SESSION_EXPIRED_CATCH_MESSAGE, 401, 'UNAUTHORIZED')
   }

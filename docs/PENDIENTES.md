@@ -1,6 +1,28 @@
 # Pendientes
 
-Hechos abiertos al cierre de la noche del 2 de noviembre de 2026.
+Cierre del 10 de noviembre de 2026. El detalle está en `api/api-nueva-20261023/docs/CONTINUIDAD_AUTENTICACION.md`.
+
+- El correo de prueba desde Webmail llegó. El envío desde la API sigue sin validar.
+- Diagnosticar el último error de Invitar usuario. El log local registró `invitacion_envio_fallido` con `AuthenticationException` después de crear la invitación.
+- La decisión siguiente no tiene prompt de implementación: retirar Correo saliente, completar la pantalla de aceptación y, probado el flujo, dejar Nuevo usuario como única alta por invitación.
+- Esos cambios de Correo saliente siguen sin commit.
+
+Hechos abiertos al 9 de noviembre de 2026, después de la etapa 7C.2.
+
+- `feat/autenticacion-sesiones-web` no tiene upstream. El commit de 7C.2 es local. No hay bundle ni publicación.
+- La etapa 7D agrega la invitación con MFA opcional y la pantalla de vinculación. Siguen pendientes la desactivación, el reemplazo del autenticador, el restablecimiento administrativo y exigir MFA a cuentas que ya existen.
+- `Auth:PermitirEnrolamientoMfa` queda en falso. Sin esa bandera, Seguridad informa que la activación no está habilitada.
+- `check-action-buttons.js` falla igual que en `09d8fcd`. Espera `minmax(0,1fr)_7rem_auto`. `turnos-panel.js` y ese script no cambiaron en esta entrega.
+
+## Cierre de la etapa 6B
+
+Hechos abiertos al 4 de noviembre de 2026, después de cerrar la etapa 6B.
+
+- `feat/autenticacion-sesiones-web` no tiene upstream.
+- El access de la API sigue en 1440 minutos para la sesión tradicional. La sesión renovable usa el access corto de la API.
+- `check-action-buttons.js` falla igual en `09d8fcd` y en esta rama. Espera `minmax(0,1fr)_7rem_auto`. `turnos-panel.js` y ese script no cambiaron en esa entrega.
+
+## Cierre de la noche del 2 de noviembre de 2026
 
 - `feat/turnos-asignaciones-ux` no está mergeada a `main` y no se desplegó.
 - El proceso de la API que ya estaba en marcha no se reinició. Hasta reiniciarlo, el borrado de turnos puede seguir rechazando asignaciones históricas.

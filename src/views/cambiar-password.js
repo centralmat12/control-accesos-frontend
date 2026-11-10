@@ -6,13 +6,10 @@ import {
 } from '../api/auth.js'
 import { brandLogoAuthMarkup } from '../components/brand-logo.js'
 import { createCambiarPasswordForm } from '../components/cambiar-password-form.js'
-import { openFormModal } from '../components/modal.js'
 import { createThemeToggle } from '../components/theme-toggle.js'
 
 const LOGIN_INPUT_EXTRA =
   'dark:border-slate-700 dark:bg-slate-950 dark:text-white dark:placeholder:text-slate-500 focus:ring-blue-500/30'
-
-let voluntaryModalOpen = false
 
 export function renderCambioPasswordObligatorio(container, { onLogout, onCompleted } = {}) {
   const user = getCurrentUser()
@@ -28,12 +25,11 @@ export function renderCambioPasswordObligatorio(container, { onLogout, onComplet
     showLogout: true,
     compactActions: true,
     onLogout: () => {
-      logout()
-      onLogout?.()
+      void logout().then(() => onLogout?.())
     },
     onSubmit: async (dto) => {
-      await cambiarPassword(dto)
-      finishPasswordChange()
+      const resultado = await cambiarPassword(dto)
+      await finishPasswordChange(resultado.generacion)
       onCompleted?.()
     },
   })
@@ -57,43 +53,4 @@ export function renderCambioPasswordObligatorio(container, { onLogout, onComplet
   view.querySelector('#cambio-theme-toggle')?.replaceChildren(createThemeToggle())
   container.replaceChildren(view)
   form.focus()
-}
-
-export function openCambiarPasswordModal({ onCompleted } = {}) {
-  if (voluntaryModalOpen) return null
-  voluntaryModalOpen = true
-
-  const form = createCambiarPasswordForm({
-    idPrefix: 'mi-password',
-    actualLabel: 'Contraseña actual',
-    actualHelpText: 'Ingresá tu contraseña actual. El cambio aplica solo a tu cuenta autenticada.',
-    showCancel: true,
-    onCancel: () => modal.close(),
-    onSubmit: async (dto) => {
-      try {
-        await cambiarPassword(dto)
-        modal.close({ force: true })
-        finishPasswordChange()
-        onCompleted?.()
-      } catch (error) {
-        if (error?.code === 'UNAUTHORIZED') {
-          modal.close({ force: true })
-        }
-        throw error
-      }
-    },
-  })
-
-  const modal = openFormModal({
-    title: 'Cambiar mi contraseña',
-    content: form.element,
-    labelledBy: 'cambiar-password-propia-title',
-    onClose: () => {
-      form.clear()
-      voluntaryModalOpen = false
-    },
-  })
-
-  form.focus()
-  return modal
 }

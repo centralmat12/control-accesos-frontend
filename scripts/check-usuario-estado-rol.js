@@ -171,33 +171,38 @@ await check('2-3. SuperAdmin edita ADMIN/RRHH; ADMIN solo RRHH propio', () => {
   assert.equal(puedeCambiarEstadoUsuarioObjetivo(operadorAdmin, adminA), false)
 })
 
-await check('4-7. Navegación: Administración y Registros por rol', () => {
+await check('4-7. Navegación: Administración visible y Registros redirige al Dashboard', () => {
   assert.equal(canAccessView(superadmin(), 'administracion'), true)
-  assert.equal(canAccessView(superadmin(), 'registros'), true)
+  assert.equal(canAccessView(superadmin(), 'fichadas'), true)
+  assert.equal(canAccessView(superadmin(), 'registros'), false)
   assert.equal(canAccessView(admin(), 'administracion'), true)
   assert.equal(canAccessView(admin(), 'registros'), false)
   assert.equal(canAccessView(rrhh(), 'administracion'), false)
   assert.equal(canAccessView(rrhh(), 'registros'), false)
 
+  assert.equal(resolveAccessibleView(superadmin(), 'registros'), 'dashboard')
   assert.equal(resolveAccessibleView(admin(), 'registros'), 'dashboard')
   assert.equal(resolveAccessibleView(rrhh(), 'registros'), 'dashboard')
   assert.equal(resolveAccessibleView(rrhh(), 'administracion'), 'dashboard')
-  assert.equal(resolveAccessibleView(superadmin(), 'registros'), 'registros')
 
   const navAdmin = getNavItemsForUser(admin()).map((item) => item.id)
   const navRrhh = getNavItemsForUser(rrhh()).map((item) => item.id)
   const navSa = getNavItemsForUser(superadmin()).map((item) => item.id)
   assert.equal(navAdmin.includes('administracion'), true)
+  assert.equal(navAdmin.includes('fichadas'), true)
   assert.equal(navAdmin.includes('registros'), false)
   assert.equal(navRrhh.includes('administracion'), false)
   assert.equal(navRrhh.includes('registros'), false)
-  assert.equal(navSa.includes('registros'), true)
+  assert.equal(navSa.includes('fichadas'), true)
+  assert.equal(navSa.includes('administracion'), true)
+  assert.equal(navSa.includes('registros'), false)
+  assert.deepEqual(navSa.slice(navSa.indexOf('empleados'), navSa.indexOf('administracion') + 1), ['empleados', 'administracion'])
 
   const app = read('src/app.js')
-  const resolveAt = app.indexOf('viewId = resolveAccessibleView(user, viewId)')
+  const resolveAt = app.indexOf('viewId = resolveAccessibleView(userNow, viewId)')
   const renderAt = app.indexOf('const render = views[viewId]')
   assert.equal(resolveAt > 0 && renderAt > resolveAt, true)
-  assert.match(app, /registros: renderRegistros/)
+  assert.equal(app.includes('renderRegistros'), false)
 })
 
 await check('8-12. Modal: identidad editable, empresa estática y rol según operador', () => {

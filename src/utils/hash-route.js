@@ -1,7 +1,7 @@
 import { DEFAULT_VIEW, NAV_ITEMS } from '../config/navigation.js'
 
 export const HASH_VIEW_IDS = Object.freeze(
-  NAV_ITEMS.filter((item) => !item.hidden).map((item) => item.id),
+  NAV_ITEMS.filter((item) => !item.hidden || item.routable).map((item) => item.id),
 )
 
 function normalizeHash(hash) {

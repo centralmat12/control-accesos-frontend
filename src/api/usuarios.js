@@ -6,7 +6,8 @@
  * SuperAdmin: sin empresaId lista todas las empresas; con empresaId filtra ese tenant.
  * ADMIN: la API fuerza el empresa_id del claim, así que el cliente no envía empresaId.
  * Respuesta 200: UsuarioListItemDto[] { id, empresaId, nombreUsuario, correo, rol, activo,
- * requiereCambioPassword, bloqueado, bloqueadoHasta }. Sin hash, temporal ni token.
+ * invitacionPendiente, requiereCambioPassword, bloqueado, bloqueadoHasta, totpHabilitado, mfaObligatorio }.
+ * Sin hash, secreto, temporal ni token.
  *
  * POST /api/usuarios — UsuarioRegistroDto: empresaId, nombreUsuario, email, password, rol.
  * Policy PuedeCrearUsuarios: SuperAdmin | ADMIN.
@@ -65,6 +66,11 @@ export const USUARIO_API_PATHS = Object.freeze({
   estado: (id) => `/api/usuarios/${id}/estado`,
   rol: (id) => `/api/usuarios/${id}/rol`,
   identidad: (id) => `/api/usuarios/${id}/identidad`,
+  exigirMfa: (id) => `/api/usuarios/${id}/exigir-mfa`,
+  eliminar: (id) => `/api/usuarios/${id}/eliminar`,
+  cancelarInvitacion: (id) => `/api/usuarios/${id}/cancelar-invitacion`,
+  invitar: '/api/usuarios/invitar',
+  reenviarInvitacion: (id) => `/api/usuarios/${id}/reenviar-invitacion`,
 })
 
 export const USUARIO_LIST_FIELDS = Object.freeze([
@@ -74,9 +80,12 @@ export const USUARIO_LIST_FIELDS = Object.freeze([
   'correo',
   'rol',
   'activo',
+  'invitacionPendiente',
   'requiereCambioPassword',
   'bloqueado',
   'bloqueadoHasta',
+  'totpHabilitado',
+  'mfaObligatorio',
 ])
 
 export const USUARIO_LIST_FILTERS = Object.freeze([
@@ -246,15 +255,31 @@ export function mapUsuario(item) {
     correo: String(pick(item, 'correo', 'Correo') ?? '').trim(),
     rol: String(pick(item, 'rol', 'Rol') ?? '').trim(),
     activo: Boolean(pick(item, 'activo', 'Activo')),
+    invitacionPendiente: banderaOpcional(item, 'invitacionPendiente', 'InvitacionPendiente'),
     requiereCambioPassword: Boolean(
       pick(item, 'requiereCambioPassword', 'RequiereCambioPassword'),
     ),
     bloqueado: Boolean(pick(item, 'bloqueado', 'Bloqueado')),
     bloqueadoHasta: pick(item, 'bloqueadoHasta', 'BloqueadoHasta') ?? null,
+    totpHabilitado: banderaOpcional(item, 'totpHabilitado', 'TotpHabilitado'),
+    mfaObligatorio: banderaOpcional(item, 'mfaObligatorio', 'MfaObligatorio'),
   }
 }
 
+function banderaOpcional(item, ...keys) {
+  const value = pick(item, ...keys)
+  return value === true || value === false ? value : null
+}
+
+export function estadoMfaUsuario(usuario) {
+  if (usuario?.totpHabilitado == null || usuario?.mfaObligatorio == null) return 'No disponible'
+  if (usuario.totpHabilitado) return 'Con MFA'
+  if (usuario.mfaObligatorio) return 'Configuración pendiente'
+  return 'Sin MFA'
+}
+
 export function estadoCuentaUsuario(usuario) {
+  if (usuario?.invitacionPendiente === true) return 'Invitación pendiente'
   if (!usuario?.activo) return 'Inactivo'
   if (usuario?.bloqueado) return 'Bloqueado'
   return 'Activo'
@@ -495,6 +520,57 @@ function mapUsuarioActualizado(payload, fallbackMensaje) {
   }
 }
 
+export async function cancelarInvitacionUsuario(usuarioId, { empresaId } = {}) {
+  const id = parseUsuarioId(usuarioId)
+  if (!id) throw createApiError(USUARIO_ACCION_FUERA_DE_ALCANCE, 404)
+  const payload = await postUsuarioAccion(USUARIO_API_PATHS.cancelarInvitacion(id), empresaId)
+  return {
+    mensaje: String(payload?.mensaje ?? payload?.Mensaje ?? 'Invitación cancelada.'),
+  }
+}
+
+export async function eliminarUsuario(usuarioId, { empresaId } = {}) {
+  const id = parseUsuarioId(usuarioId)
+  if (!id) throw createApiError(USUARIO_ACCION_FUERA_DE_ALCANCE, 404)
+  const payload = await postUsuarioAccion(USUARIO_API_PATHS.eliminar(id), empresaId)
+  return {
+    mensaje: String(payload?.mensaje ?? payload?.Mensaje ?? 'Cuenta eliminada.'),
+  }
+}
+
+export async function reenviarInvitacionUsuario(usuarioId, { empresaId } = {}) {
+  const id = parseUsuarioId(usuarioId)
+  if (!id) throw createApiError(USUARIO_ACCION_FUERA_DE_ALCANCE, 404)
+  const { url, response } = await jsonRequest(USUARIO_API_PATHS.reenviarInvitacion(id), {
+    method: 'POST',
+    empresaId: empresaId ?? undefined,
+  })
+  if (response.status === 404 || response.status === 403) {
+    throw createApiError(USUARIO_ACCION_FUERA_DE_ALCANCE, response.status)
+  }
+  if (response.status === 409) {
+    throw createApiError(await publicApiMessage(response, 'No se puede reenviar la invitación.'), 409)
+  }
+  if (response.status >= 500) {
+    console.error('Usuarios: la API no pudo enviar la invitación', { url, status: response.status })
+    throw createApiError('La API no pudo enviar la invitación.', response.status)
+  }
+  if (!response.ok) {
+    throw createApiError(
+      await publicApiMessage(response, `No se pudo reenviar la invitación (${response.status}).`),
+      response.status,
+    )
+  }
+  return { mensaje: 'Invitación reenviada.' }
+}
+
+export async function exigirMfaUsuario(usuarioId, { empresaId } = {}) {
+  const id = parseUsuarioId(usuarioId)
+  if (!id) throw createApiError(USUARIO_ACCION_FUERA_DE_ALCANCE, 404)
+  const payload = await postUsuarioAccion(USUARIO_API_PATHS.exigirMfa(id), empresaId)
+  return mapUsuarioActualizado(payload, 'Se exigió la configuración de MFA.')
+}
+
 export async function cambiarEstadoUsuario(usuarioId, activo, { empresaId } = {}) {
   const id = parseUsuarioId(usuarioId)
   if (!id) throw createApiError(USUARIO_ACCION_FUERA_DE_ALCANCE, 404)
@@ -645,6 +721,48 @@ async function createUsuarioOnce({ nombreUsuario, email, password, rol, empresaI
   discardUsuarioCreateSecrets(payload)
 
   return { mensaje: 'Usuario creado correctamente.' }
+}
+
+export async function invitarUsuario({ nombreUsuario, email, rol, empresaId, exigirMfa = false }) {
+  const empresa = parseEmpresaId(empresaId)
+  if (!puedeCrearUsuarios(getCurrentUser(), empresa)) {
+    throw createApiError('No tenés permiso para invitar usuarios.', 403)
+  }
+  if (!empresa) throw createApiError('Seleccioná una empresa.', 400)
+  const nombreError = validateUsuarioNombre(nombreUsuario)
+  if (nombreError) throw createApiError(nombreError, 400)
+  const normalizedRol = normalizeRole(rol)
+  const rolesPermitidos = rolesAsignablesParaAlta(getCurrentUser())
+  if (!rolesPermitidos.includes(normalizedRol) || !isAssignableUsuarioRole(normalizedRol)) {
+    throw createApiError('El rol no está permitido para la invitación.', 400)
+  }
+  const dto = {
+    empresaId: empresa,
+    nombreUsuario: String(nombreUsuario ?? ''),
+    email: String(email ?? '').trim(),
+    rol: normalizedRol,
+    exigirMfa: exigirMfa === true,
+  }
+  const { url, response } = await jsonRequest(USUARIO_API_PATHS.invitar, {
+    method: 'POST',
+    body: JSON.stringify(dto),
+    empresaId: empresa,
+  })
+  if (response.status === 403) throw createApiError('La empresa o los permisos no son correctos.', 403)
+  if (response.status === 409) {
+    const cuerpo = await response.clone().json().catch(() => null)
+    if (cuerpo?.codigo === 'mfa_enrolamiento_deshabilitado') {
+      throw createApiError('No se puede exigir MFA mientras el enrolamiento está deshabilitado.', 409)
+    }
+    throw createApiError(await publicApiMessage(response, 'El correo ya está registrado o la empresa no existe.'), 409)
+  }
+  if (response.status === 400) throw createApiError(await publicApiMessage(response, 'Los datos de la invitación no son válidos.'), 400)
+  if (response.status >= 500) {
+    console.error('Usuarios: la API no pudo enviar la invitación', { url, status: response.status })
+    throw createApiError('La API no pudo enviar la invitación.', response.status)
+  }
+  if (response.status !== 201) throw createApiError(`No se pudo invitar al usuario (${response.status}).`, response.status)
+  return { mensaje: 'Invitación enviada.' }
 }
 
 export async function createUsuario(dto) {

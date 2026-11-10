@@ -324,7 +324,7 @@ export async function renderFichadas(container, extras = {}) {
     <section class="rounded-xl border border-slate-200 bg-white px-3 py-3 shadow-sm dark:border-slate-700 dark:bg-slate-900">
       <div class="flex flex-col gap-3 lg:flex-row lg:items-end">
         <div id="fichadas-empleado-wrap" class="min-w-0 w-full lg:min-w-[16rem] lg:flex-[2]"></div>
-        <div class="w-full lg:w-44 lg:shrink-0">
+        <div id="fichadas-periodo-wrap" class="w-full lg:w-44 lg:shrink-0">
           <label for="fichadas-periodo" class="${FORM_LABEL_CLASS}">Período</label>
           <select id="fichadas-periodo" class="${CONTROL_CLASS}">
             <option value="${FICHADAS_PERIODO_TODOS}">Todos / Sin filtro de fecha</option>
@@ -337,8 +337,8 @@ export async function renderFichadas(container, extras = {}) {
             <option value="personalizado">Personalizado</option>
           </select>
         </div>
-        <div class="flex w-full min-w-0 flex-col gap-3 sm:flex-row sm:items-end lg:flex-[1.4]">
-          <div class="min-w-0 flex-1">
+        <div id="fichadas-tipo-metodo" class="flex w-full min-w-0 flex-col gap-3 sm:flex-row sm:items-end lg:flex-[1.4]">
+          <div id="fichadas-tipo-wrap" class="min-w-0 w-full flex-1">
             <label for="fichadas-tipo" class="${FORM_LABEL_CLASS}">Tipo</label>
             <select id="fichadas-tipo" class="${CONTROL_CLASS}" aria-describedby="fichadas-tipo-metodo-info">
               <option value="todos">Todos</option>
@@ -347,7 +347,7 @@ export async function renderFichadas(container, extras = {}) {
               <option value="Movimiento intermedio">Movimiento intermedio</option>
             </select>
           </div>
-          <div class="min-w-0 flex-1">
+          <div id="fichadas-metodo-wrap" class="min-w-0 w-full flex-1">
             <label for="fichadas-metodo" class="${FORM_LABEL_CLASS}">Método</label>
             <select id="fichadas-metodo" class="${CONTROL_CLASS}" aria-describedby="fichadas-tipo-metodo-info">
               <option value="todos">Todos</option>
@@ -607,21 +607,25 @@ export async function renderFichadas(container, extras = {}) {
     const labor = calendario || laborKind === 'alertas'
     const pageSizeLabel = pageSizeSelect.closest('label')
     const actions = view.querySelector('#fichadas-filter-actions')
+    const periodoWrap = view.querySelector('#fichadas-periodo-wrap')
+    const tipoWrap = view.querySelector('#fichadas-tipo-wrap')
+    const tipoMetodo = view.querySelector('#fichadas-tipo-metodo')
     const mostrarAcciones = laborKind === 'alertas' ? false : calendario ? filtrosPorLimpiar() : true
     pageSizeLabel?.classList.toggle('inline-flex', !labor)
-    ;[
-      pageSizeLabel,
-      periodoSelect.closest('div'),
-      tipoSelect.closest('div')?.parentElement,
-      consultaExport.root,
-    ].forEach((node) => node?.classList.toggle('hidden', labor))
+    pageSizeLabel?.classList.toggle('hidden', labor)
+    periodoWrap?.classList.toggle('hidden', labor)
+    tipoWrap?.classList.toggle('hidden', calendario || laborKind === 'alertas')
+    tipoMetodo?.classList.toggle('hidden', laborKind === 'alertas')
+    consultaExport.root.classList.toggle('hidden', labor)
     actions?.classList.toggle('hidden', !mostrarAcciones)
     actions?.classList.toggle('mt-2', mostrarAcciones)
     clearButton?.classList.toggle('hidden', !mostrarAcciones || laborKind === 'alertas')
     empleadoWrap.classList.toggle('hidden', false)
-    empleadoWrap.classList.toggle('lg:max-w-md', calendario)
-    empleadoWrap.classList.toggle('lg:flex-none', calendario)
+    empleadoWrap.classList.toggle('lg:min-w-[16rem]', !calendario)
     empleadoWrap.classList.toggle('lg:flex-[2]', !calendario)
+    empleadoWrap.classList.toggle('lg:flex-1', calendario)
+    tipoMetodo?.classList.toggle('lg:flex-[1.4]', !calendario)
+    tipoMetodo?.classList.toggle('lg:flex-1', calendario)
     syncCalculoHelp()
     if (labor) {
       countLabel.classList.add('hidden')

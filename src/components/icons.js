@@ -117,14 +117,14 @@ export function iconStatusOk(className = 'h-4 w-4') {
   </svg>`
 }
 
-export function iconStatusWarn() {
-  return `<svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true">
+export function iconStatusWarn(className = 'h-4 w-4') {
+  return `<svg class="${className}" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true">
     <path stroke-linecap="round" stroke-linejoin="round" d="M12 8v5m0 3h.01M10.3 3.7 2.2 18a2 2 0 0 0 1.74 3h16.12a2 2 0 0 0 1.74-3L13.7 3.7a2 2 0 0 0-3.4 0Z" />
   </svg>`
 }
 
-export function iconStatusOff() {
-  return `<svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true">
+export function iconStatusOff(className = 'h-4 w-4') {
+  return `<svg class="${className}" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true">
     <path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" />
   </svg>`
 }
@@ -173,6 +173,21 @@ export function iconFingerprint(className = 'h-6 w-6') {
   </svg>`
 }
 
+export function iconMail(className = 'h-5 w-5') {
+  return `<svg class="${className}" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+    <path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1Z" />
+    <path stroke-linecap="round" stroke-linejoin="round" d="m3 7 9 7 9-7" />
+  </svg>`
+}
+
+export function iconUserPlus(className = 'h-5 w-5') {
+  return `<svg class="${className}" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+    <path stroke-linecap="round" stroke-linejoin="round" d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+    <circle cx="9" cy="7" r="4" />
+    <path stroke-linecap="round" stroke-linejoin="round" d="M19 8v6M16 11h6" />
+  </svg>`
+}
+
 export function iconChevronRight(className = 'h-3.5 w-3.5') {
   return `<svg class="${className}" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true">
     <path stroke-linecap="round" stroke-linejoin="round" d="m9 6 6 6-6 6" />
@@ -182,6 +197,14 @@ export function iconChevronRight(className = 'h-3.5 w-3.5') {
 export function iconChevronDown(className = 'h-4 w-4') {
   return `<svg class="${className}" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true">
     <path stroke-linecap="round" stroke-linejoin="round" d="m6 9 6 6 6-6" />
+  </svg>`
+}
+
+export function iconShieldLock(className = 'h-4 w-4') {
+  return `<svg class="${className}" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+    <path stroke-linecap="round" stroke-linejoin="round" d="M12 3.5 19 6.2v5.3c0 4.2-2.8 7.2-7 8.8-4.2-1.6-7-4.6-7-8.8V6.2L12 3.5z" />
+    <path stroke-linecap="round" stroke-linejoin="round" d="M9.5 11.2V9.8a2.5 2.5 0 0 1 5 0v1.4" />
+    <path stroke-linecap="round" stroke-linejoin="round" d="M8.8 11.2h6.4v4.2H8.8z" />
   </svg>`
 }
 
@@ -212,7 +235,6 @@ export const NAV_ICONS = {
   dashboard: iconDashboard,
   fichadas: iconClock,
   empleados: iconUsers,
-  registros: iconList,
   administracion: iconBuilding,
   areas: iconMap,
   horarios: iconCalendar,

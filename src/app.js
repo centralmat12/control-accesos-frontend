@@ -3,6 +3,7 @@ import {
   getCurrentUser,
   isAuthenticated,
   logout,
+  prepararArranque,
   requiresPasswordChange,
 } from './api/auth.js'
 import { EMPRESA_CONTEXTO_EVENT } from './api/empresa-context.js'
@@ -17,9 +18,10 @@ import { renderAdministracion } from './views/administracion.js'
 import { renderDashboard } from './views/dashboard.js'
 import { renderEmpleados } from './views/empleados.js'
 import { renderFichadas } from './views/fichadas.js'
-import { openCambiarPasswordModal, renderCambioPasswordObligatorio } from './views/cambiar-password.js'
+import { renderCambioPasswordObligatorio } from './views/cambiar-password.js'
 import { renderLogin } from './views/login.js'
-import { renderRegistros } from './views/registros.js'
+import { renderAceptarInvitacion, rutaAceptarInvitacion } from './views/aceptar-invitacion.js'
+import { renderSeguridad } from './views/seguridad.js'
 import { logInfo } from './utils/activity-log.js'
 import { assignViewHash, parseHashView, viewHash, writeViewHash } from './utils/hash-route.js'
 
@@ -27,8 +29,8 @@ const views = {
   dashboard: renderDashboard,
   fichadas: renderFichadas,
   empleados: renderEmpleados,
-  registros: renderRegistros,
   administracion: renderAdministracion,
+  seguridad: renderSeguridad,
 }
 
 let activeViewCleanup = null
@@ -42,7 +44,8 @@ function clearActiveView() {
   activeViewCleanup = null
 }
 
-export function bootstrap(root) {
+export async function bootstrap(root) {
+  await prepararArranque()
   let currentView = DEFAULT_VIEW
   let pendingViewOptions = {}
   let mainEl = null
@@ -51,6 +54,8 @@ export function bootstrap(root) {
 
   const refreshActiveView = () => {
     if (!mainEl || !isAuthenticated()) return
+    const hash = globalThis.location?.hash || ''
+    if (currentView === 'administracion' && /[?&]tab=correo(?:&|$)/.test(hash)) return
     void renderView(mainEl, currentView, viewExtras)
   }
 
@@ -76,6 +81,19 @@ export function bootstrap(root) {
   }
 
   const mount = () => {
+    if (rutaAceptarInvitacion()) {
+      clearActiveView()
+      mainEl = null
+      passwordChangeViewActive = false
+      renderAceptarInvitacion(root, {
+        onLogin: () => {
+          globalThis.history?.replaceState?.(null, '', '/')
+          mount()
+        },
+      })
+      return
+    }
+
     const user = getCurrentUser()
 
     if (!user || !isAuthenticated()) {
@@ -150,24 +168,14 @@ export function bootstrap(root) {
       onNavigate: navigate,
       onLogout: () => {
         clearActiveView()
-        logout()
-        currentView = DEFAULT_VIEW
-        pendingViewOptions = {}
-        writeViewHash(DEFAULT_VIEW, { replace: true })
-        mount()
-      },
-      onChangePassword: () => {
-        openCambiarPasswordModal({
-          onCompleted: () => {
-            clearActiveView()
-            mainEl = null
-            currentView = DEFAULT_VIEW
-            pendingViewOptions = {}
-            writeViewHash(DEFAULT_VIEW, { replace: true })
-            mount()
-          },
+        void logout().then(() => {
+          currentView = DEFAULT_VIEW
+          pendingViewOptions = {}
+          writeViewHash(DEFAULT_VIEW, { replace: true })
+          mount()
         })
       },
+      onOpenSecurity: () => navigate('seguridad'),
     })
 
     root.replaceChildren(layout)
@@ -228,7 +236,21 @@ export function bootstrap(root) {
     mount()
   }
 
+  window.addEventListener('ca:session-reset', () => {
+    if (rutaAceptarInvitacion()) return
+    if (!isAuthenticated()) {
+      clearActiveView()
+      mainEl = null
+      passwordChangeViewActive = false
+      currentView = DEFAULT_VIEW
+      pendingViewOptions = {}
+      writeViewHash(DEFAULT_VIEW, { replace: true })
+      mount()
+    }
+  })
+
   window.addEventListener('ca:unauthorized', () => {
+    if (rutaAceptarInvitacion()) return
     clearActiveView()
     mainEl = null
     passwordChangeViewActive = false
@@ -239,6 +261,7 @@ export function bootstrap(root) {
   })
 
   window.addEventListener('ca:password-change-required', () => {
+    if (rutaAceptarInvitacion()) return
     if (passwordChangeViewActive) return
     clearActiveView()
     mainEl = null
@@ -252,7 +275,7 @@ export function bootstrap(root) {
   window.addEventListener('hashchange', onHistoryNavigation)
   window.addEventListener('popstate', onHistoryNavigation)
 
-  if (isAuthenticated() && !requiresPasswordChange(getCurrentUser())) {
+  if (!rutaAceptarInvitacion() && isAuthenticated() && !requiresPasswordChange(getCurrentUser())) {
     const initial = resolvedHashView()
     currentView = initial.viewId
     if (!initial.parsed.valid || initial.parsed.empty) {

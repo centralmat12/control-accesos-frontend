@@ -1,4 +1,4 @@
-import { ROLES, isSuperadmin, normalizeRole } from './roles.js'
+import { ROLES, normalizeRole } from './roles.js'
 import { puedeAccederAdministracion } from './administracion.js'
 
 export const APP_NAME = 'Control de Accesos'
@@ -7,8 +7,8 @@ export const NAV_ITEMS = [
   { id: 'dashboard', label: 'Dashboard', path: '/', roles: [ROLES.Superadmin, ROLES.Admin, ROLES.Rrhh] },
   { id: 'fichadas', label: 'Fichadas', path: '/fichadas', roles: [ROLES.Superadmin, ROLES.Admin, ROLES.Rrhh] },
   { id: 'empleados', label: 'Empleados', path: '/empleados', roles: [ROLES.Superadmin, ROLES.Admin, ROLES.Rrhh] },
-  { id: 'registros', label: 'Registros', path: '/registros', roles: [ROLES.Superadmin] },
   { id: 'administracion', label: 'Administración', path: '/administracion', roles: [ROLES.Superadmin, ROLES.Admin] },
+  { id: 'seguridad', label: 'Seguridad', path: '/seguridad', hidden: true, routable: true },
   { id: 'areas', label: 'Áreas', path: '/areas', hidden: true },
   { id: 'horarios', label: 'Horarios', path: '/horarios', hidden: true },
   { id: 'dispositivos', label: 'Dispositivos', path: '/dispositivos', hidden: true },
@@ -27,8 +27,11 @@ export function getNavItemsForUser(user) {
 }
 
 export function canAccessView(user, viewId) {
+  if (viewId === 'seguridad') {
+    const rol = normalizeRole(user)
+    return rol === ROLES.Superadmin || rol === ROLES.Admin || rol === ROLES.Rrhh
+  }
   if (viewId === 'administracion') return puedeAccederAdministracion(user)
-  if (viewId === 'registros') return isSuperadmin(user)
 
   const item = NAV_ITEMS.find((nav) => nav.id === viewId)
   if (!item || item.hidden) return false

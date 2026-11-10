@@ -2,6 +2,10 @@ import { getEmpresas, empresaDisplayName } from '../api/empresas.js'
 import {
   clearPasswordInput,
   validateUsuarioAlta,
+  validateUsuarioEmail,
+  validateUsuarioEmpresa,
+  validateUsuarioNombre,
+  validateUsuarioRol,
 } from '../api/usuarios.js'
 import { USUARIO_ROLES_API, usuarioRolLabel } from '../config/roles.js'
 import { escapeHtml } from '../utils/format.js'
@@ -386,5 +390,116 @@ export function createUsuarioForm({
     }
   })()
 
+  return wrapper
+}
+
+export function createInvitacionForm({
+  onCancel,
+  onSubmit,
+  empresaIdPermitida = null,
+  permitirElegirEmpresa = empresaIdPermitida == null,
+  rolesPermitidos = USUARIO_ROLES_API,
+} = {}) {
+  const wrapper = document.createElement('div')
+  const empresaIdFija = parsePositiveId(empresaIdPermitida)
+  const canChooseEmpresa = permitirElegirEmpresa === true
+  const roles = (Array.isArray(rolesPermitidos) && rolesPermitidos.length
+    ? rolesPermitidos
+    : USUARIO_ROLES_API
+  ).filter((rol) => USUARIO_ROLES_API.includes(rol))
+  wrapper.innerHTML = `
+    <form id="invitacion-form" class="space-y-4" novalidate>
+      <p id="invitacion-form-error" class="hidden rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800" role="alert"></p>
+      ${formFieldMarkup({
+        id: 'invitacion-nombreUsuario',
+        name: 'nombreUsuario',
+        label: 'Nombre de usuario',
+        required: true,
+        maxLength: 50,
+        autocomplete: 'username',
+        helpText: 'La persona recibirá un correo para definir su contraseña.',
+      })}
+      ${formFieldMarkup({
+        id: 'invitacion-email',
+        name: 'email',
+        label: 'Correo electrónico',
+        required: true,
+        type: 'email',
+        maxLength: 100,
+        autocomplete: 'email',
+        helpText: 'Se enviará la invitación a este correo.',
+      })}
+      ${empresaFieldMarkup({ permitirElegirEmpresa: canChooseEmpresa, empresaIdFija }).replaceAll('usuario-empresa', 'invitacion-empresa')}
+      ${rolFieldMarkup(roles).replaceAll('usuario-rol', 'invitacion-rol')}
+      <label class="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-200">
+        <input id="invitacion-exigir-mfa" name="exigirMfa" type="checkbox" />
+        Exigir MFA
+      </label>
+      <div class="flex flex-col-reverse gap-2 border-t border-slate-100 pt-4 sm:flex-row sm:justify-end">
+        <button type="button" id="invitacion-form-cancel" class="${BTN_SECONDARY_CLASS}">Cancelar</button>
+        <button type="submit" id="invitacion-form-submit" class="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-60">Enviar invitación</button>
+      </div>
+    </form>
+  `
+  const form = wrapper.querySelector('#invitacion-form')
+  const formError = wrapper.querySelector('#invitacion-form-error')
+  const empresaSelect = form.querySelector('[name="empresaId"]')
+  form.querySelector('#invitacion-form-cancel').addEventListener('click', () => onCancel())
+  form.addEventListener('submit', async (event) => {
+    event.preventDefault()
+    if (form.dataset.submitting === 'true') return
+    const values = {
+      nombreUsuario: String(form.nombreUsuario.value ?? ''),
+      email: String(form.email.value ?? '').trim(),
+      empresaId: empresaSelect?.value,
+      rol: String(form.rol.value ?? '').trim(),
+      exigirMfa: Boolean(form.exigirMfa.checked),
+    }
+    const mensaje = validateUsuarioNombre(values.nombreUsuario)
+      || validateUsuarioEmail(values.email)
+      || validateUsuarioEmpresa(values.empresaId)
+      || validateUsuarioRol(values.rol, roles)
+    if (mensaje) {
+      formError.textContent = mensaje
+      formError.classList.remove('hidden')
+      return
+    }
+    form.dataset.submitting = 'true'
+    try {
+      await onSubmit({
+        nombreUsuario: values.nombreUsuario,
+        email: values.email,
+        rol: values.rol,
+        empresaId: Number(values.empresaId),
+        exigirMfa: values.exigirMfa,
+      })
+    } catch (error) {
+      const message = error.message || 'No se pudo enviar la invitación.'
+      formError.textContent = message
+      formError.classList.remove('hidden')
+      showToast({ message, tone: 'error' })
+    } finally {
+      if (form.isConnected) delete form.dataset.submitting
+    }
+  })
+  enhanceSelectsIn(form)
+  ;(async () => {
+    try {
+      const empresas = await getEmpresas()
+      if (!form.isConnected || !canChooseEmpresa || !empresaSelect) return
+      empresaSelect.replaceChildren(new Option('Seleccionar...', ''))
+      empresas.slice().sort((a, b) => empresaDisplayName(a).localeCompare(empresaDisplayName(b), 'es')).forEach((empresa) => {
+        const id = parsePositiveId(empresa.id)
+        if (!id) return
+        empresaSelect.append(new Option(empresaDisplayName(empresa), String(id)))
+      })
+      refreshEnhancedSelect(empresaSelect)
+    } catch {
+      if (form.isConnected) {
+        formError.textContent = 'No se pudieron cargar las empresas.'
+        formError.classList.remove('hidden')
+      }
+    }
+  })()
   return wrapper
 }
