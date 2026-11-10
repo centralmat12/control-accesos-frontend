@@ -26,7 +26,7 @@ El control pinta el resumen con la primera opción, `tls-conexion`, antes de que
 
 ## Dependencias entre frontend y API
 
-El panel publicado hoy sigue siendo `a2e60f09f3d94de743dc2c4949d8ea524a36bd92` y puede enviar `starttls` con esa selección visible. Este arreglo necesita la API desplegada `f56a851119b9d140975ef4d80c80148e103da865`. El origen permitido, el almacenamiento persistente de `smtp.panel.json` y el enrolamiento MFA habilitado están registrados en el resumen de la API, sin claves.
+El panel publicado es este arreglo y necesita la API desplegada `f56a851119b9d140975ef4d80c80148e103da865`. El origen permitido, el almacenamiento persistente de `smtp.panel.json` y el enrolamiento MFA habilitado están registrados en el resumen de la API, sin claves.
 
 ## Pruebas del entorno aislado
 
@@ -42,29 +42,30 @@ Se hicieron contra la API local `f56a851119b9d140975ef4d80c80148e103da865`, con 
 - Enviar correo de prueba usó el usuario editado, `tls-conexion` y `usarBorrador`. La API respondió que no pudo enviarlo porque no había servidor en el puerto 465 del contenedor. Al reabrir Correo seguía el usuario guardado, no el del borrador.
 - `node scripts/check-correo-saliente.js` imprimió `correo saliente ok`. `check-dropdown-regressions.js` dejó 13 pruebas correctas y `check-ux-dropdowns.js`, 5.
 
-## Build generado
+## Build publicado
 
-`npm run build` se ejecutó con `VITE_API_BASE_URL` vacío. El paquete contiene solo `dist/` y está en `C:\Users\Tinchota\deploy-srv-tesis2026\frontend-5cce792.tar.gz`. Su SHA-256 es `6a4020bda4fb115fd3af842efd723d189c0c55ac6126548dc240051e3c523e49`. Los assets son `assets/index-CkEZ_Yd2.js` y `assets/index-Bg7VdoQs.css`. El paquete no incluye un host de API. No se desplegó.
+`npm run build` se ejecutó con `VITE_API_BASE_URL` vacío. El paquete contiene solo `dist/` y está en `C:\Users\Tinchota\deploy-srv-tesis2026\frontend-5cce792.tar.gz`. Su SHA-256 es `6a4020bda4fb115fd3af842efd723d189c0c55ac6126548dc240051e3c523e49`. Los assets son `assets/index-CkEZ_Yd2.js` y `assets/index-Bg7VdoQs.css`. El paquete no incluye un host de API. Ese paquete ya está desplegado y el SHA-256 quedó verificado en producción.
 
 ## Verificaciones en producción
 
-Separadas del ensayo aislado. El arreglo de este PR no está en el panel que se está sirviendo.
+Separadas del ensayo aislado.
 
-- El panel publicado es `a2e60f09f3d94de743dc2c4949d8ea524a36bd92` y usa `/api` en `https://controldeaccesos.online`.
+- El panel publicado es `frontend-5cce792.tar.gz`, verificado por el SHA-256 `6a4020bda4fb115fd3af842efd723d189c0c55ac6126548dc240051e3c523e49`. Usa `/api` en `https://controldeaccesos.online`. Reemplaza a `a2e60f09f3d94de743dc2c4949d8ea524a36bd92`.
 - El primer login del navegador recibió HTTP 403 porque el origen no estaba en `Cors:AllowedOrigins`.
 - Después de permitir exactamente `https://controldeaccesos.online`, el login y la visualización de empleados y fichadas quedaron confirmados.
 
 ## Resultados
 
-`ac4e07ce010e6c30c445dea5cf453ea3943c8a67` es el arreglo. El SHA final de la rama es el commit posterior que agrega este archivo. El paquete listo para publicar es `frontend-5cce792.tar.gz`, con el SHA-256 de arriba. En producción sigue `a2e60f09f3d94de743dc2c4949d8ea524a36bd92`.
+`ac4e07ce010e6c30c445dea5cf453ea3943c8a67` es el arreglo. El SHA final de la rama es el commit posterior que agrega este archivo. En producción está `frontend-5cce792.tar.gz`, con el SHA-256 verificado de arriba.
 
 ## Pendientes
 
 - No hay PR abierto. Publicar esta rama no despliega: el workflow solo se dispara a mano y termina si la referencia no es `refs/heads/main`.
-- Falta desplegar `frontend-5cce792.tar.gz` y repetir en producción el guardado con «TLS desde la conexión» y el puerto 465.
+- Falta la prueba manual en producción del guardado y de la entrega del correo.
+- Falta la prueba manual de MFA en producción.
 - La fichada nueva desde el lector en producción queda pendiente.
 - Publicar la rama de la API sigue sujeto a la autorización de Samu.
 
 ## Despliegue y reversión
 
-El contenido estático vigente es el de `a2e60f09f3d94de743dc2c4949d8ea524a36bd92`, con `/api` en el mismo origen. El paquete del arreglo está generado y no reemplazó ese contenido. Revertir el panel es volver a servir el build anterior. Revertir la API, sin restaurar la base, usa la rama `rollback/50843f8-eliminado`, commit `a012fc24517b4c83d31cd254e679e9f721b5752f`, documentada en el resumen de la API.
+El contenido estático vigente es `frontend-5cce792.tar.gz`, verificado por SHA-256, con `/api` en el mismo origen. Revertir el panel es volver a servir `a2e60f09f3d94de743dc2c4949d8ea524a36bd92`. Revertir la API, sin restaurar la base, usa la rama `rollback/50843f8-eliminado`, commit `a012fc24517b4c83d31cd254e679e9f721b5752f`, documentada en el resumen de la API.
