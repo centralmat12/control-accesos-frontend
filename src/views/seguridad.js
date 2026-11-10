@@ -1,11 +1,13 @@
 import {
   confirmarEnrolamiento,
+  consultarEstadoMfa,
   iniciarEnrolamiento,
   MFA_ENROLAMIENTO_NO_DISPONIBLE,
   MFA_RESPUESTA_PERDIDA,
   regenerarCodigos,
 } from '../api/mfa.js'
-import { cambiarPassword, finishPasswordChange, logout, setLoginNotice } from '../api/auth.js'
+import { puedeAplicarEstadoMfa } from '../api/mfa-estado.js'
+import { cambiarPassword, finishPasswordChange, getCurrentUser, getToken, logout, setLoginNotice } from '../api/auth.js'
 import { createCambiarPasswordForm } from '../components/cambiar-password-form.js'
 import { crearGuiaActivacion, crearTituloDobleFactor } from '../components/guia-activacion-mfa.js'
 import { iconLock } from '../components/icons.js'
@@ -20,6 +22,8 @@ export async function renderSeguridad(container) {
   raiz.className = 'mx-auto w-full max-w-3xl space-y-4'
   let guia = null
   let autenticadorActivo = false
+  let configuracionDisponible = false
+  let consulta = 0
 
   function limpiarSensibles() {
     guia?.limpiarSensibles()
@@ -49,10 +53,33 @@ export async function renderSeguridad(container) {
     return 'No se pudo completar la operación.'
   }
 
+  function marcarActivo(activo) {
+    raiz.querySelector('#mfa-activo')?.remove()
+    if (!activo) return
+    const marca = document.createElement('p')
+    marca.id = 'mfa-activo'
+    marca.className = 'rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-semibold text-emerald-900 dark:bg-emerald-500/15 dark:text-emerald-100'
+    marca.textContent = 'Activo'
+    raiz.querySelector('#mfa-titulo')?.firstElementChild?.append(marca)
+  }
+
+  function ocultarRecuperacion() {
+    const seccion = raiz.querySelector('#mfa-recuperacion')
+    seccion?.classList.add('hidden')
+    seccion?.replaceChildren()
+  }
+
   function mostrarRecuperacion() {
     const seccion = raiz.querySelector('#mfa-recuperacion')
     if (!autenticadorActivo || !seccion) return
     seccion.classList.remove('hidden')
+    if (!configuracionDisponible) {
+      seccion.innerHTML = `
+        <h2 class="text-lg font-semibold text-slate-900 dark:text-slate-100">Códigos de recuperación</h2>
+        <p class="mt-2 text-sm text-slate-500 dark:text-slate-400">La regeneración de códigos no está habilitada.</p>
+      `
+      return
+    }
     seccion.innerHTML = `
       <h2 class="text-lg font-semibold text-slate-900 dark:text-slate-100">Códigos de recuperación</h2>
       <p class="mt-2 text-sm text-slate-500 dark:text-slate-400">Generá un conjunto nuevo con tu contraseña y un solo segundo factor.</p>
@@ -138,9 +165,10 @@ export async function renderSeguridad(container) {
     </div>
     <div class="rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900 sm:p-6">
       <div id="mfa-titulo"></div>
-      <p class="mt-2 text-sm text-slate-500 dark:text-slate-400">Podés activar una aplicación de códigos para esta cuenta.</p>
-      <button type="button" id="mfa-activar-accion" class="mt-4 ${BOTON} w-full sm:w-auto">Activar autenticación de doble factor</button>
-      <p id="mfa-estado" class="mt-3 hidden ${ALERTA} border-red-200 bg-red-50 text-red-700" role="alert"></p>
+      <p id="mfa-resumen" class="mt-2 text-sm text-slate-500 dark:text-slate-400"></p>
+      <button type="button" id="mfa-activar-accion" class="mt-4 hidden ${BOTON} w-full sm:w-auto">Activar autenticación de doble factor</button>
+      <p id="mfa-estado" class="mt-3 hidden text-sm" role="status"></p>
+      <button type="button" id="mfa-reintentar" class="mt-3 hidden ${BOTON}">Reintentar</button>
       <div id="mfa-guia" class="mt-4"></div>
     </div>
     <div id="mfa-recuperacion" class="hidden rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900 sm:p-6"></div>
@@ -183,6 +211,8 @@ export async function renderSeguridad(container) {
         const resultado = await iniciarEnrolamiento(password)
         if (resultado.estado === 'ya-configurado') {
           autenticadorActivo = true
+          configuracionDisponible = true
+          marcarActivo(true)
           guia.limpiarSensibles()
           raiz.querySelector('#mfa-guia').replaceChildren()
           mostrarRecuperacion()
@@ -211,8 +241,81 @@ export async function renderSeguridad(container) {
     raiz.querySelector('#mfa-guia').replaceChildren(guia.element)
   })
 
+  function identidadActual() {
+    return { usuarioId: getCurrentUser()?.id ?? null, token: getToken() }
+  }
+
+  function prepararConsulta() {
+    marcarActivo(false)
+    ocultarRecuperacion()
+    raiz.querySelector('#mfa-activar-accion')?.classList.add('hidden')
+    raiz.querySelector('#mfa-reintentar')?.classList.add('hidden')
+    raiz.querySelector('#mfa-guia')?.replaceChildren()
+    const resumen = raiz.querySelector('#mfa-resumen')
+    if (resumen) resumen.textContent = ''
+    const aviso = raiz.querySelector('#mfa-estado')
+    if (!aviso) return
+    aviso.className = 'mt-3 text-sm text-slate-500 dark:text-slate-400'
+    aviso.textContent = 'Consultando el estado de la autenticación…'
+  }
+
+  function aplicarEstado(resultado) {
+    const aviso = raiz.querySelector('#mfa-estado')
+    const resumen = raiz.querySelector('#mfa-resumen')
+    const activar = raiz.querySelector('#mfa-activar-accion')
+    const reintentar = raiz.querySelector('#mfa-reintentar')
+    aviso.className = 'mt-3 hidden text-sm'
+    aviso.textContent = ''
+    reintentar.classList.add('hidden')
+    activar.classList.add('hidden')
+    if (resultado.estado !== 'listo') {
+      marcarActivo(false)
+      ocultarRecuperacion()
+      aviso.className = `mt-3 ${ALERTA} border-red-200 bg-red-50 text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-100`
+      aviso.textContent = resultado.estado === 'restringido'
+        ? 'Tenés que cambiar la contraseña antes de continuar.'
+        : 'No se pudo consultar el estado.'
+      reintentar.classList.remove('hidden')
+      return
+    }
+    configuracionDisponible = resultado.configuracionDisponible === true
+    if (resultado.totpHabilitado) {
+      autenticadorActivo = true
+      marcarActivo(true)
+      resumen.textContent = 'El autenticador de esta cuenta está activo.'
+      mostrarRecuperacion()
+      return
+    }
+    autenticadorActivo = false
+    marcarActivo(false)
+    ocultarRecuperacion()
+    if (configuracionDisponible) {
+      resumen.textContent = 'Podés activar una aplicación de códigos para esta cuenta.'
+      activar.classList.remove('hidden')
+      return
+    }
+    resumen.textContent = ''
+    aviso.className = 'mt-3 text-sm text-slate-500 dark:text-slate-400'
+    aviso.textContent = MFA_ENROLAMIENTO_NO_DISPONIBLE
+  }
+
+  async function cargarEstado() {
+    const turno = ++consulta
+    const inicio = identidadActual()
+    prepararConsulta()
+    const resultado = await consultarEstadoMfa()
+    if (turno !== consulta || !raiz.isConnected || !puedeAplicarEstadoMfa(inicio, identidadActual())) return
+    aplicarEstado(resultado)
+  }
+
+  raiz.querySelector('#mfa-reintentar').addEventListener('click', () => {
+    void cargarEstado()
+  })
+
   container.replaceChildren(raiz)
+  void cargarEstado()
   return () => {
+    consulta += 1
     limpiarSensibles()
     unbindTooltipRoot(raiz)
   }

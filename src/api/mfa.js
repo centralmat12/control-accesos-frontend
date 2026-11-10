@@ -61,6 +61,53 @@ async function clasificar(response) {
   return { estado: 'invalido' }
 }
 
+export async function consultarEstadoMfa() {
+  const token = getToken()
+  if (!token) return { estado: 'sesion' }
+  const path = '/api/Auth/mfa/estado'
+  let response
+  try {
+    response = await fetch(apiUrl(path), {
+      method: 'GET',
+      credentials: 'include',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        ...encabezadosRenovables(),
+      },
+    })
+  } catch {
+    logApiNetworkError('GET', path)
+    return { estado: 'error' }
+  }
+  logApiResponse('GET', path, response.status)
+  let cuerpo = null
+  try {
+    cuerpo = await response.json()
+  } catch {
+    cuerpo = null
+  }
+  if (response.status === 200) {
+    if (typeof cuerpo?.totpHabilitado !== 'boolean' ||
+      typeof cuerpo?.mfaObligatorio !== 'boolean' ||
+      typeof cuerpo?.configuracionDisponible !== 'boolean') {
+      return { estado: 'error' }
+    }
+    return {
+      estado: 'listo',
+      totpHabilitado: cuerpo.totpHabilitado,
+      mfaObligatorio: cuerpo.mfaObligatorio,
+      configuracionDisponible: cuerpo.configuracionDisponible,
+    }
+  }
+  if (response.status === 401) return { estado: 'sesion' }
+  if (response.status === 403) {
+    return String(cuerpo?.mensaje || '').toLowerCase().includes('contraseña')
+      ? { estado: 'restringido' }
+      : { estado: 'error' }
+  }
+  return { estado: 'error' }
+}
+
 export function iniciarEnrolamiento(password) {
   return postMfa('/api/Auth/mfa/enrolamiento/iniciar', { password })
 }
