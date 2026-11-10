@@ -1,6 +1,7 @@
 import {
   confirmarEnrolamiento,
   consultarEstadoMfa,
+  desactivarMfa,
   iniciarEnrolamiento,
   MFA_ENROLAMIENTO_NO_DISPONIBLE,
   MFA_RESPUESTA_PERDIDA,
@@ -15,6 +16,9 @@ import { bindTooltipRoot, unbindTooltipRoot } from '../components/tooltip.js'
 import { escapeHtml } from '../utils/format.js'
 
 const AYUDA_CODIGOS_RECUPERACION = 'Si perdés acceso a tu autenticador, podés iniciar sesión con tu contraseña y uno de estos códigos. Cada código se puede usar una sola vez. Guardalos en un lugar seguro.'
+const AVISO_DESACTIVAR = 'Esta acción invalida los códigos de recuperación y cierra las sesiones abiertas, incluida esta.'
+const MENSAJE_DESACTIVADO = 'El doble factor quedó desactivado. Iniciá sesión con tu contraseña.'
+const MENSAJE_DESACTIVACION_INCIERTA = 'No se pudo confirmar si el doble factor se desactivó. No vuelvas a enviar la operación. Iniciá sesión para comprobar el estado.'
 const BOTON = 'rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-60'
 const CAJA = 'w-full rounded-lg border border-slate-300 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-950 dark:text-white'
 const ALERTA = 'rounded-lg border px-3 py-2 text-sm'
@@ -31,6 +35,9 @@ export async function renderSeguridad(container) {
     guia?.limpiarSensibles()
     raiz.querySelectorAll('[data-sensible]').forEach((nodo) => {
       nodo.textContent = ''
+    })
+    raiz.querySelectorAll('#mfa-desactivar-panel input').forEach((input) => {
+      input.value = ''
     })
   }
 
@@ -52,6 +59,7 @@ export async function renderSeguridad(container) {
     if (estado === 'sesion') return 'La sesión ya no es válida.'
     if (estado === 'incierto') return MFA_RESPUESTA_PERDIDA
     if (estado === 'ya-configurado') return 'El autenticador ya está activo.'
+    if (estado === 'obligatorio') return 'El doble factor de esta cuenta es obligatorio y no se puede desactivar.'
     return 'No se pudo completar la operación.'
   }
 
@@ -178,6 +186,10 @@ export async function renderSeguridad(container) {
       <div id="mfa-titulo"></div>
       <p id="mfa-resumen" class="mt-2 text-sm text-slate-500 dark:text-slate-400"></p>
       <button type="button" id="mfa-activar-accion" class="mt-4 hidden ${BOTON} w-full sm:w-auto">Activar autenticación de doble factor</button>
+      <div id="mfa-desactivar" class="mt-4 hidden">
+        <button type="button" id="mfa-desactivar-accion" class="w-full rounded-lg border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 sm:w-auto dark:border-slate-600 dark:text-slate-100 dark:hover:bg-slate-800">Desactivar doble factor</button>
+        <div id="mfa-desactivar-panel" hidden></div>
+      </div>
       <p id="mfa-estado" class="mt-3 hidden text-sm" role="status"></p>
       <button type="button" id="mfa-reintentar" class="mt-3 hidden ${BOTON}">Reintentar</button>
       <div id="mfa-guia" class="mt-4"></div>
@@ -260,6 +272,7 @@ export async function renderSeguridad(container) {
     marcarActivo(false)
     ocultarRecuperacion()
     raiz.querySelector('#mfa-activar-accion')?.classList.add('hidden')
+    raiz.querySelector('#mfa-desactivar')?.classList.add('hidden')
     raiz.querySelector('#mfa-reintentar')?.classList.add('hidden')
     raiz.querySelector('#mfa-guia')?.replaceChildren()
     const resumen = raiz.querySelector('#mfa-resumen')
@@ -274,11 +287,13 @@ export async function renderSeguridad(container) {
     const aviso = raiz.querySelector('#mfa-estado')
     const resumen = raiz.querySelector('#mfa-resumen')
     const activar = raiz.querySelector('#mfa-activar-accion')
+    const desactivar = raiz.querySelector('#mfa-desactivar')
     const reintentar = raiz.querySelector('#mfa-reintentar')
     aviso.className = 'mt-3 hidden text-sm'
     aviso.textContent = ''
     reintentar.classList.add('hidden')
     activar.classList.add('hidden')
+    desactivar.classList.add('hidden')
     if (resultado.estado !== 'listo') {
       marcarActivo(false)
       ocultarRecuperacion()
@@ -295,6 +310,7 @@ export async function renderSeguridad(container) {
       marcarActivo(true)
       resumen.textContent = 'El autenticador de esta cuenta está activo.'
       mostrarRecuperacion()
+      if (resultado.mfaObligatorio !== true) desactivar.classList.remove('hidden')
       return
     }
     autenticadorActivo = false
@@ -321,6 +337,55 @@ export async function renderSeguridad(container) {
 
   raiz.querySelector('#mfa-reintentar').addEventListener('click', () => {
     void cargarEstado()
+  })
+
+  raiz.querySelector('#mfa-desactivar-accion').addEventListener('click', () => {
+    const panel = raiz.querySelector('#mfa-desactivar-panel')
+    if (!panel.hidden) return
+    panel.hidden = false
+    panel.innerHTML = `
+      <p class="mt-3 text-sm text-slate-600 dark:text-slate-300">${AVISO_DESACTIVAR}</p>
+      <form id="mfa-desactivar-form" class="mt-4 space-y-3" novalidate>
+        <label class="block text-sm font-medium" for="mfa-off-password">Contraseña</label>
+        <input id="mfa-off-password" name="password" type="password" autocomplete="current-password" class="${CAJA}" />
+        <label class="block text-sm font-medium" for="mfa-off-codigo">Segundo factor</label>
+        <input id="mfa-off-codigo" name="codigo" autocomplete="one-time-code" maxlength="40" class="${CAJA}" />
+        <label class="flex items-center gap-2 text-sm"><input id="mfa-off-recuperacion" type="checkbox" /> Es un código de recuperación</label>
+        <p id="mfa-off-error" class="hidden ${ALERTA} border-red-200 bg-red-50 text-red-700" role="alert"></p>
+        <button type="submit" class="${BOTON}">Confirmar desactivación</button>
+      </form>
+    `
+    panel.querySelector('#mfa-desactivar-form').addEventListener('submit', async (event) => {
+      event.preventDefault()
+      const form = event.currentTarget
+      if (form.dataset.submitting === 'true') return
+      const password = String(form.password.value ?? '')
+      const valor = String(form.codigo.value ?? '').trim()
+      const recuperacion = form.querySelector('#mfa-off-recuperacion').checked
+      const errorEl = panel.querySelector('#mfa-off-error')
+      if (!password || !valor) {
+        errorEl.textContent = 'Completá la contraseña y un segundo factor.'
+        errorEl.classList.remove('hidden')
+        return
+      }
+      form.dataset.submitting = 'true'
+      const resultado = await desactivarMfa(recuperacion
+        ? { password, codigoRecuperacion: valor }
+        : { password, codigo: valor })
+      form.password.value = ''
+      form.codigo.value = ''
+      if (resultado.estado === 'desactivado') {
+        salirAlLogin(MENSAJE_DESACTIVADO)
+        return
+      }
+      if (resultado.estado === 'incierto') {
+        salirAlLogin(MENSAJE_DESACTIVACION_INCIERTA)
+        return
+      }
+      form.dataset.submitting = 'false'
+      errorEl.textContent = mensajeEstado(resultado.estado)
+      errorEl.classList.remove('hidden')
+    })
   })
 
   container.replaceChildren(raiz)

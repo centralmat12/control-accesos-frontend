@@ -51,7 +51,11 @@ async function clasificar(response) {
   if (response.status === 200 && Array.isArray(cuerpo?.codigos)) {
     return { estado: 'codigos', mensaje: String(cuerpo.mensaje || ''), codigos: cuerpo.codigos.map((item) => String(item)) }
   }
+  if (response.status === 200 && cuerpo?.mensaje && !cuerpo?.operacion && !Array.isArray(cuerpo?.codigos)) {
+    return { estado: 'desactivado', mensaje: String(cuerpo.mensaje) }
+  }
   if (response.status === 404) return { estado: 'apagado' }
+  if (response.status === 409 && cuerpo?.codigo === 'mfa_obligatorio') return { estado: 'obligatorio' }
   if (response.status === 409) return { estado: 'ya-configurado' }
   if (response.status === 429) return { estado: 'limite' }
   if (response.status === 403) return { estado: 'restringido' }
@@ -114,6 +118,14 @@ export function iniciarEnrolamiento(password) {
 
 export function confirmarEnrolamiento({ operacion, codigo }) {
   return postMfa('/api/Auth/mfa/enrolamiento/confirmar', { operacion, codigo })
+}
+
+export function desactivarMfa({ password, codigo, codigoRecuperacion }) {
+  const totp = String(codigo ?? '').trim()
+  const recuperacion = String(codigoRecuperacion ?? '').trim()
+  return postMfa('/api/Auth/mfa/desactivar', totp
+    ? { password, codigo: totp }
+    : { password, codigoRecuperacion: recuperacion })
 }
 
 export function regenerarCodigos({ password, codigo, codigoRecuperacion }) {
