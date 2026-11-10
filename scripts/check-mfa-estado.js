@@ -16,6 +16,8 @@ assert.match(seguridad, /consultarEstadoMfa/)
 assert.match(seguridad, /puedeAplicarEstadoMfa/)
 assert.match(seguridad, /textContent = 'Activo'/)
 assert.match(seguridad, /Códigos de recuperación/)
+assert.match(seguridad, /Si perdés acceso a tu autenticador, podés iniciar sesión con tu contraseña y uno de estos códigos\. Cada código se puede usar una sola vez\. Guardalos en un lugar seguro/)
+assert.match(seguridad, /id="mfa-codigos-ayuda"/)
 assert.match(seguridad, /La regeneración de códigos no está habilitada/)
 assert.doesNotMatch(seguridad, /Sin configurar/)
 

@@ -10,9 +10,11 @@ import { puedeAplicarEstadoMfa } from '../api/mfa-estado.js'
 import { cambiarPassword, finishPasswordChange, getCurrentUser, getToken, logout, setLoginNotice } from '../api/auth.js'
 import { createCambiarPasswordForm } from '../components/cambiar-password-form.js'
 import { crearGuiaActivacion, crearTituloDobleFactor } from '../components/guia-activacion-mfa.js'
-import { iconLock } from '../components/icons.js'
+import { iconInfo, iconLock } from '../components/icons.js'
 import { bindTooltipRoot, unbindTooltipRoot } from '../components/tooltip.js'
+import { escapeHtml } from '../utils/format.js'
 
+const AYUDA_CODIGOS_RECUPERACION = 'Si perdés acceso a tu autenticador, podés iniciar sesión con tu contraseña y uno de estos códigos. Cada código se puede usar una sola vez. Guardalos en un lugar seguro.'
 const BOTON = 'rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-60'
 const CAJA = 'w-full rounded-lg border border-slate-300 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-950 dark:text-white'
 const ALERTA = 'rounded-lg border px-3 py-2 text-sm'
@@ -69,19 +71,28 @@ export async function renderSeguridad(container) {
     seccion?.replaceChildren()
   }
 
+  function tituloRecuperacion() {
+    return `
+      <div class="flex flex-wrap items-center gap-2">
+        <h2 class="text-lg font-semibold text-slate-900 dark:text-slate-100">Códigos de recuperación</h2>
+        <button type="button" id="mfa-codigos-ayuda" class="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-slate-400 hover:text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 dark:hover:text-slate-100" data-tooltip="${escapeHtml(AYUDA_CODIGOS_RECUPERACION)}" data-tooltip-compact aria-label="Ayuda sobre los códigos de recuperación">${iconInfo('h-4 w-4')}</button>
+      </div>
+    `
+  }
+
   function mostrarRecuperacion() {
     const seccion = raiz.querySelector('#mfa-recuperacion')
     if (!autenticadorActivo || !seccion) return
     seccion.classList.remove('hidden')
     if (!configuracionDisponible) {
       seccion.innerHTML = `
-        <h2 class="text-lg font-semibold text-slate-900 dark:text-slate-100">Códigos de recuperación</h2>
+        ${tituloRecuperacion()}
         <p class="mt-2 text-sm text-slate-500 dark:text-slate-400">La regeneración de códigos no está habilitada.</p>
       `
       return
     }
     seccion.innerHTML = `
-      <h2 class="text-lg font-semibold text-slate-900 dark:text-slate-100">Códigos de recuperación</h2>
+      ${tituloRecuperacion()}
       <p class="mt-2 text-sm text-slate-500 dark:text-slate-400">Generá un conjunto nuevo con tu contraseña y un solo segundo factor.</p>
       <button type="button" id="mfa-abrir-regenerar" class="mt-4 ${BOTON}">Regenerar códigos</button>
       <div id="mfa-regenerar-panel" hidden></div>
